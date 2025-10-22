@@ -1,3 +1,6 @@
+import dotenv from "dotenv";
+dotenv.config(); // carga las variables del archivo .env
+
 import express from "express";
 import mysql from "mysql2";
 import crypto from "crypto";
@@ -5,7 +8,7 @@ import cors from "cors";
 import bodyParser from "body-parser";
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 // Middlewares
 app.use(cors());
@@ -13,10 +16,10 @@ app.use(bodyParser.json());
 
 // Conexión a MySQL
 const db = mysql.createConnection({
-  host: "localhost",
-  user: "EderJezrael",      // cambia si usas otro usuario
-  password: "Kioriu2101.!",      // pon tu contraseña
-  database: "HEG_Sistema"
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
 });
 
 db.connect(err => {
@@ -43,7 +46,7 @@ app.post("/login", (req, res) => {
   console.log("Resultados de MySQL:", results);
 
   if (results.length > 0) {
-    res.json({ success: true, message: "Login exitoso ✅" });
+    res.json({ success: true, message: "Login exitoso" });
   } else {
     res.status(401).json({ success: false, message: "Credenciales incorrectas ❌" });
   }
@@ -53,5 +56,5 @@ app.post("/login", (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
+  console.log(` Servidor corriendo en http://localhost:${PORT}`);
 });

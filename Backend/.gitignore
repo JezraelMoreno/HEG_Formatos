@@ -1,0 +1,9 @@
+# Ignorar dependencias
+node_modules/
+
+# Archivos de entorno
+.env
+
+# Archivos de build o cache
+dist/
+build/
