@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Subir CSV</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <h1>Subir Archivo</h1>
+  </header>
+
+  <main>
+    <form action="/upload" method="POST" enctype="multipart/form-data">
+      <input type="file" name="files" accept=".csv" multiple required />
+      <button type="submit">Subir</button>
+    </form>
+    <div id= "Enlaces">
+            <p> ver proyectos Subidos: </p>
+              <a href="proyectos.html">Proyectos Aluminio</a>
+        </div>
+  </main>
+</body>
+</html>

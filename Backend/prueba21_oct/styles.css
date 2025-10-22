@@ -1,0 +1,188 @@
+/* ==============================
+   ESTILOS GENERALES
+============================== */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: "Segoe UI", Arial, sans-serif;
+}
+
+body {
+  background: linear-gradient(135deg, #d0cfcf, #fffefe);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* ==============================
+   ENCABEZADO
+============================== */
+header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  background-color: #182d6d;
+  color: white;
+  text-align: center;
+  padding: 1rem 0;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+}
+
+header h1 {
+  font-size: 1.6rem;
+  letter-spacing: 1px;
+}
+
+/* ==============================
+   CONTENIDO PRINCIPAL
+============================== */
+main {
+  margin-top: 120px; /* espacio debajo del header */
+  width: 95%;
+  max-width: 1300px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2rem;
+}
+
+h2 {
+  margin-bottom: 1rem;
+  color: #182d6d;
+  text-align: center;
+}
+
+/* ==============================
+   FORMULARIOS
+============================== */
+form {
+  background-color: white;
+  padding: 2rem 3rem;
+  border-radius: 15px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.2rem;
+  min-width: 300px;
+}
+
+input[type="file"] {
+  border: 1px solid #ccc;
+  padding: 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  width: 100%;
+}
+
+button {
+  background-color: #182d6d;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+  width: 100%;
+  font-size: 1rem;
+}
+
+button:hover {
+  background-color: #223fa3;
+}
+
+/* ==============================
+   TABLA DE PROYECTOS
+============================== */
+#tabla-registros {
+  width: 100%;
+  overflow-x: auto; /* permite desplazarse horizontalmente si hay muchas columnas */
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background-color: #fff;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+  min-width: 1000px;
+}
+
+thead {
+  background-color: #182d6d;
+  color: white;
+}
+
+th, td {
+  padding: 10px 14px;
+  text-align: center;
+  border-bottom: 1px solid #ddd;
+  white-space: nowrap;
+}
+
+tbody tr:nth-child(even) {
+  background-color: #f7f7f7;
+}
+
+tbody tr:hover {
+  background-color: #e8f0ff;
+  transition: 0.2s;
+}
+
+/* ==============================
+   ENLACES
+============================== */
+#Enlaces {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+#Enlaces p {
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  color: #182d6d;
+}
+
+#Enlaces a {
+  text-decoration: none;
+  background-color: #182d6d;
+  color: white;
+  padding: 10px 20px;
+  border-radius: 6px;
+  transition: background-color 0.3s;
+  font-weight: 500;
+}
+
+#Enlaces a:hover {
+  background-color: #182d6d;
+}
+
+/* ==============================
+   RESPONSIVIDAD
+============================== */
+@media (max-width: 768px) {
+  header h1 {
+    font-size: 1.2rem;
+  }
+
+  table {
+    font-size: 0.85rem;
+    min-width: 900px;
+  }
+
+  form {
+    padding: 1.5rem 2rem;
+  }
+}
+
+@media (max-width: 480px) {
+  table {
+    font-size: 0.75rem;
+    min-width: 800px;
+  }
+}
