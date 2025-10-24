@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS proyectos (
   fecha_proyecto DATE
 );
 
--- Detalle de pedidos(hija)
+-- pedidos(hija)
 CREATE TABLE IF NOT EXISTS pedidos (
   id INT AUTO_INCREMENT PRIMARY KEY,
   id_proyecto INT NOT NULL,
