@@ -1,0 +1,110 @@
+.detalle-page {
+  min-height: 100vh;
+  background: #f0f4f8; /* consistente con login */
+  font-family: sans-serif;
+}
+
+.detalle-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+}
+
+.detalle-titulo {
+  margin: 0;
+  font-size: 20px;
+  color: #333;
+}
+
+.detalle-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.filter-select {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid #d0d7de;
+  background: #fff;
+}
+
+.btn {
+  padding: 10px 14px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.btn-primary {
+  background-color: #224c84ff; /* color principal login */
+  color: #fff;
+}
+.btn-primary:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background: #fff;
+  border: 1px solid #d0d7de;
+}
+
+.detalle-contenido {
+  padding: 0 20px 24px;
+}
+
+.alert {
+  margin: 0 0 12px 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+}
+
+.alert.success {
+  background: #e6f4ea;
+  color: #1e4620;
+}
+
+.alert.error {
+  background: #fdecea;
+  color: #d32f2f;
+}
+
+.placeholder-card {
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.tabla-wrapper {
+  margin-top: 16px;
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.tabla-header {
+  padding: 12px 16px;
+  background: #f7f9fc;
+  border-bottom: 1px solid #e0e0e0;
+  font-weight: 600;
+}
+
+.tabla-pedidos {
+  width: 100%;
+  border-collapse: collapse;
+}
+.tabla-pedidos th, .tabla-pedidos td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #eee;
+  font-size: 14px;
+}
+.tabla-pedidos thead th {
+  background: #fafbfc;
+  text-align: left;
+}
+.tabla-pedidos tbody tr:hover {
+  background: #fafafa;
+}

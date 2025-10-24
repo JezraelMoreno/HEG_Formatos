@@ -96,7 +96,16 @@ export function MainPage() {
         {!loading && !error && (
           <ul className="lista-proyectos">
             {proyectos.map((p) => (
-              <li key={p.id_proyecto} className="item-proyecto">
+              <li
+                key={p.id_proyecto}
+                className="item-proyecto"
+                onClick={() =>
+                  navigate(`/proyecto/${p.id_proyecto}`, {
+                    state: { nombre: p.nombre, fecha: p.fecha_proyecto },
+                  })
+                }
+                style={{ cursor: "pointer" }}
+              >
                 <span className="nombre">{p.nombre}</span>
                 <span className="fecha">{p.fecha_proyecto}</span>
               </li>
