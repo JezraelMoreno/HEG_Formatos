@@ -2,7 +2,6 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./loginform.css";
 
-
 export function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -10,29 +9,29 @@ export function LoginForm() {
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
+    e.preventDefault();
 
-  try {
-    const res = await fetch("http://localhost:3000/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ nombre_usuario: email, contraseña: password }),
-    });
+    try {
+      const res = await fetch("http://localhost:3000/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nombre_usuario: email, contrasena: password }),
+      });
 
-    const data = await res.json();
+      const data = await res.json();
 
-    if (data.success) {
-      localStorage.setItem("usuario", email);
-      setError("");
-      navigate("/home");
-    } 
-
-  } catch (error) {
-    console.error("Error de conexión:", error);
-    setError("Error de conexión con el servidor");
-  }
-};
-
+      if (res.ok && data.success) {
+        localStorage.setItem("usuario", email);
+        setError("");
+        navigate("/home");
+        return;
+      }
+      setError(data?.message || "Credenciales incorrectas");
+    } catch (error) {
+      console.error("Error de conexión:", error);
+      setError("Error de conexión con el servidor");
+    }
+  };
 
   return (
     <div className="login-container">
@@ -43,8 +42,7 @@ export function LoginForm() {
 
         <label>Usuario</label>
         <input
-
-          type="username"
+          type="text"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="Usuario"
@@ -65,3 +63,4 @@ export function LoginForm() {
     </div>
   );
 }
+

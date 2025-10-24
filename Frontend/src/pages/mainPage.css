@@ -1,0 +1,120 @@
+ .main-page {
+  position: relative;
+  height: 100vh;
+  width: 100%;
+  background-color: #f5f5f5;
+  font-family: sans-serif;
+  padding: 80px 20px 20px; /* espacio para título/acciones */
+  box-sizing: border-box;
+}
+
+/* Título arriba a la izquierda */
+.titulo {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  font-size: 24px;
+  color: #333;
+  margin: 0;
+}
+
+/* Acciones arriba a la derecha */
+.actions {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  display: flex;
+  gap: 10px;
+}
+
+.action-button {
+  padding: 10px 16px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  color: #fff;
+}
+
+.logout-button {
+  background-color: #1976d2;
+}
+.logout-button:hover {
+  background-color: #125ca1;
+}
+
+.create-button {
+  background-color: #2e7d32;
+}
+.create-button:hover {
+  background-color: #1b5e20;
+}
+
+/* Contenido */
+.contenido {
+  max-width: 800px;
+}
+.lista-proyectos {
+  list-style: none;
+  padding: 0;
+  margin: 10px 0 0;
+}
+.item-proyecto {
+  background: #fff;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+  margin-bottom: 10px;
+}
+.item-proyecto .nombre {
+  font-weight: 600;
+}
+.item-proyecto .fecha {
+  color: #555;
+  font-size: 14px;
+}
+
+.error-text {
+  color: #d32f2f;
+  background: #fdecea;
+  padding: 8px 12px;
+  border-radius: 8px;
+  display: inline-block;
+}
+
+/* Modal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.modal {
+  background: #fff;
+  border-radius: 12px;
+  width: 100%;
+  max-width: 420px;
+  padding: 20px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.15);
+}
+.form-proyecto {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.form-proyecto input {
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+}
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 10px;
+}
