@@ -7,6 +7,7 @@ USE HEG_Sistema;
 CREATE TABLE IF NOT EXISTS usuarios (
   id_usuario INT AUTO_INCREMENT PRIMARY KEY,
   nombre_usuario VARCHAR(15) NOT NULL UNIQUE,
+  tipo_usuario ENUM("contador", "administrador") NOT NULL,
   contrasena VARCHAR(1000) NOT NULL
 );
 
