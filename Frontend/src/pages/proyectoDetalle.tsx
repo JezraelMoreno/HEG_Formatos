@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+﻿import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { authHeader, getToken, isTokenValid } from "../auth";
 
 import "./proyectoDetalle.css";
 
@@ -40,8 +41,17 @@ export function ProyectoDetalle() {
   const [error, setError] = useState<string>("");
   const [cargandoPedidos, setCargandoPedidos] = useState(false);
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
+
+  // filtros
   const [familia, setFamilia] = useState<string>("");
   const [familias, setFamilias] = useState<string[]>([]);
+  const [clan, setClan] = useState<string>("");
+  const [clanes, setClanes] = useState<string[]>([]);
+  const [proveedor, setProveedor] = useState<string>("");
+  const [proveedores, setProveedores] = useState<string[]>([]);
+  const [concepto, setConcepto] = useState<string>("");
+  const [conceptos, setConceptos] = useState<string[]>([]);
+  const [fecha, setFecha] = useState<string>("");
 
   const nombreProyecto = state?.nombre || "Proyecto";
 
@@ -50,8 +60,7 @@ export function ProyectoDetalle() {
   }, []);
 
   const normalizarFecha = (valor: string) => {
-    const v = valor.trim();
-    // Soportar dd/mm/yyyy -> yyyy-mm-dd, si no, devolver tal cual
+    const v = String(valor || "").trim();
     const m = v.match(/^([0-9]{1,2})[\/\-]([0-9]{1,2})[\/\-]([0-9]{4})$/);
     if (m) {
       const dd = m[1].padStart(2, "0");
@@ -59,22 +68,14 @@ export function ProyectoDetalle() {
       const yyyy = m[3];
       return `${yyyy}-${mm}-${dd}`;
     }
-    return v; // fallback
+    return v;
   };
 
   const parseCsv = (text: string): PedidoCsv[] => {
-    const rows = text
-      .split(/\r?/)
-      .map((r) => r.trim())
-      .filter((r) => r.length > 0);
+    const rows = text.split(/\r?\n/).map(r => r.trim()).filter(r => r.length > 0);
     if (rows.length < 2) return [];
-
-    const headers = rows[0]
-      .split(",")
-      .map((h) => h.trim().toUpperCase());
-
-    const idx = (name: string) => headers.indexOf(name);
-
+    const headers = rows[0].split(",").map(h => h.trim().toUpperCase());
+    const idx = (n: string) => headers.indexOf(n);
     const iProyecto = idx("PROYECTO");
     const iPedido = idx("PEDIDO");
     const iClan = idx("CLAN");
@@ -82,19 +83,13 @@ export function ProyectoDetalle() {
     const iProveedor = idx("PROVEEDOR");
     const iFecha = idx("FECHA DE APROBACION");
     const iConcepto = idx("CONCEPTO");
-    // El CSV trae "SITUACIONES ESPECIALES " con espacio, normalizamos
-    const iSitEsp = (() => {
-      const i1 = headers.indexOf("SITUACIONES ESPECIALES");
-      if (i1 >= 0) return i1;
-      return headers.indexOf("SITUACIONES ESPECIALES ");
-    })();
+    const iSitEsp = (() => { const i1 = headers.indexOf("SITUACIONES ESPECIALES"); return i1 >= 0 ? i1 : headers.indexOf("SITUACIONES ESPECIALES "); })();
     const iImporte = idx("IMPORTE");
-
-    const pedidos: PedidoCsv[] = [];
+    const out: PedidoCsv[] = [];
     for (let r = 1; r < rows.length; r++) {
       const cols = rows[r].split(",");
       if (cols.length < 5) continue;
-      const pedido: PedidoCsv = {
+      out.push({
         nombre_proyecto: (cols[iProyecto] || nombreProyecto || "").trim(),
         pedido: (cols[iPedido] || "").trim(),
         clan: (cols[iClan] || "").trim(),
@@ -104,10 +99,9 @@ export function ProyectoDetalle() {
         concepto: (cols[iConcepto] || "").trim(),
         situaciones_especiales: (cols[iSitEsp] || "").trim(),
         importe: Number((cols[iImporte] || "0").toString().replace(/\s/g, "")),
-      };
-      pedidos.push(pedido);
+      });
     }
-    return pedidos;
+    return out;
   };
 
   const onFileSelected: React.ChangeEventHandler<HTMLInputElement> = async (e) => {
@@ -117,26 +111,22 @@ export function ProyectoDetalle() {
     setError("");
     try {
       const text = await file.text();
-      const pedidos = parseCsv(text);
-      if (!pedidos.length) {
-        setError("No se encontraron filas válidas en el CSV");
-        return;
-      }
+      const parsed = parseCsv(text);
+      if (!parsed.length) { setError("CSV sin filas validas"); return; }
       setSubiendo(true);
       const res = await fetch(`http://localhost:3000/proyectos/${id}/pedidos`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pedidos }),
+        headers: { "Content-Type": "application/json", ...authHeader() },
+        body: JSON.stringify({ pedidos: parsed }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setError(data?.message || "Error al subir pedidos");
       } else {
         setMensaje(data?.message || "Pedidos cargados correctamente");
-        // recargar lista
         await cargarPedidos();
       }
-    } catch (err) {
+    } catch (_) {
       setError("No se pudo leer el archivo CSV");
     } finally {
       setSubiendo(false);
@@ -146,51 +136,64 @@ export function ProyectoDetalle() {
 
   const volver = useCallback(() => navigate("/home"), [navigate]);
 
-  const cargarPedidos = useCallback(async (filtroFamilia?: string) => { 
+  const cargarPedidos = useCallback(async (filtroFamilia?: string) => {
     if (!id) return;
     setCargandoPedidos(true);
     try {
-      const res = await fetch(`http://localhost:3000/proyectos/${id}/pedidos` + (filtroFamilia && filtroFamilia !== "" ? `?familia=${encodeURIComponent(filtroFamilia)}` : ""));
+      const famVal = (typeof filtroFamilia === "string" ? filtroFamilia : familia) || "";
+      const params: string[] = [];
+      if (famVal) params.push(`familia=${encodeURIComponent(famVal)}`);
+      if (clan) params.push(`clan=${encodeURIComponent(clan)}`);
+      if (proveedor) params.push(`proveedor=${encodeURIComponent(proveedor)}`);
+      if (concepto) params.push(`concepto=${encodeURIComponent(concepto)}`);
+      if (fecha) params.push(`fecha=${encodeURIComponent(fecha)}`);
+      const qs = params.length ? `?${params.join("&")}` : "";
+      const res = await fetch(`http://localhost:3000/proyectos/${id}/pedidos${qs}`, { headers: { ...authHeader() } });
       const data = await res.json();
       if (res.ok && data?.success) {
         setPedidos(data.data as Pedido[]);
       } else {
         setError(data?.message || "Error cargando pedidos");
       }
-    } catch (e) {
-      setError("Error de conexión al cargar pedidos");
+    } catch (_) {
+      setError("Error de conexion al cargar pedidos");
     } finally {
       setCargandoPedidos(false);
     }
-   } , [id]);
+  }, [id, familia, clan, proveedor, concepto, fecha]);
 
   useEffect(() => {
+    if (!isTokenValid(getToken())) { navigate("/"); return; }
     cargarPedidos();
-  }, [cargarPedidos]);
+  }, [cargarPedidos, navigate]);
 
-  // Construir catálogo de familias a partir de los pedidos cargados
   useEffect(() => {
-    const unique = Array.from(new Set(pedidos.map((p) => p.familia)))
-      .filter(Boolean)
-      .sort();
-    setFamilias(unique);
+    const fams = Array.from(new Set(pedidos.map((p) => p.familia))).filter(Boolean).sort();
+    const cls = Array.from(new Set(pedidos.map((p) => p.clan))).filter(Boolean).sort();
+    const provs = Array.from(new Set(pedidos.map((p) => p.proveedor))).filter(Boolean).sort();
+    const concs = Array.from(new Set(pedidos.map((p) => p.concepto))).filter(Boolean).sort();
+    setFamilias(fams);
+    setClanes(cls);
+    setProveedores(provs);
+    setConceptos(concs);
   }, [pedidos]);
 
   const exportarExplosion = useCallback(async () => {
     try {
       if (!id) return;
-      const qs = familia && familia !== "" ? `?familia=${encodeURIComponent(familia)}` : "";
-      const res = await fetch(`http://localhost:3000/proyectos/${id}/pedidos/export${qs}`);
-      if (!res.ok) {
-        setError("No se pudo generar el archivo");
-        return;
-      }
-      // Obtener nombre de archivo del header si existe
+      const params: string[] = [];
+      if (familia) params.push(`familia=${encodeURIComponent(familia)}`);
+      if (clan) params.push(`clan=${encodeURIComponent(clan)}`);
+      if (proveedor) params.push(`proveedor=${encodeURIComponent(proveedor)}`);
+      if (concepto) params.push(`concepto=${encodeURIComponent(concepto)}`);
+      if (fecha) params.push(`fecha=${encodeURIComponent(fecha)}`);
+      const qs = params.length ? `?${params.join("&")}` : "";
+      const res = await fetch(`http://localhost:3000/proyectos/${id}/pedidos/export${qs}`, { headers: { ...authHeader() } });
+      if (!res.ok) { setError("No se pudo generar el archivo"); return; }
       const cd = res.headers.get("Content-Disposition") || "";
       let serverFilename = "";
       const m = cd.match(/filename\s*=\s*"?([^";]+)"?/i);
       if (m) serverFilename = m[1];
-      // Fecha local para componer el nombre si el servidor no lo envía
       const now = new Date();
       const pad = (n: number) => String(n).padStart(2, "0");
       const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
@@ -198,16 +201,16 @@ export function ProyectoDetalle() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      const famSlug = familia && familia !== "" ? `_${familia.replace(/[^A-Za-z0-9_-]+/g, "-")}` : "";
-      a.download = serverFilename || "explosion_insumos_proyecto_${nombreProyecto}${famSlug}_${today}.xlsx";
+      const famSlug = familia ? `_${familia.replace(/[^A-Za-z0-9_-]+/g, "-")}` : "";
+      a.download = serverFilename || `explosion_insumos_proyecto_${id}${famSlug}_${today}.xlsx`;
       document.body.appendChild(a);
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
-    } catch (e) {
-      setError("Error de conexión al generar exportación");
+    } catch (_) {
+      setError("Error de conexion al generar exportacion");
     }
-  }, [id, familia]);
+  }, [id, familia, clan, proveedor, concepto, fecha]);
 
   return (
     <div className="detalle-page">
@@ -225,25 +228,31 @@ export function ProyectoDetalle() {
           <button className="btn btn-primary" onClick={abrirExplorador} disabled={subiendo}>
             {subiendo ? "Subiendo..." : "Agregar pedido"}
           </button>
-          <select
-            className="filter-select"
-            value={familia}
-            onChange={(e) => {
-              const val = e.target.value;
-              setFamilia(val);
-              cargarPedidos(val || undefined);
-            }}
-          >
+          <select className="filter-select" value={familia} onChange={(e) => { const v = e.target.value; setFamilia(v); cargarPedidos(v || undefined); }}>
             <option value="">Todas las familias</option>
             {familias.map((f) => (
-              <option key={f} value={f}>
-                {f}
-              </option>
+              <option key={f} value={f}>{f}</option>
             ))}
           </select>
-          <button className="btn btn-primary" onClick={exportarExplosion} disabled={pedidos.length === 0}>
-            Generar explosión de insumos
-          </button>
+          <select className="filter-select" value={clan} onChange={(e) => { setClan(e.target.value); cargarPedidos(); }}>
+            <option value="">Todos los clanes</option>
+            {clanes.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+          <select className="filter-select" value={proveedor} onChange={(e) => { setProveedor(e.target.value); cargarPedidos(); }}>
+            <option value="">Todos los proveedores</option>
+            {proveedores.map((p) => (
+              <option key={p} value={p}>{p}</option>
+            ))}
+          </select>
+          <select className="filter-select" value={concepto} onChange={(e) => { setConcepto(e.target.value); cargarPedidos(); }}>
+            <option value="">Todos los conceptos</option>
+            {conceptos.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+          <input className="filter-select" type="date" value={fecha} onChange={(e) => { setFecha(e.target.value); cargarPedidos(); }} />
         </div>
       </header>
 
@@ -254,11 +263,16 @@ export function ProyectoDetalle() {
           <p>Selecciona un archivo CSV con el formato esperado para cargar pedidos.</p>
         </div>
         <div className="tabla-wrapper">
-          <div className="tabla-header">Pedidos del proyecto</div>
+          <div className="tabla-toolbar">
+            <div className="tabla-header">Pedidos del proyecto</div>
+            <button className="btn btn-primary" onClick={exportarExplosion} disabled={pedidos.length === 0}>
+              Generar explosión de insumos
+            </button>
+          </div>
           {cargandoPedidos ? (
             <p>Cargando...</p>
           ) : pedidos.length === 0 ? (
-            <p>No hay pedidos aún.</p>
+            <p>No hay pedidos aun.</p>
           ) : (
             <table className="tabla-pedidos">
               <thead>
@@ -267,7 +281,7 @@ export function ProyectoDetalle() {
                   <th>Clan</th>
                   <th>Familia</th>
                   <th>Proveedor</th>
-                  <th>Fecha Aprobación</th>
+                  <th>Fecha Aprobacion</th>
                   <th>Concepto</th>
                   <th>Situaciones</th>
                   <th style={{ textAlign: "right" }}>Importe</th>
@@ -296,6 +310,3 @@ export function ProyectoDetalle() {
     </div>
   );
 }
-
-
-

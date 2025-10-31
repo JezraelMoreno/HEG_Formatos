@@ -4,6 +4,7 @@ dotenv.config();
 import express from "express";
 import mysql from "mysql2";
 import crypto from "crypto";
+import jwt from "jsonwebtoken";
 import cors from "cors";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -11,6 +12,7 @@ import ExcelJS from "exceljs";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const JWT_SECRET = process.env.JWT_SECRET || "change-me-dev-secret";
 
 // Middlewares
 app.use(cors());
@@ -60,7 +62,14 @@ app.post("/login", (req, res) => {
     console.log("Resultados de MySQL:", results);
 
     if (results.length > 0) {
-      return res.json({ success: true, message: "Login exitoso" });
+      const user = results[0] || {};
+      const payload = {
+        sub: user.id_usuario || user.id || nombre_usuario,
+        username: nombre_usuario,
+        role: user.rol || user.role || "user",
+      };
+      const token = jwt.sign(payload, JWT_SECRET, { expiresIn: "8h" });
+      return res.json({ success: true, message: "Login exitoso", token, user: { username: nombre_usuario, role: payload.role } });
     }
     return res
       .status(401)
@@ -68,8 +77,24 @@ app.post("/login", (req, res) => {
   });
 });
 
+// Middleware de autenticación con JWT
+function authenticateToken(req, res, next) {
+  try {
+    const auth = req.headers["authorization"] || req.headers["Authorization"];
+    if (!auth || typeof auth !== "string" || !auth.startsWith("Bearer ")) {
+      return res.status(401).json({ success: false, message: "No autorizado" });
+    }
+    const token = auth.slice("Bearer ".length);
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch (e) {
+    return res.status(401).json({ success: false, message: "Token inválido o expirado" });
+  }
+}
+
 // Proyectos - listar
-app.get("/proyectos", (req, res) => {
+app.get("/proyectos", authenticateToken, (req, res) => {
   const query =
     "SELECT id_proyecto, nombre, fecha_proyecto FROM proyectos ORDER BY id_proyecto DESC";
   db.query(query, (err, results) => {
@@ -84,7 +109,7 @@ app.get("/proyectos", (req, res) => {
 });
 
 // Proyectos - crear
-app.post("/proyectos", (req, res) => {
+app.post("/proyectos", authenticateToken, (req, res) => {
   const { nombre, fecha_proyecto } = req.body;
   if (!nombre || !fecha_proyecto) {
     return res
@@ -109,7 +134,7 @@ app.post("/proyectos", (req, res) => {
 });
 
 // Proyectos - obtener uno por id
-app.get("/proyectos/:id", (req, res) => {
+app.get("/proyectos/:id", authenticateToken, (req, res) => {
   const { id } = req.params;
   const query =
     "SELECT id_proyecto, nombre, fecha_proyecto FROM proyectos WHERE id_proyecto = ?";
@@ -128,15 +153,29 @@ app.get("/proyectos/:id", (req, res) => {
 });
 
 // Pedidos - listar por proyecto
-app.get("/proyectos/:id/pedidos", (req, res) => {
+app.get("/proyectos/:id/pedidos", authenticateToken, (req, res) => {
   const { id } = req.params;
   const { familia } = req.query;
   let query =
     "SELECT id, id_proyecto, nombre_proyecto, pedido, clan, familia, proveedor, DATE_FORMAT(fecha_aprobacion, '%Y-%m-%d') AS fecha_aprobacion, concepto, situaciones_especiales, importe FROM pedidos WHERE id_proyecto = ?";
   const params = [id];
-  if (familia && String(familia).trim() !== "") {
-    query += " AND familia = ?";
-    params.push(String(familia));
+  const toList = (v) => Array.isArray(v) ? v : (typeof v === 'string' ? v.split(',').map(s=>s.trim()).filter(Boolean) : []);
+  const addMulti = (field, values) => {
+    const list = toList(values);
+    if (list.length === 1) { query += ` AND ${field} = ?`; params.push(list[0]); }
+    else if (list.length > 1) { query += ` AND ${field} IN (${list.map(_=>'?').join(',')})`; params.push(...list); }
+  };
+  addMulti('familia', familia);
+  const { clan, proveedor, concepto, fecha } = req.query;
+  addMulti('clan', clan);
+  addMulti('proveedor', proveedor);
+  if (concepto && String(concepto).trim() !== "") {
+    query += " AND concepto = ?";
+    params.push(String(concepto));
+  }
+  if (fecha && String(fecha).trim() !== "") {
+    query += " AND DATE(fecha_aprobacion) = ?";
+    params.push(String(fecha));
   }
   query += " ORDER BY id ASC";
   db.query(query, params, (err, results) => {
@@ -152,16 +191,30 @@ app.get("/proyectos/:id/pedidos", (req, res) => {
     
 
 // Pedidos - exportar a XLSX con logo y estilos
-app.get("/proyectos/:id/pedidos/export", (req, res) => {
+app.get("/proyectos/:id/pedidos/export", authenticateToken, (req, res) => {
   const { id } = req.params;
   const { familia } = req.query;
   const qProyecto = "SELECT nombre FROM proyectos WHERE id_proyecto = ?";
   let qPedidos =
     "SELECT id, id_proyecto, nombre_proyecto, pedido, clan, familia, proveedor, DATE_FORMAT(fecha_aprobacion, '%Y-%m-%d') AS fecha_aprobacion, concepto, situaciones_especiales, importe FROM pedidos WHERE id_proyecto = ?";
   const pedidosParams = [id];
-  if (familia && String(familia).trim() !== "") {
-    qPedidos += " AND familia = ?";
-    pedidosParams.push(String(familia));
+  const toListE = (v) => Array.isArray(v) ? v : (typeof v === 'string' ? v.split(',').map(s=>s.trim()).filter(Boolean) : []);
+  const addMultiE = (field, values) => {
+    const list = toListE(values);
+    if (list.length === 1) { qPedidos += ` AND ${field} = ?`; pedidosParams.push(list[0]); }
+    else if (list.length > 1) { qPedidos += ` AND ${field} IN (${list.map(_=>'?').join(',')})`; pedidosParams.push(...list); }
+  };
+  addMultiE('familia', familia);
+  const { clan, proveedor, concepto, fecha } = req.query;
+  addMultiE('clan', clan);
+  addMultiE('proveedor', proveedor);
+  if (concepto && String(concepto).trim() !== "") {
+    qPedidos += " AND concepto = ?";
+    pedidosParams.push(String(concepto));
+  }
+  if (fecha && String(fecha).trim() !== "") {
+    qPedidos += " AND DATE(fecha_aprobacion) = ?";
+    pedidosParams.push(String(fecha));
   }
   qPedidos += " ORDER BY id ASC";
 
@@ -328,7 +381,7 @@ function isValidYMD(y, m, d) {
 }
 
 // Pedidos - carga masiva desde CSV (parseado en el frontend)
-app.post("/proyectos/:id/pedidos", (req, res) => {
+app.post("/proyectos/:id/pedidos", authenticateToken, (req, res) => {
   const { id } = req.params;
   const { pedidos } = req.body || {};
 

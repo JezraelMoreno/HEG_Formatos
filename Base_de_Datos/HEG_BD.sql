@@ -5,7 +5,7 @@ USE HEG_Sistema;
 
 -- Tabla de usuarios
 CREATE TABLE IF NOT EXISTS usuarios (
-  id INT AUTO_INCREMENT PRIMARY KEY,
+  id_usuario INT AUTO_INCREMENT PRIMARY KEY,
   nombre_usuario VARCHAR(15) NOT NULL UNIQUE,
   contrasena VARCHAR(1000) NOT NULL
 );
@@ -34,3 +34,26 @@ CREATE TABLE IF NOT EXISTS pedidos (
     FOREIGN KEY (id_proyecto) REFERENCES proyectos(id_proyecto)
 );
 
+
+-- Tabla cobranza (carmen)
+-- Si alguien llega a cambiar esta tabla, le recomiendo encarecidamente que no lo haga
+-- si se hace, carmen probablemente no sabrá como usar el sistema, esta tabla no sigue las mejores practicas
+-- pero funciona para lo que me pidieron ATTE: EDER
+CREATE TABLE IF NOT EXISTS cobranza(
+  id_cobranza INT AUTO_INCREMENT PRIMARY KEY,
+  id_proyecto INT NOT NULL,
+  fecha_reporte DATE NOT NULL,                     -- Fecha general del reporte (13 junio 2025)                         -- N° (índice de fila)
+  fecha_factura DATE,                              -- Fecha de la factura
+  numero_factura VARCHAR(20),                      -- N° factura
+  concepto_cobranza VARCHAR(100),                  -- Concepto (ej. Anticipo, estimación, etc.)
+  importe_cobrar DECIMAL(15,2) DEFAULT 0.00,       -- Importe a cobrar
+  importe_cobrado DECIMAL(15,2) DEFAULT 0.00,      -- Importe cobrado
+  saldo_por_cobrar DECIMAL(15,2) GENERATED ALWAYS AS (importe_cobrar - importe_cobrado) STORED,
+  fecha_pago DATE,                                 -- Fecha de pago
+  contratado_a_fecha DECIMAL(15,2) DEFAULT 0.00,   -- Contratado a la fecha (resumen superior)
+  cobrado_total DECIMAL(15,2) DEFAULT 0.00,        -- Cobrado total (resumen superior)
+  por_cobrar_total DECIMAL(15,2) DEFAULT 0.00,     -- Por cobrar (resumen superior)
+  fondo_garantia DECIMAL(15,2) DEFAULT 0.00,       -- Fondo de garantía (resumen superior)
+  liquido_por_cobrar DECIMAL(15,2) DEFAULT 0.00,   -- Líquido por cobrar (resumen superior)
+  FOREIGN KEY (id_proyecto) REFERENCES proyectos(id_proyecto)
+)

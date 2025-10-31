@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./loginform.css";
+import { setToken } from "../auth";
 
 export function LoginForm() {
   const [email, setEmail] = useState("");
@@ -20,8 +21,9 @@ export function LoginForm() {
 
       const data = await res.json();
 
-      if (res.ok && data.success) {
+      if (res.ok && data.success && data.token) {
         localStorage.setItem("usuario", email);
+        setToken(data.token);
         setError("");
         navigate("/home");
         return;
@@ -63,4 +65,3 @@ export function LoginForm() {
     </div>
   );
 }
-

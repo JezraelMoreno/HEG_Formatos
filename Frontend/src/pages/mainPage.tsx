@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./mainPage.css";
+import { authHeader, clearToken, getToken, isTokenValid } from "../auth";
 
 type Proyecto = {
   id_proyecto: number;
@@ -18,7 +19,7 @@ export function MainPage() {
   const [fecha, setFecha] = useState("");
 
   const handleLogout = () => {
-    localStorage.removeItem("usuario");
+    clearToken();
     navigate("/");
   };
 
@@ -26,7 +27,9 @@ export function MainPage() {
     try {
       setLoading(true);
       setError("");
-      const res = await fetch("http://localhost:3000/proyectos");
+      const res = await fetch("http://localhost:3000/proyectos", {
+        headers: { ...authHeader() },
+      });
       const data = await res.json();
       if (res.ok && data.success) {
         setProyectos(data.data as Proyecto[]);
@@ -41,8 +44,12 @@ export function MainPage() {
   };
 
   useEffect(() => {
+    if (!isTokenValid(getToken())) {
+      navigate("/");
+      return;
+    }
     cargarProyectos();
-  }, []);
+  }, [navigate]);
 
   const abrirModal = () => setModalAbierto(true);
   const cerrarModal = () => {
@@ -62,7 +69,7 @@ export function MainPage() {
       setError("");
       const res = await fetch("http://localhost:3000/proyectos", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...authHeader() },
         body: JSON.stringify({ nombre, fecha_proyecto: fecha }),
       });
       const data = await res.json();
@@ -137,7 +144,7 @@ export function MainPage() {
                 required
               />
               <div className="modal-actions">
-                <button type="button" className="action-button" onClick={cerrarModal}>
+                <button type="button" className="cancel-button" onClick={cerrarModal}>
                   Cancelar
                 </button>
                 <button type="submit" className="action-button create-button">

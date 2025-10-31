@@ -2,13 +2,28 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import { LoginPage } from "./pages/loginPage";
 import { MainPage } from "./pages/mainPage";
 import { ProyectoDetalle } from "./pages/proyectoDetalle";
+import { PrivateRoute } from "./components/PrivateRoute";
 
 function App() {
   return (
     <Routes>
       <Route path="/" element={<LoginPage />} />
-      <Route path="/home" element={<MainPage />} />
-      <Route path="/proyecto/:id" element={<ProyectoDetalle />} />
+      <Route
+        path="/home"
+        element={
+          <PrivateRoute>
+            <MainPage />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/proyecto/:id"
+        element={
+          <PrivateRoute>
+            <ProyectoDetalle />
+          </PrivateRoute>
+        }
+      />
       {/* Redirige cualquier ruta no existente al login */}
       <Route path="*" element={<Navigate to="/" />} />
     </Routes>
