@@ -84,6 +84,29 @@ export function MainPage() {
     }
   };
 
+  const generarCobranzaTotal = async () => {
+    try {
+      setError("");
+      const res = await fetch("http://localhost:3000/cobranza/export", { headers: { ...authHeader() } });
+      if (!res.ok) { setError("No se pudo generar cobranza total"); return; }
+      const cd = res.headers.get("Content-Disposition") || "";
+      let filename = "cobranza_total.xlsx";
+      const m = cd.match(/filename\s*=\s*"?([^";]+)"?/i);
+      if (m) filename = m[1];
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (_) {
+      setError("Error de conexion al generar cobranza total");
+    }
+  };
+
   return (
     <div className="main-page">
       <h1 className="titulo">Página Principal</h1>
@@ -91,6 +114,9 @@ export function MainPage() {
       <div className="actions">
         <button className="action-button create-button" onClick={abrirModal}>
           Crear proyecto
+        </button>
+        <button className="action-button create-button" onClick={generarCobranzaTotal}>
+          Generar cobranza total
         </button>
         <button className="action-button logout-button" onClick={handleLogout}>
           Cerrar sesión

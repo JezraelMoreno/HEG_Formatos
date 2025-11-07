@@ -37,6 +37,39 @@ db.connect(err => {
   console.log("Conectado a la base de datos MySQL");
 });
 
+// Ruta de login (compatibilidad: acepta hash SHA-256 o texto plano)
+app.post("/login", (req, res) => {
+  const { nombre_usuario, contrasena } = req.body || {};
+  if (!nombre_usuario || !contrasena) {
+    return res.status(400).json({ success: false, message: "Faltan datos" });
+  }
+  const hash = crypto.createHash("sha256").update(contrasena).digest("hex");
+  const q = "SELECT * FROM usuarios WHERE nombre_usuario = ? LIMIT 1";
+  db.query(q, [nombre_usuario], (err, rows) => {
+    if (err) {
+      console.error("Error en la consulta MySQL:", err);
+      return res.status(500).json({ success: false, message: "Error interno del servidor" });
+    }
+    if (!rows || rows.length === 0) {
+      return res.status(401).json({ success: false, message: "Credenciales incorrectas" });
+    }
+    const user = rows[0] || {};
+    const stored = String(user.contrasena || "");
+    const ok = stored === hash || stored.toLowerCase() === hash.toLowerCase() || stored === contrasena;
+    if (!ok) {
+      return res.status(401).json({ success: false, message: "Credenciales incorrectas" });
+    }
+    const roleVal = (user.tipo_usuario || user.rol || user.role || "contador");
+    const payload = {
+      sub: user.id_usuario || user.id || nombre_usuario,
+      username: nombre_usuario,
+      role: roleVal,
+    };
+    const token = jwt.sign(payload, JWT_SECRET, { expiresIn: "8h" });
+    return res.json({ success: true, message: "Login exitoso", token, user: { username: nombre_usuario, role: payload.role } });
+  });
+});
+
 // Ruta de login
 app.post("/login", (req, res) => {
   const { nombre_usuario, contrasena } = req.body;
@@ -63,10 +96,11 @@ app.post("/login", (req, res) => {
 
     if (results.length > 0) {
       const user = results[0] || {};
+      const roleVal = (user.tipo_usuario || user.rol || user.role || "contador");
       const payload = {
         sub: user.id_usuario || user.id || nombre_usuario,
         username: nombre_usuario,
-        role: user.rol || user.role || "user",
+        role: roleVal,
       };
       const token = jwt.sign(payload, JWT_SECRET, { expiresIn: "8h" });
       return res.json({ success: true, message: "Login exitoso", token, user: { username: nombre_usuario, role: payload.role } });
@@ -153,7 +187,7 @@ app.get("/proyectos/:id", authenticateToken, (req, res) => {
 });
 
 // Pedidos - listar por proyecto
-app.get("/proyectos/:id/pedidos", authenticateToken, (req, res) => {
+app.get("/proyectos/:id/pedidos", authenticateToken, requireRole("administrador"), (req, res) => {
   const { id } = req.params;
   const { familia } = req.query;
   let query =
@@ -191,7 +225,7 @@ app.get("/proyectos/:id/pedidos", authenticateToken, (req, res) => {
     
 
 // Pedidos - exportar a XLSX con logo y estilos
-app.get("/proyectos/:id/pedidos/export", authenticateToken, (req, res) => {
+app.get("/proyectos/:id/pedidos/export", authenticateToken, requireRole("administrador"), (req, res) => {
   const { id } = req.params;
   const { familia } = req.query;
   const qProyecto = "SELECT nombre FROM proyectos WHERE id_proyecto = ?";
@@ -381,7 +415,7 @@ function isValidYMD(y, m, d) {
 }
 
 // Pedidos - carga masiva desde CSV (parseado en el frontend)
-app.post("/proyectos/:id/pedidos", authenticateToken, (req, res) => {
+app.post("/proyectos/:id/pedidos", authenticateToken, requireRole("administrador"), (req, res) => {
   const { id } = req.params;
   const { pedidos } = req.body || {};
 
@@ -441,6 +475,238 @@ app.post("/proyectos/:id/pedidos", authenticateToken, (req, res) => {
       res.status(500).json({ success: false, message: "Error interno del servidor" });
     });
 });
+
+// Cobranza - listar por proyecto (ambos roles pueden ver)
+app.get("/proyectos/:id/cobranza", authenticateToken, (req, res) => {
+  const { id } = req.params;
+  const q = `SELECT id_cobranza, id_proyecto, proyecto, control,
+                    importe_contratado, importe_cobrado, importe_a_cobrar,
+                    fondo_garantia, liquido_por_cobrar, facturas_por_cobrar,
+                    factor, indirectos_esperado, indirectos_cobrado,
+                    indirectos_aplicado, cobrado_vs_aplicado,
+                    numero_factura, DATE_FORMAT(fecha_factura, '%Y-%m-%d') AS fecha_factura,
+                    DATE_FORMAT(fecha_reporte, '%Y-%m-%d') AS fecha_reporte
+             FROM cobranza WHERE id_proyecto = ? ORDER BY id_cobranza DESC`;
+  db.query(q, [id], (err, rows) => {
+    if (err) {
+      console.error("Error consultando cobranza:", err);
+      return res.status(500).json({ success: false, message: "Error interno del servidor" });
+    }
+    res.json({ success: true, data: rows || [] });
+  });
+});
+
+// Cobranza - agregar (solo contador puede agregar)
+app.post("/proyectos/:id/cobranza", authenticateToken, requireRole("contador"), (req, res) => {
+  const { id } = req.params;
+  const {
+    proyecto,
+    control,
+    importe_contratado,
+    importe_cobrado,
+    importe_a_cobrar,
+    fondo_garantia,
+    liquido_por_cobrar,
+    facturas_por_cobrar,
+    factor,
+    indirectos_esperado,
+    indirectos_cobrado,
+    indirectos_aplicado,
+    cobrado_vs_aplicado,
+    numero_factura,
+    fecha_factura,
+    fecha_reporte,
+  } = req.body || {};
+
+  if (!proyecto || !control) {
+    return res.status(400).json({ success: false, message: "Faltan proyecto o control" });
+  }
+  const repISO = parseDateToISO(fecha_reporte) || new Date().toISOString().slice(0,10);
+  const facISO = parseDateToISO(fecha_factura);
+
+  const q = `INSERT INTO cobranza
+               (id_proyecto, proyecto, control, importe_contratado, importe_cobrado, importe_a_cobrar,
+                fondo_garantia, liquido_por_cobrar, facturas_por_cobrar, factor,
+                indirectos_esperado, indirectos_cobrado, indirectos_aplicado, cobrado_vs_aplicado,
+                numero_factura, fecha_factura, fecha_reporte)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
+  const vals = [
+    Number(id),
+    String(proyecto),
+    String(control),
+    Number(importe_contratado || 0),
+    Number(importe_cobrado || 0),
+    Number(importe_a_cobrar || 0),
+    Number(fondo_garantia || 0),
+    Number(liquido_por_cobrar || 0),
+    Number(facturas_por_cobrar || 0),
+    Number(factor || 0),
+    Number(indirectos_esperado || 0),
+    Number(indirectos_cobrado || 0),
+    Number(indirectos_aplicado || 0),
+    Number(cobrado_vs_aplicado || 0),
+    numero_factura ? String(numero_factura) : null,
+    facISO || null,
+    repISO,
+  ];
+  db.query(q, vals, (err, result) => {
+    if (err) {
+      console.error("Error insertando cobranza:", err);
+      return res.status(500).json({ success: false, message: "Error interno del servidor" });
+    }
+    res.status(201).json({ success: true, id_cobranza: result.insertId });
+  });
+});
+
+// Cobranza - exportar mas reciente por proyecto (ambos roles)
+app.get("/cobranza/export", authenticateToken, (req, res) => {
+  const q = `
+    SELECT c.id_proyecto, c.proyecto, c.control,
+           c.importe_contratado, c.importe_cobrado, c.importe_a_cobrar,
+           c.fondo_garantia, c.liquido_por_cobrar, c.facturas_por_cobrar,
+           c.factor, c.indirectos_esperado, c.indirectos_cobrado,
+           c.indirectos_aplicado, c.cobrado_vs_aplicado,
+           c.numero_factura, DATE_FORMAT(c.fecha_factura, '%Y-%m-%d') AS fecha_factura,
+           DATE_FORMAT(c.fecha_reporte, '%Y-%m-%d') AS fecha_reporte
+    FROM cobranza c
+    JOIN (
+      SELECT id_proyecto, MAX(fecha_reporte) AS max_rep
+      FROM cobranza
+      GROUP BY id_proyecto
+    ) m ON m.id_proyecto = c.id_proyecto AND m.max_rep = c.fecha_reporte
+    ORDER BY c.id_proyecto ASC`;
+
+  db.query(q, async (err, rows) => {
+    if (err) {
+      console.error("Error consultando cobranza total:", err);
+      return res.status(500).json({ success: false, message: "Error interno del servidor" });
+    }
+    try {
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet("Cobranza");
+
+      // Logo si existe
+      try {
+        const logoPath = path.join(__dirname, "assets", "heg_logo.jpg");
+        const imgId = wb.addImage({ filename: logoPath, extension: "jpeg" });
+        ws.addImage(imgId, { tl: { col: 0, row: 0 }, ext: { width: 220, height: 80 } });
+      } catch (imgErr) {
+        console.warn("No se pudo cargar el logo:", imgErr?.message || imgErr);
+      }
+
+      const now = new Date();
+      const pad2 = (n) => String(n).padStart(2, "0");
+      const fechaGeneracion = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
+      const titleRow = ws.getRow(5);
+      titleRow.getCell(1).value = `Cobranza mas reciente por proyecto - ${fechaGeneracion}`;
+      titleRow.getCell(1).font = { bold: true, size: 14, color: { argb: "FF333333" } };
+      ws.mergeCells(5, 1, 5, 17);
+
+      // Columnas
+      const columns = [
+        { key: "id_proyecto", width: 12 },
+        { key: "proyecto", width: 28 },
+        { key: "control", width: 14 },
+        { key: "numero_factura", width: 18 },
+        { key: "fecha_factura", width: 16 },
+        { key: "fecha_reporte", width: 16 },
+        { key: "importe_contratado", width: 18 },
+        { key: "importe_cobrado", width: 16 },
+        { key: "importe_a_cobrar", width: 16 },
+        { key: "fondo_garantia", width: 16 },
+        { key: "liquido_por_cobrar", width: 18 },
+        { key: "facturas_por_cobrar", width: 18 },
+        { key: "factor", width: 10 },
+        { key: "indirectos_esperado", width: 18 },
+        { key: "indirectos_cobrado", width: 18 },
+        { key: "indirectos_aplicado", width: 18 },
+        { key: "cobrado_vs_aplicado", width: 18 },
+      ];
+      ws.columns = columns;
+
+      const headerRowIndex = 7;
+      const headerRow = ws.getRow(headerRowIndex);
+      const headers = [
+        "ID Proyecto", "Proyecto", "Control", "No. Factura", "Fecha Factura", "Fecha Reporte",
+        "Importe Contratado", "Importe Cobrado", "Importe a Cobrar", "Fondo Garantia",
+        "Liquido por Cobrar", "Facturas por Cobrar", "Factor",
+        "Indirectos Esperado", "Indirectos Cobrado", "Indirectos Aplicado", "Cobrado vs Aplicado",
+      ];
+      headers.forEach((text, idx) => { headerRow.getCell(idx + 1).value = text; });
+      headerRow.font = { bold: true, color: { argb: "FFFFFFFF" } };
+      headerRow.alignment = { vertical: "middle", horizontal: "center" };
+      headerRow.height = 20;
+      headerRow.eachCell((cell) => {
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF224C84" } };
+        cell.border = {
+          top: { style: "thin", color: { argb: "FFDDDDDD" } },
+          left: { style: "thin", color: { argb: "FFDDDDDD" } },
+          bottom: { style: "thin", color: { argb: "FFDDDDDD" } },
+          right: { style: "thin", color: { argb: "FFDDDDDD" } },
+        };
+      });
+
+      const startDataRow = headerRowIndex + 1;
+      (rows || []).forEach((r, i) => {
+        const row = ws.getRow(startDataRow + i);
+        const numCols = [
+          "importe_contratado", "importe_cobrado", "importe_a_cobrar",
+          "fondo_garantia", "liquido_por_cobrar", "facturas_por_cobrar",
+          "factor", "indirectos_esperado", "indirectos_cobrado",
+          "indirectos_aplicado", "cobrado_vs_aplicado",
+        ];
+        const vals = {
+          id_proyecto: r.id_proyecto,
+          proyecto: r.proyecto,
+          control: r.control,
+          numero_factura: r.numero_factura || "",
+          fecha_factura: r.fecha_factura || "",
+          fecha_reporte: r.fecha_reporte || "",
+          importe_contratado: Number(r.importe_contratado || 0),
+          importe_cobrado: Number(r.importe_cobrado || 0),
+          importe_a_cobrar: Number(r.importe_a_cobrar || 0),
+          fondo_garantia: Number(r.fondo_garantia || 0),
+          liquido_por_cobrar: Number(r.liquido_por_cobrar || 0),
+          facturas_por_cobrar: Number(r.facturas_por_cobrar || 0),
+          factor: Number(r.factor || 0),
+          indirectos_esperado: Number(r.indirectos_esperado || 0),
+          indirectos_cobrado: Number(r.indirectos_cobrado || 0),
+          indirectos_aplicado: Number(r.indirectos_aplicado || 0),
+          cobrado_vs_aplicado: Number(r.cobrado_vs_aplicado || 0),
+        };
+        ws.columns.forEach((c, idx) => {
+          const key = c.key;
+          row.getCell(idx + 1).value = vals[key];
+          if (numCols.includes(String(key))) {
+            row.getCell(idx + 1).numFmt = key === "factor" ? "0.00" : "#,##0.00";
+            row.getCell(idx + 1).alignment = { horizontal: "right" };
+          }
+        });
+      });
+      ws.views = [{ state: "frozen", ySplit: headerRowIndex }];
+
+      const filename = `cobranza_total_${fechaGeneracion}.xlsx`;
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename=${filename}`);
+      await wb.xlsx.write(res);
+      res.end();
+    } catch (err2) {
+      console.error("Error generando XLSX cobranza:", err2);
+      res.status(500).json({ success: false, message: "Error generando archivo" });
+    }
+  });
+});
+// Middleware de autorizacion por rol
+function requireRole(...roles) {
+  const allowed = roles.map(r => String(r).toLowerCase());
+  return (req, res, next) => {
+    const role = String((req.user && req.user.role) || "").toLowerCase();
+    if (!role || (allowed.length && !allowed.includes(role))) {
+      return res.status(403).json({ success: false, message: "Permisos insuficientes" });
+    }
+    next();
+  };
+}
 
 app.listen(PORT, () => {
   console.log(` Servidor corriendo en http://localhost:${PORT}`);

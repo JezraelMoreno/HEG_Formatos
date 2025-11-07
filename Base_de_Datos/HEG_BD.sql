@@ -38,23 +38,29 @@ CREATE TABLE IF NOT EXISTS pedidos (
 
 -- Tabla cobranza (carmen)
 -- Si alguien llega a cambiar esta tabla, le recomiendo encarecidamente que no lo haga
--- si se hace, carmen probablemente no sabrá como usar el sistema, esta tabla no sigue las mejores practicas
--- pero funciona para lo que me pidieron ATTE: EDER
-CREATE TABLE IF NOT EXISTS cobranza(
+-- si se hace, carmen probablemente no sabrá como usar el sistema. 
+-- Esta tabla no sigue las mejores practicas pero funciona para lo que me pidieron 
+-- ATTE: EDER
+
+CREATE TABLE IF NOT EXISTS cobranza (
   id_cobranza INT AUTO_INCREMENT PRIMARY KEY,
   id_proyecto INT NOT NULL,
-  fecha_reporte DATE NOT NULL,                     -- Fecha general del reporte (13 junio 2025)                         -- N° (índice de fila)
-  fecha_factura DATE,                              -- Fecha de la factura
-  numero_factura VARCHAR(20),                      -- N° factura
-  concepto_cobranza VARCHAR(100),                  -- Concepto (ej. Anticipo, estimación, etc.)
-  importe_cobrar DECIMAL(15,2) DEFAULT 0.00,       -- Importe a cobrar
+  proyecto VARCHAR(100) NOT NULL,                  -- Nombre del proyecto
+  control VARCHAR(20) NOT NULL,                    -- Código de control (ej. 00431)
+  importe_contratado DECIMAL(15,2) DEFAULT 0.00,   -- Importe contratado
   importe_cobrado DECIMAL(15,2) DEFAULT 0.00,      -- Importe cobrado
-  saldo_por_cobrar DECIMAL(15,2) GENERATED ALWAYS AS (importe_cobrar - importe_cobrado) STORED,
-  fecha_pago DATE,                                 -- Fecha de pago
-  contratado_a_fecha DECIMAL(15,2) DEFAULT 0.00,   -- Contratado a la fecha (resumen superior)
-  cobrado_total DECIMAL(15,2) DEFAULT 0.00,        -- Cobrado total (resumen superior)
-  por_cobrar_total DECIMAL(15,2) DEFAULT 0.00,     -- Por cobrar (resumen superior)
-  fondo_garantia DECIMAL(15,2) DEFAULT 0.00,       -- Fondo de garantía (resumen superior)
-  liquido_por_cobrar DECIMAL(15,2) DEFAULT 0.00,   -- Líquido por cobrar (resumen superior)
+  importe_a_cobrar DECIMAL(15,2) DEFAULT 0.00,     -- Importe a cobrar
+  fondo_garantia DECIMAL(15,2) DEFAULT 0.00,       -- Fondo de garantía
+  liquido_por_cobrar DECIMAL(15,2) DEFAULT 0.00,   -- Líquido por cobrar
+  facturas_por_cobrar DECIMAL(15,2) DEFAULT 0.00,  -- Facturas por cobrar
+  factor DECIMAL(5,2) DEFAULT 0.00,                -- Factor (porcentaje, ej. 30%)
+  indirectos_esperado DECIMAL(15,2) DEFAULT 0.00,  -- Indirectos esperado
+  indirectos_cobrado DECIMAL(15,2) DEFAULT 0.00,   -- Indirectos cobrado
+  indirectos_aplicado DECIMAL(15,2) DEFAULT 0.00,  -- Indirectos aplicado
+  cobrado_vs_aplicado DECIMAL(15,2) DEFAULT 0.00,  -- Cobrado vs aplicado
+  -- Este campo se usará internamente para obtener la factura más reciente
+  numero_factura VARCHAR(50),                      -- N° factura (última o más reciente)
+  fecha_factura DATE,                              -- Fecha de la factura más reciente
+  fecha_reporte DATE DEFAULT (CURRENT_DATE()),     -- Fecha del reporte
   FOREIGN KEY (id_proyecto) REFERENCES proyectos(id_proyecto)
-)
+);

@@ -32,3 +32,24 @@ export function authHeader(): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+export function getUserInfo(): { username?: string; role?: string } | null {
+  const token = getToken();
+  if (!token) return null;
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    const payloadJson = atob(parts[1].replace(/-/g, "+").replace(/_/g, "/"));
+    const payload = JSON.parse(payloadJson);
+    if (!payload || typeof payload !== "object") return null;
+    const username = typeof payload.username === "string" ? payload.username : undefined;
+    const role = typeof payload.role === "string" ? payload.role : undefined;
+    return { username, role };
+  } catch {
+    return null;
+  }
+}
+
+export function getRole(): string | null {
+  const info = getUserInfo();
+  return info?.role || null;
+}
