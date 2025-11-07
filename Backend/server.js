@@ -344,6 +344,7 @@ app.get("/proyectos/:id/pedidos/export", authenticateToken, requireRole("adminis
 
         // Datos
         const startDataRow = headerRowIndex + 1;
+        let totalImporte = 0;
         pedidos.forEach((p, i) => {
           const r = ws.getRow(startDataRow + i);
           r.getCell(1).value = p.id;
@@ -356,9 +357,29 @@ app.get("/proyectos/:id/pedidos/export", authenticateToken, requireRole("adminis
           r.getCell(8).value = p.fecha_aprobacion;
           r.getCell(9).value = p.concepto;
           r.getCell(10).value = p.situaciones_especiales || "";
-          r.getCell(11).value = Number(p.importe || 0);
+          const importe = Number(p.importe || 0);
+          r.getCell(11).value = importe;
           r.getCell(11).numFmt = "#,##0.00";
           r.getCell(11).alignment = { horizontal: "right" };
+          totalImporte += importe;
+        });
+
+        const totalRowIndex = startDataRow + pedidos.length;
+        const totalRow = ws.getRow(totalRowIndex);
+        totalRow.getCell(10).value = "Total";
+        totalRow.getCell(10).font = { bold: true };
+        totalRow.getCell(10).alignment = { horizontal: "right" };
+        totalRow.getCell(11).value = totalImporte;
+        totalRow.getCell(11).numFmt = "#,##0.00";
+        totalRow.getCell(11).font = { bold: true };
+        totalRow.getCell(11).alignment = { horizontal: "right" };
+        totalRow.eachCell((cell) => {
+          cell.border = {
+            top: { style: "thin", color: { argb: "FFDDDDDD" } },
+            left: { style: "thin", color: { argb: "FFDDDDDD" } },
+            bottom: { style: "thin", color: { argb: "FFDDDDDD" } },
+            right: { style: "thin", color: { argb: "FFDDDDDD" } },
+          };
         });
 
         ws.views = [{ state: "frozen", ySplit: headerRowIndex }];
