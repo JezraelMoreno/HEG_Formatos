@@ -38,6 +38,20 @@
   max-width: 260px;
 }
 
+.filter-select-wrapper {
+  flex: 1 1 180px;
+  min-width: 160px;
+  max-width: 260px;
+}
+
+.filter-select-wrapper label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #2f3c4d;
+}
+
 .multi-filter {
   position: relative;
   flex: 1 1 180px;

@@ -1,20 +1,10 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { authHeader, getToken, isTokenValid, getRole } from "../auth";
+import { parsePedidosCsv } from "../utils/pedidosCsv";
+import type { PedidoCsv } from "../utils/pedidosCsv";
 
 import "./proyectoDetalle.css";
-
-type PedidoCsv = {
-  nombre_proyecto: string;
-  pedido: string;
-  clan: string;
-  familia: string;
-  proveedor: string;
-  fecha_aprobacion: string; // YYYY-MM-DD
-  concepto: string;
-  situaciones_especiales?: string;
-  importe: number;
-};
 
 type Pedido = {
   id: number;
@@ -33,21 +23,21 @@ type Pedido = {
 type Cobranza = {
   id_cobranza: number;
   id_proyecto: number;
-  proyecto: string;
-  control: string;
-  importe_contratado: number;
-  importe_cobrado: number;
-  importe_a_cobrar: number;
+  contratado_a_fecha: number;
+  mano_obra: number;
+  cobrado_total: number;
+  por_cobrar_total: number;
   fondo_garantia: number;
   liquido_por_cobrar: number;
-  facturas_por_cobrar: number;
-  factor: number;
-  indirectos_esperado: number;
-  indirectos_cobrado: number;
-  indirectos_aplicado: number;
-  cobrado_vs_aplicado: number;
+  numero: number;
+  fecha?: string | null;
   numero_factura?: string | null;
-  fecha_factura?: string | null;
+  concepto?: string | null;
+  importe_a_cobrar: number;
+  importe_cobrado: number;
+  saldo_por_cobrar: number;
+  fecha_pago?: string | null;
+  periodo?: string | null;
   fecha_reporte: string;
 };
 
@@ -195,70 +185,31 @@ export function ProyectoDetalle() {
   const [formCobranzaAbierto, setFormCobranzaAbierto] = useState(false);
   const hoyISO = new Date();
   const hoyStr = `${hoyISO.getFullYear()}-${String(hoyISO.getMonth()+1).padStart(2,'0')}-${String(hoyISO.getDate()).padStart(2,'0')}`;
-  const [fcReporte, setFcReporte] = useState<string>(hoyStr);
-  const [fcFactura, setFcFactura] = useState<string>("");
-  const [numFactura, setNumFactura] = useState<string>("");
-  const [control, setControl] = useState<string>("");
-  const [impContratado, setImpContratado] = useState<string>("");
-  const [impCobrado, setImpCobrado] = useState<string>("");
-  const [impACobrar, setImpACobrar] = useState<string>("");
+  const [contratadoFecha, setContratadoFecha] = useState<string>("");
+  const [manoObra, setManoObra] = useState<string>("");
+  const [cobradoTotal, setCobradoTotal] = useState<string>("");
+  const [porCobrarTotal, setPorCobrarTotal] = useState<string>("");
   const [fondoGarantia, setFondoGarantia] = useState<string>("");
-  const [liqPorCobrar, setLiqPorCobrar] = useState<string>("");
-  const [facturasPorCobrar, setFacturasPorCobrar] = useState<string>("");
-  const [factor, setFactor] = useState<string>("");
-  const [indEsperado, setIndEsperado] = useState<string>("");
-  const [indCobrado, setIndCobrado] = useState<string>("");
-  const [indAplicado, setIndAplicado] = useState<string>("");
-  const [cobVsApl, setCobVsApl] = useState<string>("");
+  const [liquidoPorCobrar, setLiquidoPorCobrar] = useState<string>("");
+  const [numeroRegistro, setNumeroRegistro] = useState<string>("");
+  const [fechaDetalle, setFechaDetalle] = useState<string>("");
+  const [numeroFactura, setNumeroFactura] = useState<string>("");
+  const [conceptoCobranza, setConceptoCobranza] = useState<string>("");
+  const [importeACobrar, setImporteACobrar] = useState<string>("");
+  const [importeCobrado, setImporteCobrado] = useState<string>("");
+  const [saldoPorCobrar, setSaldoPorCobrar] = useState<string>("");
+  const [fechaPago, setFechaPago] = useState<string>("");
+  const [periodoRegistro, setPeriodoRegistro] = useState<string>("");
+  const [fechaReporte, setFechaReporte] = useState<string>(hoyStr);
 
   const abrirExplorador = useCallback(() => {
     fileInputRef.current?.click();
   }, []);
 
-  const normalizarFecha = (valor: string) => {
-    const v = String(valor || "").trim();
-    const m = v.match(/^([0-9]{1,2})[\/\-]([0-9]{1,2})[\/\-]([0-9]{4})$/);
-    if (m) {
-      const dd = m[1].padStart(2, "0");
-      const mm = m[2].padStart(2, "0");
-      const yyyy = m[3];
-      return `${yyyy}-${mm}-${dd}`;
-    }
-    return v;
-  };
-
-  const parseCsv = (text: string): PedidoCsv[] => {
-    const rows = text.split(/\r?\n/).map(r => r.trim()).filter(r => r.length > 0);
-    if (rows.length < 2) return [];
-    const headers = rows[0].split(",").map(h => h.trim().toUpperCase());
-    const idx = (n: string) => headers.indexOf(n);
-    const iProyecto = idx("PROYECTO");
-    const iPedido = idx("PEDIDO");
-    const iClan = idx("CLAN");
-    const iFamilia = idx("FAMILIA");
-    const iProveedor = idx("PROVEEDOR");
-    const iFecha = idx("FECHA DE APROBACION");
-    const iConcepto = idx("CONCEPTO");
-    const iSitEsp = (() => { const i1 = headers.indexOf("SITUACIONES ESPECIALES"); return i1 >= 0 ? i1 : headers.indexOf("SITUACIONES ESPECIALES "); })();
-    const iImporte = idx("IMPORTE");
-    const out: PedidoCsv[] = [];
-    for (let r = 1; r < rows.length; r++) {
-      const cols = rows[r].split(",");
-      if (cols.length < 5) continue;
-      out.push({
-        nombre_proyecto: (cols[iProyecto] || nombreProyecto || "").trim(),
-        pedido: (cols[iPedido] || "").trim(),
-        clan: (cols[iClan] || "").trim(),
-        familia: (cols[iFamilia] || "").trim(),
-        proveedor: (cols[iProveedor] || "").trim(),
-        fecha_aprobacion: normalizarFecha(cols[iFecha] || ""),
-        concepto: (cols[iConcepto] || "").trim(),
-        situaciones_especiales: (cols[iSitEsp] || "").trim(),
-        importe: Number((cols[iImporte] || "0").toString().replace(/\s/g, "")),
-      });
-    }
-    return out;
-  };
+  const parseCsv = useCallback(
+    (text: string) => parsePedidosCsv(text, nombreProyecto),
+    [nombreProyecto]
+  );
 
   const onFileSelected: React.ChangeEventHandler<HTMLInputElement> = async (e) => {
     const files = Array.from(e.target.files || []);
@@ -419,7 +370,7 @@ export function ProyectoDetalle() {
       const famSlug = familiasSeleccionadas.length
         ? `_${familiasSeleccionadas.map((f) => f.replace(/[^A-Za-z0-9_-]+/g, "-")).join("-")}`
         : "";
-      a.download = serverFilename || `explosion_insumos_proyecto_${id}${famSlug}_${today}.xlsx`;
+      a.download = serverFilename || `explosion_insumos_proyecto_${nombreProyecto}${famSlug}_${today}.xlsx`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -451,23 +402,30 @@ export function ProyectoDetalle() {
     if (!id) return;
     try {
       setError("");
+      const toNumber = (value: string) => Number(value || 0);
+      const numeroValue = Number(numeroRegistro);
+      const conceptoLimpio = conceptoCobranza.trim();
+      if (!numeroRegistro || Number.isNaN(numeroValue) || conceptoLimpio === "") {
+        setError("Captura un número consecutivo y un concepto válido");
+        return;
+      }
       const body = {
-        proyecto: nombreProyecto,
-        control: control,
-        importe_contratado: Number(impContratado || 0),
-        importe_cobrado: Number(impCobrado || 0),
-        importe_a_cobrar: Number(impACobrar || 0),
-        fondo_garantia: Number(fondoGarantia || 0),
-        liquido_por_cobrar: Number(liqPorCobrar || 0),
-        facturas_por_cobrar: Number(facturasPorCobrar || 0),
-        factor: Number(factor || 0),
-        indirectos_esperado: Number(indEsperado || 0),
-        indirectos_cobrado: Number(indCobrado || 0),
-        indirectos_aplicado: Number(indAplicado || 0),
-        cobrado_vs_aplicado: Number(cobVsApl || 0),
-        numero_factura: numFactura || null,
-        fecha_factura: fcFactura || null,
-        fecha_reporte: fcReporte,
+        contratado_a_fecha: toNumber(contratadoFecha),
+        mano_obra: toNumber(manoObra),
+        cobrado_total: toNumber(cobradoTotal),
+        por_cobrar_total: toNumber(porCobrarTotal),
+        fondo_garantia: toNumber(fondoGarantia),
+        liquido_por_cobrar: toNumber(liquidoPorCobrar),
+        numero: numeroValue,
+        fecha: fechaDetalle || null,
+        numero_factura: numeroFactura || null,
+        concepto: conceptoLimpio,
+        importe_a_cobrar: toNumber(importeACobrar),
+        importe_cobrado: toNumber(importeCobrado),
+        saldo_por_cobrar: toNumber(saldoPorCobrar),
+        fecha_pago: fechaPago || null,
+        periodo: periodoRegistro || null,
+        fecha_reporte: fechaReporte,
       };
       const res = await fetch(`http://localhost:3000/proyectos/${id}/cobranza`, {
         method: "POST",
@@ -481,21 +439,22 @@ export function ProyectoDetalle() {
       }
       setMensaje("Cobranza agregada");
       setFormCobranzaAbierto(false);
-      setFcReporte(hoyStr);
-      setFcFactura("");
-      setNumFactura("");
-      setControl("");
-      setImpContratado("");
-      setImpCobrado("");
-      setImpACobrar("");
+      setContratadoFecha("");
+      setManoObra("");
+      setCobradoTotal("");
+      setPorCobrarTotal("");
       setFondoGarantia("");
-      setLiqPorCobrar("");
-      setFacturasPorCobrar("");
-      setFactor("");
-      setIndEsperado("");
-      setIndCobrado("");
-      setIndAplicado("");
-      setCobVsApl("");
+      setLiquidoPorCobrar("");
+      setNumeroRegistro("");
+      setFechaDetalle("");
+      setNumeroFactura("");
+      setConceptoCobranza("");
+      setImporteACobrar("");
+      setImporteCobrado("");
+      setSaldoPorCobrar("");
+      setFechaPago("");
+      setPeriodoRegistro("");
+      setFechaReporte(hoyStr);
       cargarCobranza();
     } catch (_) {
       setError("Error de conexion al guardar cobranza");
@@ -671,21 +630,148 @@ export function ProyectoDetalle() {
             <h3 style={{ marginTop: 0 }}>Nueva cobranza</h3>
             <form onSubmit={submitCobranza} className="form-cobranza">
               <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                <input className="filter-select" type="text" value={control} onChange={(e) => setControl(e.target.value)} placeholder="Control (ej. 00431)" required />
-                <input className="filter-select" type="date" value={fcReporte} onChange={(e) => setFcReporte(e.target.value)} title="Fecha reporte" />
-                <input className="filter-select" type="date" value={fcFactura} onChange={(e) => setFcFactura(e.target.value)} placeholder="Fecha factura" />
-                <input className="filter-select" type="text" value={numFactura} onChange={(e) => setNumFactura(e.target.value)} placeholder="No. factura" />
-                <input className="filter-select" type="number" step="0.01" value={impContratado} onChange={(e) => setImpContratado(e.target.value)} placeholder="Importe contratado" />
-                <input className="filter-select" type="number" step="0.01" value={impCobrado} onChange={(e) => setImpCobrado(e.target.value)} placeholder="Importe cobrado" />
-                <input className="filter-select" type="number" step="0.01" value={impACobrar} onChange={(e) => setImpACobrar(e.target.value)} placeholder="Importe a cobrar" />
-                <input className="filter-select" type="number" step="0.01" value={fondoGarantia} onChange={(e) => setFondoGarantia(e.target.value)} placeholder="Fondo garantía" />
-                <input className="filter-select" type="number" step="0.01" value={liqPorCobrar} onChange={(e) => setLiqPorCobrar(e.target.value)} placeholder="Líquido por cobrar" />
-                <input className="filter-select" type="number" step="0.01" value={facturasPorCobrar} onChange={(e) => setFacturasPorCobrar(e.target.value)} placeholder="Facturas por cobrar" />
-                <input className="filter-select" type="number" step="0.01" value={factor} onChange={(e) => setFactor(e.target.value)} placeholder="Factor (%)" />
-                <input className="filter-select" type="number" step="0.01" value={indEsperado} onChange={(e) => setIndEsperado(e.target.value)} placeholder="Indirectos esperado" />
-                <input className="filter-select" type="number" step="0.01" value={indCobrado} onChange={(e) => setIndCobrado(e.target.value)} placeholder="Indirectos cobrado" />
-                <input className="filter-select" type="number" step="0.01" value={indAplicado} onChange={(e) => setIndAplicado(e.target.value)} placeholder="Indirectos aplicado" />
-                <input className="filter-select" type="number" step="0.01" value={cobVsApl} onChange={(e) => setCobVsApl(e.target.value)} placeholder="Cobrado vs aplicado" />
+                <input
+                  className="filter-select"
+                  type="number"
+                  step="1"
+                  value={numeroRegistro}
+                  onChange={(e) => setNumeroRegistro(e.target.value)}
+                  placeholder="No. consecutivo"
+                  required
+                />
+                <input
+                  className="filter-select"
+                  type="text"
+                  value={conceptoCobranza}
+                  onChange={(e) => setConceptoCobranza(e.target.value)}
+                  placeholder="Concepto (ej. EST 22)"
+                  required
+                />
+                <input
+                  className="filter-select"
+                  type="text"
+                  value={periodoRegistro}
+                  onChange={(e) => setPeriodoRegistro(e.target.value)}
+                  placeholder="Periodo (ej. 29/03/2025 al 18/04/2025)"
+                />
+                <input
+                  className="filter-select"
+                  type="text"
+                  value={numeroFactura}
+                  onChange={(e) => setNumeroFactura(e.target.value)}
+                  placeholder="No. factura"
+                />
+                <div className="filter-select-wrapper">
+                  <label htmlFor="fechaDetalleInput">Fecha de factura</label>
+                  <input
+                    id="fechaDetalleInput"
+                    className="filter-select"
+                    type="date"
+                    value={fechaDetalle}
+                    onChange={(e) => setFechaDetalle(e.target.value)}
+                    aria-label="Fecha de factura o estimación"
+                    title="Fecha de factura o estimación"
+                    placeholder="Fecha de factura o estimación"
+                  />
+                </div>
+                <div className="filter-select-wrapper">
+                  <label htmlFor="fechaPagoInput">Fecha de pago recibido</label>
+                  <input
+                    id="fechaPagoInput"
+                    className="filter-select"
+                    type="date"
+                    value={fechaPago}
+                    onChange={(e) => setFechaPago(e.target.value)}
+                    aria-label="Fecha de pago recibido"
+                    title="Fecha de pago recibido"
+                    placeholder="Fecha en que se recibió el pago"
+                  />
+                </div>
+                <div className="filter-select-wrapper">
+                  <label htmlFor="fechaReporteInput">Fecha del reporte</label>
+                  <input
+                    id="fechaReporteInput"
+                    className="filter-select"
+                    type="date"
+                    value={fechaReporte}
+                    onChange={(e) => setFechaReporte(e.target.value)}
+                    aria-label="Fecha del reporte de cobranza"
+                    title="Fecha del reporte de cobranza"
+                    placeholder="Fecha del reporte de cobranza"
+                  />
+                </div>
+                <input
+                  className="filter-select"
+                  type="number"
+                  step="0.01"
+                  value={contratadoFecha}
+                  onChange={(e) => setContratadoFecha(e.target.value)}
+                  placeholder="Contratado a la fecha"
+                />
+                <input
+                  className="filter-select"
+                  type="number"
+                  step="0.01"
+                  value={manoObra}
+                  onChange={(e) => setManoObra(e.target.value)}
+                  placeholder="Mano de obra"
+                />
+                <input
+                  className="filter-select"
+                  type="number"
+                  step="0.01"
+                  value={cobradoTotal}
+                  onChange={(e) => setCobradoTotal(e.target.value)}
+                  placeholder="Cobrado total"
+                />
+                <input
+                  className="filter-select"
+                  type="number"
+                  step="0.01"
+                  value={porCobrarTotal}
+                  onChange={(e) => setPorCobrarTotal(e.target.value)}
+                  placeholder="Por cobrar total"
+                />
+                <input
+                  className="filter-select"
+                  type="number"
+                  step="0.01"
+                  value={fondoGarantia}
+                  onChange={(e) => setFondoGarantia(e.target.value)}
+                  placeholder="Fondo garantía"
+                />
+                <input
+                  className="filter-select"
+                  type="number"
+                  step="0.01"
+                  value={liquidoPorCobrar}
+                  onChange={(e) => setLiquidoPorCobrar(e.target.value)}
+                  placeholder="Líquido por cobrar"
+                />
+                <input
+                  className="filter-select"
+                  type="number"
+                  step="0.01"
+                  value={importeACobrar}
+                  onChange={(e) => setImporteACobrar(e.target.value)}
+                  placeholder="Importe a cobrar"
+                />
+                <input
+                  className="filter-select"
+                  type="number"
+                  step="0.01"
+                  value={importeCobrado}
+                  onChange={(e) => setImporteCobrado(e.target.value)}
+                  placeholder="Importe cobrado"
+                />
+                <input
+                  className="filter-select"
+                  type="number"
+                  step="0.01"
+                  value={saldoPorCobrar}
+                  onChange={(e) => setSaldoPorCobrar(e.target.value)}
+                  placeholder="Saldo por cobrar"
+                />
               </div>
               <div style={{ marginTop: 12, display: 'flex', gap: 10 }}>
                 <button type="button" className="btn btn-secondary" onClick={() => setFormCobranzaAbierto(false)}>Cancelar</button>
@@ -707,31 +793,43 @@ export function ProyectoDetalle() {
             <table className="tabla-pedidos">
               <thead>
                 <tr>
-                  <th>Control</th>
+                  <th>No.</th>
+                  <th>Concepto</th>
+                  <th>Periodo</th>
+                  <th>Fecha</th>
+                  <th>Fecha pago</th>
                   <th>No. factura</th>
-                  <th>Fecha factura</th>
-                  <th style={{ textAlign: 'right' }}>Importe contratado</th>
-                  <th style={{ textAlign: 'right' }}>Importe cobrado</th>
+                  <th style={{ textAlign: 'right' }}>Contratado a la fecha</th>
+                  <th style={{ textAlign: 'right' }}>Mano de obra</th>
+                  <th style={{ textAlign: 'right' }}>Cobrado total</th>
+                  <th style={{ textAlign: 'right' }}>Por cobrar total</th>
                   <th style={{ textAlign: 'right' }}>Importe a cobrar</th>
+                  <th style={{ textAlign: 'right' }}>Importe cobrado</th>
+                  <th style={{ textAlign: 'right' }}>Saldo por cobrar</th>
                   <th style={{ textAlign: 'right' }}>Fondo garantía</th>
                   <th style={{ textAlign: 'right' }}>Líquido por cobrar</th>
-                  <th style={{ textAlign: 'right' }}>Facturas por cobrar</th>
-                  <th style={{ textAlign: 'right' }}>Factor</th>
+                  <th>Fecha reporte</th>
                 </tr>
               </thead>
               <tbody>
                 {cobranzas.map(c => (
                   <tr key={c.id_cobranza}>
-                    <td>{c.control}</td>
+                    <td>{c.numero}</td>
+                    <td>{c.concepto || '-'}</td>
+                    <td>{c.periodo || '-'}</td>
+                    <td>{c.fecha || '-'}</td>
+                    <td>{c.fecha_pago || '-'}</td>
                     <td>{c.numero_factura || '-'}</td>
-                    <td>{c.fecha_factura || '-'}</td>
-                    <td style={{ textAlign: 'right' }}>{Number(c.importe_contratado || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                    <td style={{ textAlign: 'right' }}>{Number(c.importe_cobrado || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td style={{ textAlign: 'right' }}>{Number(c.contratado_a_fecha || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td style={{ textAlign: 'right' }}>{Number(c.mano_obra || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td style={{ textAlign: 'right' }}>{Number(c.cobrado_total || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td style={{ textAlign: 'right' }}>{Number(c.por_cobrar_total || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     <td style={{ textAlign: 'right' }}>{Number(c.importe_a_cobrar || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td style={{ textAlign: 'right' }}>{Number(c.importe_cobrado || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td style={{ textAlign: 'right' }}>{Number(c.saldo_por_cobrar || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     <td style={{ textAlign: 'right' }}>{Number(c.fondo_garantia || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     <td style={{ textAlign: 'right' }}>{Number(c.liquido_por_cobrar || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                    <td style={{ textAlign: 'right' }}>{Number(c.facturas_por_cobrar || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                    <td style={{ textAlign: 'right' }}>{Number(c.factor || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td>{c.fecha_reporte || '-'}</td>
                   </tr>
                 ))}
               </tbody>

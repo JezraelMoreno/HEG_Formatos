@@ -43,6 +43,10 @@
   cursor: pointer;
   color: #fff;
 }
+.cancel-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
 .logout-button {
   background-color: #1976d2;
 }
@@ -74,12 +78,18 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
   padding: 12px 16px;
   border-radius: 8px;
   border: 1px solid #e0e0e0;
   width: 100%;
   max-width: 600px; /* ancho de tarjeta */
   margin: 10px auto; /* centra horizontalmente */
+}
+.proyecto-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 .item-proyecto .nombre {
   font-weight: 600;
@@ -88,13 +98,50 @@
   color: #555;
   font-size: 14px;
 }
+.icon-button {
+  border: none;
+  background: transparent;
+  padding: 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #b3261e;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.icon-button:hover {
+  background: #fdecea;
+}
+.icon-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.trash-button svg {
+  pointer-events: none;
+}
 
 .error-text {
   color: #d32f2f;
   background: #fdecea;
   padding: 8px 12px;
   border-radius: 8px;
-  display: inline-block;
+  display: block;
+  width: 100%;
+  max-width: 600px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.success-text {
+  color: #1b5e20;
+  background: #e8f5e9;
+  padding: 8px 12px;
+  border-radius: 8px;
+  display: block;
+  width: 100%;
+  max-width: 600px;
+  margin: 0 auto;
+  text-align: center;
 }
 
 /* Modal */
@@ -130,4 +177,49 @@
   justify-content: flex-end;
   gap: 10px;
   margin-top: 10px;
+}
+
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 50;
+}
+.confirm-card {
+  background: #fff;
+  border-radius: 12px;
+  width: 100%;
+  max-width: 420px;
+  padding: 24px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.confirm-input {
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+}
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.danger-button {
+  background-color: #b3261e;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  color: #fff;
+}
+.danger-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }

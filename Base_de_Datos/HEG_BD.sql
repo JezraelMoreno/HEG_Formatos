@@ -25,11 +25,11 @@ CREATE TABLE IF NOT EXISTS pedidos (
   nombre_proyecto VARCHAR(50) NOT NULL,
   pedido VARCHAR(10) NOT NULL,
   clan VARCHAR(10) NOT NULL,
-  familia VARCHAR(5) NOT NULL,
-  proveedor VARCHAR(20) NOT NULL,
+  familia VARCHAR(10) NOT NULL,
+  proveedor VARCHAR(100) NOT NULL,
   fecha_aprobacion DATE NOT NULL,
-  concepto VARCHAR(20) NOT NULL,
-  situaciones_especiales VARCHAR(20),
+  concepto VARCHAR(100) NOT NULL,
+  situaciones_especiales VARCHAR(100),
   importe DECIMAL(15,5) NOT NULL,
   CONSTRAINT fk_proyectos_detalle_proyecto
     FOREIGN KEY (id_proyecto) REFERENCES proyectos(id_proyecto)
@@ -45,22 +45,28 @@ CREATE TABLE IF NOT EXISTS pedidos (
 CREATE TABLE IF NOT EXISTS cobranza (
   id_cobranza INT AUTO_INCREMENT PRIMARY KEY,
   id_proyecto INT NOT NULL,
-  proyecto VARCHAR(100) NOT NULL,                  -- Nombre del proyecto
-  control VARCHAR(20) NOT NULL,                    -- Código de control (ej. 00431)
-  importe_contratado DECIMAL(15,2) DEFAULT 0.00,   -- Importe contratado
-  importe_cobrado DECIMAL(15,2) DEFAULT 0.00,      -- Importe cobrado
-  importe_a_cobrar DECIMAL(15,2) DEFAULT 0.00,     -- Importe a cobrar
+
+  -- ENCABEZADO DEL REPORTE
+  contratado_a_fecha DECIMAL(15,2) DEFAULT 0.00,   -- Contratado a la fecha
+  mano_obra DECIMAL(15,2) DEFAULT 0.00,            -- Mano de obra
+  cobrado_total DECIMAL(15,2) DEFAULT 0.00,        -- Cobrado
+  por_cobrar_total DECIMAL(15,2) DEFAULT 0.00,     -- Por cobrar
   fondo_garantia DECIMAL(15,2) DEFAULT 0.00,       -- Fondo de garantía
   liquido_por_cobrar DECIMAL(15,2) DEFAULT 0.00,   -- Líquido por cobrar
-  facturas_por_cobrar DECIMAL(15,2) DEFAULT 0.00,  -- Facturas por cobrar
-  factor DECIMAL(5,2) DEFAULT 0.00,                -- Factor (porcentaje, ej. 30%)
-  indirectos_esperado DECIMAL(15,2) DEFAULT 0.00,  -- Indirectos esperado
-  indirectos_cobrado DECIMAL(15,2) DEFAULT 0.00,   -- Indirectos cobrado
-  indirectos_aplicado DECIMAL(15,2) DEFAULT 0.00,  -- Indirectos aplicado
-  cobrado_vs_aplicado DECIMAL(15,2) DEFAULT 0.00,  -- Cobrado vs aplicado
-  -- Este campo se usará internamente para obtener la factura más reciente
-  numero_factura VARCHAR(50),                      -- N° factura (última o más reciente)
-  fecha_factura DATE,                              -- Fecha de la factura más reciente
-  fecha_reporte DATE DEFAULT (CURRENT_DATE()),     -- Fecha del reporte
+
+  -- DETALLE DE FACTURAS / ESTIMACIONES
+  numero INT,                                      -- N° consecutivo
+  fecha DATE,                                      -- Fecha de la factura o estimación
+  numero_factura VARCHAR(50),                      -- N° factura (ej. 4143)
+  concepto VARCHAR(100),                           -- Concepto (ej. EST 22, ANTICIPO OC-01, etc.)
+  importe_a_cobrar DECIMAL(15,2) DEFAULT 0.00,     -- Importe a cobrar
+  importe_cobrado DECIMAL(15,2) DEFAULT 0.00,      -- Importe cobrado
+  saldo_por_cobrar DECIMAL(15,2) DEFAULT 0.00,     -- Saldo por cobrar
+  fecha_pago DATE,                                 -- Fecha de pago
+  periodo VARCHAR(50),                             -- Periodo (ej. '29/03/2025 AL 18/04/2025')
+
+  -- CONTROL INTERNO
+  fecha_reporte DATE DEFAULT (CURRENT_DATE()),     -- Fecha del reporte (ej. 21/10/2025)
+
   FOREIGN KEY (id_proyecto) REFERENCES proyectos(id_proyecto)
 );

@@ -167,6 +167,35 @@ app.post("/proyectos", authenticateToken, (req, res) => {
   });
 });
 
+app.delete("/proyectos/:id", authenticateToken, requireRole("administrador"), (req, res) => {
+  const { id } = req.params;
+  if (!id) {
+    return res.status(400).json({ success: false, message: "Proyecto no especificado" });
+  }
+  db.query("DELETE FROM pedidos WHERE id_proyecto = ?", [id], (errPedidos) => {
+    if (errPedidos) {
+      console.error("Error eliminando pedidos del proyecto:", errPedidos);
+      return res.status(500).json({ success: false, message: "No se pudo limpiar pedidos del proyecto" });
+    }
+    db.query("DELETE FROM cobranza WHERE id_proyecto = ?", [id], (errCobranza) => {
+      if (errCobranza) {
+        console.error("Error eliminando cobranza del proyecto:", errCobranza);
+        return res.status(500).json({ success: false, message: "No se pudo limpiar cobranza del proyecto" });
+      }
+      db.query("DELETE FROM proyectos WHERE id_proyecto = ?", [id], (errProyecto, result) => {
+        if (errProyecto) {
+          console.error("Error eliminando proyecto:", errProyecto);
+          return res.status(500).json({ success: false, message: "No se pudo eliminar el proyecto" });
+        }
+        if (!result || result.affectedRows === 0) {
+          return res.status(404).json({ success: false, message: "Proyecto no encontrado" });
+        }
+        return res.json({ success: true, message: "Proyecto eliminado correctamente" });
+      });
+    });
+  });
+});
+
 // Proyectos - obtener uno por id
 app.get("/proyectos/:id", authenticateToken, (req, res) => {
   const { id } = req.params;
@@ -230,7 +259,7 @@ app.get("/proyectos/:id/pedidos/export", authenticateToken, requireRole("adminis
   const { familia } = req.query;
   const qProyecto = "SELECT nombre FROM proyectos WHERE id_proyecto = ?";
   let qPedidos =
-    "SELECT id, id_proyecto, nombre_proyecto, pedido, clan, familia, proveedor, DATE_FORMAT(fecha_aprobacion, '%Y-%m-%d') AS fecha_aprobacion, concepto, situaciones_especiales, importe FROM pedidos WHERE id_proyecto = ?";
+    "SELECT id, nombre_proyecto, pedido, clan, familia, proveedor, DATE_FORMAT(fecha_aprobacion, '%Y-%m-%d') AS fecha_aprobacion, concepto, situaciones_especiales, importe FROM pedidos WHERE id_proyecto = ?";
   const pedidosParams = [id];
   const toListE = (v) => Array.isArray(v) ? v : (typeof v === 'string' ? v.split(',').map(s=>s.trim()).filter(Boolean) : []);
   const addMultiE = (field, values) => {
@@ -296,8 +325,7 @@ app.get("/proyectos/:id/pedidos/export", authenticateToken, requireRole("adminis
         // Definir columnas sin 'header' para evitar cabeceras automáticas
         const columns = [
           { key: "id", width: 8 },
-          { key: "id_proyecto", width: 12 },
-          { key: "nombre_proyecto", width: 22 },
+          { key: "nombre_proyecto", width: 30 },
           { key: "pedido", width: 12 },
           { key: "clan", width: 12 },
           { key: "familia", width: 10 },
@@ -311,7 +339,6 @@ app.get("/proyectos/:id/pedidos/export", authenticateToken, requireRole("adminis
         const headerRow = ws.getRow(headerRowIndex);
         const headers = [
           "ID",
-          "ID Proyecto",
           "Nombre Proyecto",
           "Pedido",
           "Clan",
@@ -348,31 +375,30 @@ app.get("/proyectos/:id/pedidos/export", authenticateToken, requireRole("adminis
         pedidos.forEach((p, i) => {
           const r = ws.getRow(startDataRow + i);
           r.getCell(1).value = p.id;
-          r.getCell(2).value = p.id_proyecto;
-          r.getCell(3).value = p.nombre_proyecto;
-          r.getCell(4).value = p.pedido;
-          r.getCell(5).value = p.clan;
-          r.getCell(6).value = p.familia;
-          r.getCell(7).value = p.proveedor;
-          r.getCell(8).value = p.fecha_aprobacion;
-          r.getCell(9).value = p.concepto;
-          r.getCell(10).value = p.situaciones_especiales || "";
+          r.getCell(2).value = p.nombre_proyecto;
+          r.getCell(3).value = p.pedido;
+          r.getCell(4).value = p.clan;
+          r.getCell(5).value = p.familia;
+          r.getCell(6).value = p.proveedor;
+          r.getCell(7).value = p.fecha_aprobacion;
+          r.getCell(8).value = p.concepto;
+          r.getCell(9).value = p.situaciones_especiales || "";
           const importe = Number(p.importe || 0);
-          r.getCell(11).value = importe;
-          r.getCell(11).numFmt = "#,##0.00";
-          r.getCell(11).alignment = { horizontal: "right" };
+          r.getCell(10).value = importe;
+          r.getCell(10).numFmt = "#,##0.00";
+          r.getCell(10).alignment = { horizontal: "right" };
           totalImporte += importe;
         });
 
         const totalRowIndex = startDataRow + pedidos.length;
         const totalRow = ws.getRow(totalRowIndex);
-        totalRow.getCell(10).value = "Total";
+        totalRow.getCell(9).value = "Total";
+        totalRow.getCell(9).font = { bold: true };
+        totalRow.getCell(9).alignment = { horizontal: "right" };
+        totalRow.getCell(10).value = totalImporte;
+        totalRow.getCell(10).numFmt = "#,##0.00";
         totalRow.getCell(10).font = { bold: true };
         totalRow.getCell(10).alignment = { horizontal: "right" };
-        totalRow.getCell(11).value = totalImporte;
-        totalRow.getCell(11).numFmt = "#,##0.00";
-        totalRow.getCell(11).font = { bold: true };
-        totalRow.getCell(11).alignment = { horizontal: "right" };
         totalRow.eachCell((cell) => {
           cell.border = {
             top: { style: "thin", color: { argb: "FFDDDDDD" } },
@@ -500,14 +526,27 @@ app.post("/proyectos/:id/pedidos", authenticateToken, requireRole("administrador
 // Cobranza - listar por proyecto (ambos roles pueden ver)
 app.get("/proyectos/:id/cobranza", authenticateToken, (req, res) => {
   const { id } = req.params;
-  const q = `SELECT id_cobranza, id_proyecto, proyecto, control,
-                    importe_contratado, importe_cobrado, importe_a_cobrar,
-                    fondo_garantia, liquido_por_cobrar, facturas_por_cobrar,
-                    factor, indirectos_esperado, indirectos_cobrado,
-                    indirectos_aplicado, cobrado_vs_aplicado,
-                    numero_factura, DATE_FORMAT(fecha_factura, '%Y-%m-%d') AS fecha_factura,
+  const q = `SELECT id_cobranza,
+                    id_proyecto,
+                    contratado_a_fecha,
+                    mano_obra,
+                    cobrado_total,
+                    por_cobrar_total,
+                    fondo_garantia,
+                    liquido_por_cobrar,
+                    numero,
+                    DATE_FORMAT(fecha, '%Y-%m-%d') AS fecha,
+                    numero_factura,
+                    concepto,
+                    importe_a_cobrar,
+                    importe_cobrado,
+                    saldo_por_cobrar,
+                    DATE_FORMAT(fecha_pago, '%Y-%m-%d') AS fecha_pago,
+                    periodo,
                     DATE_FORMAT(fecha_reporte, '%Y-%m-%d') AS fecha_reporte
-             FROM cobranza WHERE id_proyecto = ? ORDER BY id_cobranza DESC`;
+             FROM cobranza
+             WHERE id_proyecto = ?
+             ORDER BY id_cobranza DESC`;
   db.query(q, [id], (err, rows) => {
     if (err) {
       console.error("Error consultando cobranza:", err);
@@ -521,53 +560,55 @@ app.get("/proyectos/:id/cobranza", authenticateToken, (req, res) => {
 app.post("/proyectos/:id/cobranza", authenticateToken, requireRole("contador"), (req, res) => {
   const { id } = req.params;
   const {
-    proyecto,
-    control,
-    importe_contratado,
-    importe_cobrado,
-    importe_a_cobrar,
+    contratado_a_fecha,
+    mano_obra,
+    cobrado_total,
+    por_cobrar_total,
     fondo_garantia,
     liquido_por_cobrar,
-    facturas_por_cobrar,
-    factor,
-    indirectos_esperado,
-    indirectos_cobrado,
-    indirectos_aplicado,
-    cobrado_vs_aplicado,
+    numero,
+    fecha,
     numero_factura,
-    fecha_factura,
+    concepto,
+    importe_a_cobrar,
+    importe_cobrado,
+    saldo_por_cobrar,
+    fecha_pago,
+    periodo,
     fecha_reporte,
   } = req.body || {};
 
-  if (!proyecto || !control) {
-    return res.status(400).json({ success: false, message: "Faltan proyecto o control" });
+  const tieneNumero = numero !== undefined && numero !== null && String(numero).trim() !== "";
+  const numeroVal = tieneNumero ? Number(numero) : NaN;
+  if (!tieneNumero || !concepto || Number.isNaN(numeroVal)) {
+    return res.status(400).json({ success: false, message: "Faltan datos de numero o concepto" });
   }
-  const repISO = parseDateToISO(fecha_reporte) || new Date().toISOString().slice(0,10);
-  const facISO = parseDateToISO(fecha_factura);
+  const repISO = parseDateToISO(fecha_reporte) || new Date().toISOString().slice(0, 10);
+  const fechaDetalleISO = parseDateToISO(fecha);
+  const fechaPagoISO = parseDateToISO(fecha_pago);
 
   const q = `INSERT INTO cobranza
-               (id_proyecto, proyecto, control, importe_contratado, importe_cobrado, importe_a_cobrar,
-                fondo_garantia, liquido_por_cobrar, facturas_por_cobrar, factor,
-                indirectos_esperado, indirectos_cobrado, indirectos_aplicado, cobrado_vs_aplicado,
-                numero_factura, fecha_factura, fecha_reporte)
+               (id_proyecto, contratado_a_fecha, mano_obra, cobrado_total, por_cobrar_total,
+                fondo_garantia, liquido_por_cobrar, numero, fecha, numero_factura, concepto,
+                importe_a_cobrar, importe_cobrado, saldo_por_cobrar, fecha_pago, periodo, fecha_reporte)
              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
   const vals = [
     Number(id),
-    String(proyecto),
-    String(control),
-    Number(importe_contratado || 0),
-    Number(importe_cobrado || 0),
-    Number(importe_a_cobrar || 0),
+    Number(contratado_a_fecha || 0),
+    Number(mano_obra || 0),
+    Number(cobrado_total || 0),
+    Number(por_cobrar_total || 0),
     Number(fondo_garantia || 0),
     Number(liquido_por_cobrar || 0),
-    Number(facturas_por_cobrar || 0),
-    Number(factor || 0),
-    Number(indirectos_esperado || 0),
-    Number(indirectos_cobrado || 0),
-    Number(indirectos_aplicado || 0),
-    Number(cobrado_vs_aplicado || 0),
+    numeroVal,
+    fechaDetalleISO || null,
     numero_factura ? String(numero_factura) : null,
-    facISO || null,
+    String(concepto),
+    Number(importe_a_cobrar || 0),
+    Number(importe_cobrado || 0),
+    Number(saldo_por_cobrar || 0),
+    fechaPagoISO || null,
+    periodo ? String(periodo) : null,
     repISO,
   ];
   db.query(q, vals, (err, result) => {
@@ -582,20 +623,32 @@ app.post("/proyectos/:id/cobranza", authenticateToken, requireRole("contador"), 
 // Cobranza - exportar mas reciente por proyecto (ambos roles)
 app.get("/cobranza/export", authenticateToken, (req, res) => {
   const q = `
-    SELECT c.id_proyecto, c.proyecto, c.control,
-           c.importe_contratado, c.importe_cobrado, c.importe_a_cobrar,
-           c.fondo_garantia, c.liquido_por_cobrar, c.facturas_por_cobrar,
-           c.factor, c.indirectos_esperado, c.indirectos_cobrado,
-           c.indirectos_aplicado, c.cobrado_vs_aplicado,
-           c.numero_factura, DATE_FORMAT(c.fecha_factura, '%Y-%m-%d') AS fecha_factura,
-           DATE_FORMAT(c.fecha_reporte, '%Y-%m-%d') AS fecha_reporte
+    SELECT c.id_proyecto,
+           p.nombre AS proyecto,
+           c.numero,
+           c.numero_factura,
+           c.concepto,
+           c.periodo,
+           DATE_FORMAT(c.fecha, '%Y-%m-%d') AS fecha,
+           DATE_FORMAT(c.fecha_pago, '%Y-%m-%d') AS fecha_pago,
+           DATE_FORMAT(c.fecha_reporte, '%Y-%m-%d') AS fecha_reporte,
+           c.contratado_a_fecha,
+           c.mano_obra,
+           c.cobrado_total,
+           c.por_cobrar_total,
+           c.fondo_garantia,
+           c.liquido_por_cobrar,
+           c.importe_a_cobrar,
+           c.importe_cobrado,
+           c.saldo_por_cobrar
     FROM cobranza c
     JOIN (
       SELECT id_proyecto, MAX(fecha_reporte) AS max_rep
       FROM cobranza
       GROUP BY id_proyecto
     ) m ON m.id_proyecto = c.id_proyecto AND m.max_rep = c.fecha_reporte
-    ORDER BY c.id_proyecto ASC`;
+    LEFT JOIN proyectos p ON p.id_proyecto = c.id_proyecto
+    ORDER BY c.id_proyecto ASC, c.numero ASC`;
 
   db.query(q, async (err, rows) => {
     if (err) {
@@ -621,37 +674,39 @@ app.get("/cobranza/export", authenticateToken, (req, res) => {
       const titleRow = ws.getRow(5);
       titleRow.getCell(1).value = `Cobranza mas reciente por proyecto - ${fechaGeneracion}`;
       titleRow.getCell(1).font = { bold: true, size: 14, color: { argb: "FF333333" } };
-      ws.mergeCells(5, 1, 5, 17);
 
       // Columnas
       const columns = [
         { key: "id_proyecto", width: 12 },
         { key: "proyecto", width: 28 },
-        { key: "control", width: 14 },
+        { key: "numero", width: 10 },
         { key: "numero_factura", width: 18 },
-        { key: "fecha_factura", width: 16 },
+        { key: "concepto", width: 22 },
+        { key: "periodo", width: 24 },
+        { key: "fecha", width: 16 },
+        { key: "fecha_pago", width: 16 },
         { key: "fecha_reporte", width: 16 },
-        { key: "importe_contratado", width: 18 },
-        { key: "importe_cobrado", width: 16 },
-        { key: "importe_a_cobrar", width: 16 },
+        { key: "contratado_a_fecha", width: 18 },
+        { key: "mano_obra", width: 16 },
+        { key: "cobrado_total", width: 16 },
+        { key: "por_cobrar_total", width: 16 },
         { key: "fondo_garantia", width: 16 },
         { key: "liquido_por_cobrar", width: 18 },
-        { key: "facturas_por_cobrar", width: 18 },
-        { key: "factor", width: 10 },
-        { key: "indirectos_esperado", width: 18 },
-        { key: "indirectos_cobrado", width: 18 },
-        { key: "indirectos_aplicado", width: 18 },
-        { key: "cobrado_vs_aplicado", width: 18 },
+        { key: "importe_a_cobrar", width: 16 },
+        { key: "importe_cobrado", width: 16 },
+        { key: "saldo_por_cobrar", width: 16 },
       ];
       ws.columns = columns;
+      ws.mergeCells(5, 1, 5, columns.length);
 
       const headerRowIndex = 7;
       const headerRow = ws.getRow(headerRowIndex);
       const headers = [
-        "ID Proyecto", "Proyecto", "Control", "No. Factura", "Fecha Factura", "Fecha Reporte",
-        "Importe Contratado", "Importe Cobrado", "Importe a Cobrar", "Fondo Garantia",
-        "Liquido por Cobrar", "Facturas por Cobrar", "Factor",
-        "Indirectos Esperado", "Indirectos Cobrado", "Indirectos Aplicado", "Cobrado vs Aplicado",
+        "ID Proyecto", "Proyecto", "N°", "No. Factura", "Concepto", "Periodo",
+        "Fecha Factura/Estimacion", "Fecha Pago", "Fecha Reporte",
+        "Contratado a la Fecha", "Mano de Obra", "Cobrado Total", "Por Cobrar Total",
+        "Fondo Garantia", "Liquido por Cobrar", "Importe a Cobrar", "Importe Cobrado",
+        "Saldo por Cobrar",
       ];
       headers.forEach((text, idx) => { headerRow.getCell(idx + 1).value = text; });
       headerRow.font = { bold: true, color: { argb: "FFFFFFFF" } };
@@ -671,35 +726,35 @@ app.get("/cobranza/export", authenticateToken, (req, res) => {
       (rows || []).forEach((r, i) => {
         const row = ws.getRow(startDataRow + i);
         const numCols = [
-          "importe_contratado", "importe_cobrado", "importe_a_cobrar",
-          "fondo_garantia", "liquido_por_cobrar", "facturas_por_cobrar",
-          "factor", "indirectos_esperado", "indirectos_cobrado",
-          "indirectos_aplicado", "cobrado_vs_aplicado",
+          "contratado_a_fecha", "mano_obra", "cobrado_total", "por_cobrar_total",
+          "fondo_garantia", "liquido_por_cobrar", "importe_a_cobrar",
+          "importe_cobrado", "saldo_por_cobrar",
         ];
         const vals = {
           id_proyecto: r.id_proyecto,
           proyecto: r.proyecto,
-          control: r.control,
+          numero: r.numero,
           numero_factura: r.numero_factura || "",
-          fecha_factura: r.fecha_factura || "",
+          concepto: r.concepto || "",
+          periodo: r.periodo || "",
+          fecha: r.fecha || "",
+          fecha_pago: r.fecha_pago || "",
           fecha_reporte: r.fecha_reporte || "",
-          importe_contratado: Number(r.importe_contratado || 0),
-          importe_cobrado: Number(r.importe_cobrado || 0),
-          importe_a_cobrar: Number(r.importe_a_cobrar || 0),
+          contratado_a_fecha: Number(r.contratado_a_fecha || 0),
+          mano_obra: Number(r.mano_obra || 0),
+          cobrado_total: Number(r.cobrado_total || 0),
+          por_cobrar_total: Number(r.por_cobrar_total || 0),
           fondo_garantia: Number(r.fondo_garantia || 0),
           liquido_por_cobrar: Number(r.liquido_por_cobrar || 0),
-          facturas_por_cobrar: Number(r.facturas_por_cobrar || 0),
-          factor: Number(r.factor || 0),
-          indirectos_esperado: Number(r.indirectos_esperado || 0),
-          indirectos_cobrado: Number(r.indirectos_cobrado || 0),
-          indirectos_aplicado: Number(r.indirectos_aplicado || 0),
-          cobrado_vs_aplicado: Number(r.cobrado_vs_aplicado || 0),
+          importe_a_cobrar: Number(r.importe_a_cobrar || 0),
+          importe_cobrado: Number(r.importe_cobrado || 0),
+          saldo_por_cobrar: Number(r.saldo_por_cobrar || 0),
         };
         ws.columns.forEach((c, idx) => {
           const key = c.key;
           row.getCell(idx + 1).value = vals[key];
           if (numCols.includes(String(key))) {
-            row.getCell(idx + 1).numFmt = key === "factor" ? "0.00" : "#,##0.00";
+            row.getCell(idx + 1).numFmt = "#,##0.00";
             row.getCell(idx + 1).alignment = { horizontal: "right" };
           }
         });
@@ -732,5 +787,3 @@ function requireRole(...roles) {
 app.listen(PORT, () => {
   console.log(` Servidor corriendo en http://localhost:${PORT}`);
 });
-
-
