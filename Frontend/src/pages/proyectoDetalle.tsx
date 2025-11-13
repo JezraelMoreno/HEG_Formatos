@@ -65,6 +65,12 @@ type MultiSelectFilterProps = {
   disabled?: boolean;
 };
 
+const formatCurrency = (value: number | null | undefined) =>
+  `$${Number(value ?? 0).toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+
 function MultiSelectFilter({
   label,
   placeholder,
@@ -781,77 +787,83 @@ export function ProyectoDetalle() {
                 <p className="pedido-modal-status">Este pedido no tiene detalles registrados.</p>
               ) : (
                 <>
-                  <div className="pedido-detalle-table-wrapper">
-                    <table className="pedido-detalle-table">
-                      <thead>
-                        <tr>
-                          <th>#</th>
-                          <th>Descripción</th>
-                          <th>Unidad</th>
-                          <th>Medida</th>
-                          <th>Cantidad</th>
-                          <th>P. Unitario</th>
-                          <th>Importe</th>
-                          <th>Clave</th>
-                          <th>M.L.</th>
-                          <th>Acabado</th>
-                          <th>KG</th>
-                          <th>Precio x KG</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {detallesPedido.map((detalle, index) => (
-                          <tr key={`${detalle.id_detalle}-${index}`}>
-                            <td>{index + 1}</td>
-                            <td>{detalle.descripcion || "-"}</td>
-                            <td>{detalle.unidad || "-"}</td>
-                            <td>{detalle.medida || "-"}</td>
-                            <td>{Number(detalle.cantidad || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
-                            <td>
-                              ${Number(detalle.precio_unitario || 0).toLocaleString(undefined, {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2,
-                              })}
-                            </td>
-                            <td>
-                              ${Number(detalle.importe || 0).toLocaleString(undefined, {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2,
-                              })}
-                            </td>
-                            <td>{detalle.clave || "-"}</td>
-                            <td>
-                              {detalle.ml === null || detalle.ml === undefined
-                                ? "-"
-                                : Number(detalle.ml).toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                            </td>
-                            <td>{detalle.acabado || "-"}</td>
-                            <td>
-                              {detalle.kg === null || detalle.kg === undefined
-                                ? "-"
-                                : Number(detalle.kg).toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                            </td>
-                            <td>
-                              {detalle.precio_x_kg === null || detalle.precio_x_kg === undefined
-                                ? "-"
-                                : `$${Number(detalle.precio_x_kg).toLocaleString(undefined, {
-                                    minimumFractionDigits: 2,
-                                    maximumFractionDigits: 2,
-                                  })}`}
-                            </td>
+                  <div className="pedido-detalle-ledger">
+                    <div className="pedido-detalle-table-wrapper">
+                      <table className="pedido-detalle-table">
+                        <thead>
+                          <tr>
+                            <th>#</th>
+                            <th>Descripción</th>
+                            <th>Unidad</th>
+                            <th>Medida</th>
+                            <th>Cantidad</th>
+                            <th>P. Unitario</th>
+                            <th>Importe</th>
+                            <th>Clave</th>
+                            <th>M.L.</th>
+                            <th>Acabado</th>
+                            <th>KG</th>
+                            <th>Precio x KG</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  <div className="pedido-detalle-total">
-                    <span>Total detalles</span>
-                    <strong>
-                      ${Number(totalDetalles || 0).toLocaleString(undefined, {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}
-                    </strong>
+                        </thead>
+                        <tbody>
+                          {detallesPedido.map((detalle, index) => (
+                            <tr key={`${detalle.id_detalle}-${index}`}>
+                              <td>{index + 1}</td>
+                              <td>{detalle.descripcion || "-"}</td>
+                              <td>{detalle.unidad || "-"}</td>
+                              <td>{detalle.medida || "-"}</td>
+                              <td>{Number(detalle.cantidad || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+                              <td>{formatCurrency(detalle.precio_unitario)}</td>
+                              <td>{formatCurrency(detalle.importe)}</td>
+                              <td>{detalle.clave || "-"}</td>
+                              <td>
+                                {detalle.ml === null || detalle.ml === undefined
+                                  ? "-"
+                                  : Number(detalle.ml).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                              </td>
+                              <td>{detalle.acabado || "-"}</td>
+                              <td>
+                                {detalle.kg === null || detalle.kg === undefined
+                                  ? "-"
+                                  : Number(detalle.kg).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                              </td>
+                              <td>
+                                {detalle.precio_x_kg === null || detalle.precio_x_kg === undefined
+                                  ? "-"
+                                  : formatCurrency(detalle.precio_x_kg)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="pedido-detalle-summary">
+                      <div className="pedido-detalle-summary-cell">
+                        <span>Importe</span>
+                        <strong>{formatCurrency(totalDetalles || 0)}</strong>
+                      </div>
+                      <div className="pedido-detalle-summary-cell">
+                        <span>Descuento</span>
+                        <strong>-</strong>
+                      </div>
+                      <div className="pedido-detalle-summary-cell">
+                        <span>Subtotal</span>
+                        <strong>{formatCurrency(totalDetalles || 0)}</strong>
+                      </div>
+                      <div className="pedido-detalle-summary-cell">
+                        <span>IVA</span>
+                        <strong>-</strong>
+                      </div>
+                      <div className="pedido-detalle-summary-cell total">
+                        <span>Total</span>
+                        <strong>{formatCurrency(totalDetalles || 0)}</strong>
+                      </div>
+                    </div>
+                    <div className="pedido-detalle-situaciones">
+                      <span>Situaciones especiales</span>
+                      <p>{pedidoSeleccionado.situaciones_especiales?.trim() || "-"}</p>
+                    </div>
                   </div>
                 </>
               )}
