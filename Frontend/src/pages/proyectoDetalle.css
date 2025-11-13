@@ -231,6 +231,124 @@
 .tabla-pedidos tbody tr:hover {
   background: #fafafa;
 }
+.tabla-pedidos tbody tr.clickable-row {
+  cursor: pointer;
+}
+.tabla-pedidos tbody tr.clickable-row:focus {
+  outline: 2px solid #224c84ff;
+  outline-offset: 1px;
+}
+
+.pedido-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 40px 16px;
+  z-index: 20;
+}
+
+.pedido-modal {
+  background: #fff;
+  border-radius: 16px;
+  width: min(960px, calc(100% - 32px));
+  max-height: calc(100vh - 80px);
+  overflow: auto;
+  padding: 24px;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.35);
+}
+
+.pedido-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.pedido-modal-title {
+  margin: 0;
+  font-size: 1.35rem;
+  color: #1f2937;
+}
+
+.pedido-modal-subtitle {
+  margin: 4px 0 0;
+  color: #4b5563;
+  font-size: 0.9rem;
+}
+
+.pedido-modal-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.pedido-modal-meta span {
+  display: block;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #6b7280;
+}
+
+.pedido-modal-meta strong {
+  display: block;
+  font-size: 0.95rem;
+  color: #111827;
+}
+
+.pedido-modal-error {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  background: #fee2e2;
+  color: #991b1b;
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+
+.pedido-modal-status {
+  margin: 10px 0;
+  color: #374151;
+  font-size: 0.95rem;
+}
+
+.pedido-detalle-table-wrapper {
+  overflow: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+}
+
+.pedido-detalle-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.pedido-detalle-table th,
+.pedido-detalle-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid #edf0f5;
+  text-align: left;
+}
+
+.pedido-detalle-table thead th {
+  background: #f9fafb;
+  font-weight: 600;
+}
+
+.pedido-detalle-total {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  align-items: center;
+  font-size: 1rem;
+  color: #1f2937;
+}
 
 /* Responsive: en pantallas pequeñas, filtros a 100% de ancho */
 @media (max-width: 640px) {

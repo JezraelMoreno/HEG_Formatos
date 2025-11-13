@@ -20,6 +20,21 @@ type Pedido = {
   importe: number;
 };
 
+type PedidoDetalleItem = {
+  id_detalle: number;
+  descripcion: string;
+  unidad?: string | null;
+  medida?: string | null;
+  cantidad: number;
+  precio_unitario: number;
+  importe: number;
+  clave?: string | null;
+  ml?: number | null;
+  acabado?: string | null;
+  kg?: number | null;
+  precio_x_kg?: number | null;
+};
+
 type Cobranza = {
   id_cobranza: number;
   id_proyecto: number;
@@ -163,6 +178,14 @@ export function ProyectoDetalle() {
   const [error, setError] = useState<string>("");
   const [cargandoPedidos, setCargandoPedidos] = useState(false);
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
+  const [pedidoSeleccionado, setPedidoSeleccionado] = useState<Pedido | null>(null);
+  const [detallesPedido, setDetallesPedido] = useState<PedidoDetalleItem[]>([]);
+  const [cargandoDetalles, setCargandoDetalles] = useState(false);
+  const [detalleError, setDetalleError] = useState("");
+  const totalDetalles = useMemo(
+    () => detallesPedido.reduce((sum, det) => sum + Number(det.importe || 0), 0),
+    [detallesPedido]
+  );
 
   // filtros
   const [familiasSeleccionadas, setFamiliasSeleccionadas] = useState<string[]>([]);
@@ -389,6 +412,67 @@ export function ProyectoDetalle() {
     cargarPedidos({ familias: [], clanes: [], proveedores: [], concepto: "", fecha: "" });
   }, [cargarPedidos]);
 
+  const cerrarModalDetalles = useCallback(() => {
+    setPedidoSeleccionado(null);
+    setDetallesPedido([]);
+    setDetalleError("");
+  }, []);
+
+  const abrirDetallesPedido = (pedido: Pedido) => {
+    setPedidoSeleccionado(pedido);
+    setDetallesPedido([]);
+    setDetalleError("");
+    setCargandoDetalles(true);
+    const cargar = async () => {
+      try {
+        const res = await fetch(`http://localhost:3000/pedidos/${pedido.id}/detalles`, { headers: { ...authHeader() } });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data?.success) {
+          const parsed: PedidoDetalleItem[] = (Array.isArray(data.data) ? data.data : []).map((det: any, index: number) => {
+            const descripcion = typeof det.descripcion === "string" ? det.descripcion.trim() : String(det.descripcion || "").trim();
+            const cleanString = (value: any) => {
+              if (value === null || value === undefined) return null;
+              const str = typeof value === "string" ? value : String(value);
+              const trimmed = str.trim();
+              return trimmed.length ? trimmed : null;
+            };
+            const toNumberValue = (value: any) => {
+              const num = Number(value);
+              return Number.isFinite(num) ? num : 0;
+            };
+            const toNullableNumber = (value: any) => {
+              if (value === null || value === undefined || value === "") return null;
+              const num = Number(value);
+              return Number.isFinite(num) ? num : null;
+            };
+            return {
+              id_detalle: typeof det.id_detalle === "number" ? det.id_detalle : index + 1,
+              descripcion: descripcion || `Detalle ${index + 1}`,
+              unidad: cleanString(det.unidad),
+              medida: cleanString(det.medida),
+              cantidad: toNumberValue(det.cantidad),
+              precio_unitario: toNumberValue(det.precio_unitario),
+              importe: toNumberValue(det.importe),
+              clave: cleanString(det.clave),
+              ml: toNullableNumber(det.ml),
+              acabado: cleanString(det.acabado),
+              kg: toNullableNumber(det.kg),
+              precio_x_kg: toNullableNumber(det.precio_x_kg),
+            };
+          });
+          setDetallesPedido(parsed);
+        } else {
+          setDetalleError(data?.message || "No se pudieron cargar los detalles del pedido");
+        }
+      } catch {
+        setDetalleError("No se pudieron cargar los detalles del pedido");
+      } finally {
+        setCargandoDetalles(false);
+      }
+    };
+    cargar();
+  };
+
   useEffect(() => {
     if (!isTokenValid(getToken())) { navigate("/"); return; }
     if (isAdmin) {
@@ -396,6 +480,20 @@ export function ProyectoDetalle() {
     }
     cargarCobranza();
   }, [cargarPedidos, cargarCobranza, navigate, isAdmin]);
+
+  useEffect(() => {
+    if (!pedidoSeleccionado) return;
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        cerrarModalDetalles();
+      }
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => {
+      window.removeEventListener("keydown", handleKey);
+    };
+  }, [pedidoSeleccionado, cerrarModalDetalles]);
 
   const submitCobranza = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -588,7 +686,7 @@ export function ProyectoDetalle() {
           {cargandoPedidos ? (
             <p>Cargando...</p>
           ) : pedidos.length === 0 ? (
-            <p>No hay pedidos aun.</p>
+            <p style={{ padding: 12 }}>No hay pedidos aun.</p>
           ) : (
             <table className="tabla-pedidos">
               <thead>
@@ -605,7 +703,20 @@ export function ProyectoDetalle() {
               </thead>
               <tbody>
                 {pedidos.map((p) => (
-                  <tr key={p.id}>
+                  <tr
+                    key={p.id}
+                    className="clickable-row"
+                    onClick={() => abrirDetallesPedido(p)}
+                    onKeyDown={(ev) => {
+                      if (ev.key === "Enter" || ev.key === " ") {
+                        ev.preventDefault();
+                        abrirDetallesPedido(p);
+                      }
+                    }}
+                    tabIndex={0}
+                    role="button"
+                    aria-label={`Ver detalles del pedido ${p.pedido}`}
+                  >
                     <td>{p.pedido}</td>
                     <td>{p.clan}</td>
                     <td>{p.familia}</td>
@@ -623,6 +734,129 @@ export function ProyectoDetalle() {
           )}
         </div>
           </>
+        )}
+
+        {pedidoSeleccionado && (
+          <div className="pedido-modal-backdrop" onClick={cerrarModalDetalles}>
+            <div
+              className="pedido-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="pedidoModalTitulo"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="pedido-modal-header">
+                <div>
+                  <h3 id="pedidoModalTitulo" className="pedido-modal-title">
+                    Pedido {pedidoSeleccionado.pedido}
+                  </h3>
+                  <p className="pedido-modal-subtitle">{pedidoSeleccionado.concepto || "-"}</p>
+                </div>
+                <button type="button" className="btn btn-secondary" onClick={cerrarModalDetalles}>
+                  Cerrar
+                </button>
+              </div>
+              <div className="pedido-modal-meta">
+                <div>
+                  <span>Proveedor</span>
+                  <strong>{pedidoSeleccionado.proveedor || "-"}</strong>
+                </div>
+                <div>
+                  <span>Clan</span>
+                  <strong>{pedidoSeleccionado.clan || "-"}</strong>
+                </div>
+                <div>
+                  <span>Familia</span>
+                  <strong>{pedidoSeleccionado.familia || "-"}</strong>
+                </div>
+                <div>
+                  <span>Fecha de aprobación</span>
+                  <strong>{pedidoSeleccionado.fecha_aprobacion || "-"}</strong>
+                </div>
+              </div>
+              {detalleError && <p className="pedido-modal-error">{detalleError}</p>}
+              {cargandoDetalles ? (
+                <p className="pedido-modal-status">Cargando detalles...</p>
+              ) : detallesPedido.length === 0 ? (
+                <p className="pedido-modal-status">Este pedido no tiene detalles registrados.</p>
+              ) : (
+                <>
+                  <div className="pedido-detalle-table-wrapper">
+                    <table className="pedido-detalle-table">
+                      <thead>
+                        <tr>
+                          <th>#</th>
+                          <th>Descripción</th>
+                          <th>Unidad</th>
+                          <th>Medida</th>
+                          <th>Cantidad</th>
+                          <th>P. Unitario</th>
+                          <th>Importe</th>
+                          <th>Clave</th>
+                          <th>M.L.</th>
+                          <th>Acabado</th>
+                          <th>KG</th>
+                          <th>Precio x KG</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {detallesPedido.map((detalle, index) => (
+                          <tr key={`${detalle.id_detalle}-${index}`}>
+                            <td>{index + 1}</td>
+                            <td>{detalle.descripcion || "-"}</td>
+                            <td>{detalle.unidad || "-"}</td>
+                            <td>{detalle.medida || "-"}</td>
+                            <td>{Number(detalle.cantidad || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+                            <td>
+                              ${Number(detalle.precio_unitario || 0).toLocaleString(undefined, {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
+                            </td>
+                            <td>
+                              ${Number(detalle.importe || 0).toLocaleString(undefined, {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
+                            </td>
+                            <td>{detalle.clave || "-"}</td>
+                            <td>
+                              {detalle.ml === null || detalle.ml === undefined
+                                ? "-"
+                                : Number(detalle.ml).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                            </td>
+                            <td>{detalle.acabado || "-"}</td>
+                            <td>
+                              {detalle.kg === null || detalle.kg === undefined
+                                ? "-"
+                                : Number(detalle.kg).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                            </td>
+                            <td>
+                              {detalle.precio_x_kg === null || detalle.precio_x_kg === undefined
+                                ? "-"
+                                : `$${Number(detalle.precio_x_kg).toLocaleString(undefined, {
+                                    minimumFractionDigits: 2,
+                                    maximumFractionDigits: 2,
+                                  })}`}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="pedido-detalle-total">
+                    <span>Total detalles</span>
+                    <strong>
+                      ${Number(totalDetalles || 0).toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </strong>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
         )}
 
         {(!isAdmin && formCobranzaAbierto) && (

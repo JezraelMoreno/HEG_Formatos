@@ -37,6 +37,14 @@ db.connect(err => {
   console.log("Conectado a la base de datos MySQL");
 });
 
+const queryAsync = (sql, params = []) =>
+  new Promise((resolve, reject) => {
+    db.query(sql, params, (err, result) => {
+      if (err) return reject(err);
+      resolve(result);
+    });
+  });
+
 // Ruta de login (compatibilidad: acepta hash SHA-256 o texto plano)
 app.post("/login", (req, res) => {
   const { nombre_usuario, contrasena } = req.body || {};
@@ -220,7 +228,7 @@ app.get("/proyectos/:id/pedidos", authenticateToken, requireRole("administrador"
   const { id } = req.params;
   const { familia } = req.query;
   let query =
-    "SELECT id, id_proyecto, nombre_proyecto, pedido, clan, familia, proveedor, DATE_FORMAT(fecha_aprobacion, '%Y-%m-%d') AS fecha_aprobacion, concepto, situaciones_especiales, importe FROM pedidos WHERE id_proyecto = ?";
+    "SELECT id, id_proyecto, nombre_proyecto, pedido, clan, familia, proveedor, DATE_FORMAT(fecha_aprobacion, '%Y-%m-%d') AS fecha_aprobacion, concepto, situaciones_especiales, importe_total AS importe FROM pedidos WHERE id_proyecto = ?";
   const params = [id];
   const toList = (v) => Array.isArray(v) ? v : (typeof v === 'string' ? v.split(',').map(s=>s.trim()).filter(Boolean) : []);
   const addMulti = (field, values) => {
@@ -251,6 +259,41 @@ app.get("/proyectos/:id/pedidos", authenticateToken, requireRole("administrador"
     res.json({ success: true, data: results || [] });
   });
 });
+
+// Pedidos - detalles por pedido
+app.get("/pedidos/:pedidoId/detalles", authenticateToken, requireRole("administrador"), (req, res) => {
+  const pedidoId = Number(req.params.pedidoId);
+  if (!Number.isInteger(pedidoId) || pedidoId <= 0) {
+    return res.status(400).json({ success: false, message: "Pedido inválido" });
+  }
+  const sqlDetalles = `SELECT id_detalle, id_pedido, descripcion, unidad, medida, cantidad, precio_unitario, importe, clave, ml, acabado, kg, precio_x_kg
+                       FROM pedido_detalles
+                       WHERE id_pedido = ?
+                       ORDER BY id_detalle ASC`;
+  db.query(sqlDetalles, [pedidoId], (err, rows) => {
+    if (err) {
+      console.error("Error consultando detalles:", err);
+      return res.status(500).json({ success: false, message: "Error consultando detalles del pedido" });
+    }
+    const decimalOrNull = (val) => (val === null || val === undefined ? null : Number(val));
+    const data = (rows || []).map((r) => ({
+      id_detalle: r.id_detalle,
+      id_pedido: r.id_pedido,
+      descripcion: r.descripcion,
+      unidad: r.unidad,
+      medida: r.medida,
+      cantidad: Number(r.cantidad || 0),
+      precio_unitario: Number(r.precio_unitario || 0),
+      importe: Number(r.importe || 0),
+      clave: r.clave,
+      ml: decimalOrNull(r.ml),
+      acabado: r.acabado,
+      kg: decimalOrNull(r.kg),
+      precio_x_kg: decimalOrNull(r.precio_x_kg),
+    }));
+    return res.json({ success: true, data });
+  });
+});
     
 
 // Pedidos - exportar a XLSX con logo y estilos
@@ -259,7 +302,7 @@ app.get("/proyectos/:id/pedidos/export", authenticateToken, requireRole("adminis
   const { familia } = req.query;
   const qProyecto = "SELECT nombre FROM proyectos WHERE id_proyecto = ?";
   let qPedidos =
-    "SELECT id, nombre_proyecto, pedido, clan, familia, proveedor, DATE_FORMAT(fecha_aprobacion, '%Y-%m-%d') AS fecha_aprobacion, concepto, situaciones_especiales, importe FROM pedidos WHERE id_proyecto = ?";
+    "SELECT id, nombre_proyecto, pedido, clan, familia, proveedor, DATE_FORMAT(fecha_aprobacion, '%Y-%m-%d') AS fecha_aprobacion, concepto, situaciones_especiales, importe_total AS importe FROM pedidos WHERE id_proyecto = ?";
   const pedidosParams = [id];
   const toListE = (v) => Array.isArray(v) ? v : (typeof v === 'string' ? v.split(',').map(s=>s.trim()).filter(Boolean) : []);
   const addMultiE = (field, values) => {
@@ -461,66 +504,162 @@ function isValidYMD(y, m, d) {
   return dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d;
 }
 
-// Pedidos - carga masiva desde CSV (parseado en el frontend)
-app.post("/proyectos/:id/pedidos", authenticateToken, requireRole("administrador"), (req, res) => {
-  const { id } = req.params;
-  const { pedidos } = req.body || {};
+function normalizeTextValue(value) {
+  if (value === null || value === undefined) return "";
+  return String(value).trim();
+}
 
-  if (!Array.isArray(pedidos) || pedidos.length === 0) {
-    return res
-      .status(400)
-      .json({ success: false, message: "No hay pedidos a insertar" });
+function toFiniteNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+}
+
+function prepareDetalleForInsert(detalle) {
+  const descripcion = normalizeTextValue(detalle?.descripcion) || "Detalle";
+  const unidad = normalizeTextValue(detalle?.unidad) || null;
+  const medida = normalizeTextValue(detalle?.medida) || null;
+  const clave = normalizeTextValue(detalle?.clave) || null;
+  const acabado = normalizeTextValue(detalle?.acabado) || null;
+  const cantidadBase = toFiniteNumber(detalle?.cantidad);
+  const cantidad = cantidadBase !== null ? Math.round(cantidadBase) : 0;
+  let precioUnitario = toFiniteNumber(detalle?.precio_unitario);
+  const importeDato = toFiniteNumber(detalle?.importe);
+  if ((precioUnitario === null || precioUnitario === 0) && importeDato !== null && cantidad) {
+    precioUnitario = Number((importeDato / cantidad).toFixed(2));
   }
+  const importe = importeDato !== null ? importeDato : Number((cantidad * (precioUnitario || 0)).toFixed(2));
+  const ml = toFiniteNumber(detalle?.ml);
+  const kg = toFiniteNumber(detalle?.kg);
+  const precioKg = toFiniteNumber(detalle?.precio_x_kg);
+  return {
+    descripcion,
+    unidad,
+    medida,
+    cantidad,
+    precio_unitario: precioUnitario !== null ? precioUnitario : 0,
+    importe,
+    clave,
+    ml,
+    acabado,
+    kg,
+    precio_x_kg: precioKg,
+  };
+}
 
-  const sql =
-    "INSERT INTO pedidos (id_proyecto, nombre_proyecto, pedido, clan, familia, proveedor, fecha_aprobacion, concepto, situaciones_especiales, importe) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-
-  const tasks = pedidos.map((p, idx) => {
-    const fechaISO = parseDateToISO(p.fecha_aprobacion);
-    if (!fechaISO) {
-      return Promise.resolve({ ok: false, err: new Error(`Fecha inválida en fila ${idx + 1}`) });
-    }
+async function insertPedidoDetallesRows(pedidoId, detallesRaw) {
+  if (!Array.isArray(detallesRaw) || detallesRaw.length === 0) return;
+  const sqlDetalle = "INSERT INTO pedido_detalles (id_pedido, descripcion, unidad, medida, cantidad, precio_unitario, importe, clave, ml, acabado, kg, precio_x_kg) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+  for (const detalleRaw of detallesRaw) {
+    const detalle = prepareDetalleForInsert(detalleRaw || {});
     const values = [
-      Number(id),
-      p.nombre_proyecto || "",
-      p.pedido || "",
-      p.clan || "",
-      p.familia || "",
-      p.proveedor || "",
-      fechaISO,
-      p.concepto || "",
-      p.situaciones_especiales || null,
-      Number(p.importe || 0),
+      pedidoId,
+      detalle.descripcion,
+      detalle.unidad,
+      detalle.medida,
+      detalle.cantidad,
+      detalle.precio_unitario,
+      detalle.importe,
+      detalle.clave,
+      detalle.ml,
+      detalle.acabado,
+      detalle.kg,
+      detalle.precio_x_kg,
     ];
-    return new Promise((resolve) => {
-      db.query(sql, values, (err) => {
-        if (err) {
-          console.error("Error insertando pedido:", err);
-          return resolve({ ok: false, err });
-        }
-        resolve({ ok: true });
-      });
-    });
-  });
+    await queryAsync(sqlDetalle, values);
+  }
+}
 
-  Promise.all(tasks)
-    .then((results) => {
-      const details = results.map((r, i) => ({ index: i + 1, ok: r.ok, error: r.err ? String(r.err.message || r.err) : null }));
-      const okCount = results.filter((r) => r.ok).length;
-      const failCount = results.length - okCount;
-      // Responder 200 siempre para evitar "internal server error" por datos inválidos
-      return res.json({
-        success: okCount > 0,
-        inserted: okCount,
-        failed: failCount,
-        message: `Pedidos insertados: ${okCount}${failCount ? ", fallidos: " + failCount : ""}`,
-        details,
-      });
-    })
-    .catch((e) => {
-      console.error(e);
-      res.status(500).json({ success: false, message: "Error interno del servidor" });
+// Pedidos - carga masiva desde CSV (parseado en el frontend)
+app.post("/proyectos/:id/pedidos", authenticateToken, requireRole("administrador"), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const proyectoId = Number(id);
+    const { pedidos } = req.body || {};
+    if (!Number.isInteger(proyectoId) || proyectoId <= 0) {
+      return res.status(400).json({ success: false, message: "Proyecto inválido" });
+    }
+    if (!Array.isArray(pedidos) || pedidos.length === 0) {
+      return res.status(400).json({ success: false, message: "No hay pedidos a insertar" });
+    }
+    const username = normalizeTextValue(req.user?.username);
+    if (!username) {
+      return res.status(400).json({ success: false, message: "Usuario inválido" });
+    }
+    const sql =
+      "INSERT INTO pedidos (id_proyecto, nombre_proyecto, pedido, clan, familia, proveedor, fecha_aprobacion, concepto, situaciones_especiales, importe_total, nombre_usuario) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+
+    const detailsLog = [];
+    let okCount = 0;
+    for (let idx = 0; idx < pedidos.length; idx += 1) {
+      const p = pedidos[idx] || {};
+      const fechaISO = parseDateToISO(p.fecha_aprobacion);
+      if (!fechaISO) {
+        detailsLog.push({ index: idx + 1, pedido: p.pedido || null, ok: false, replaced: false, error: "Fecha inválida" });
+        continue;
+      }
+      const pedidoNombre = normalizeTextValue(p.pedido);
+      if (!pedidoNombre) {
+        detailsLog.push({ index: idx + 1, pedido: null, ok: false, replaced: false, error: "Pedido sin nombre" });
+        continue;
+      }
+
+      let replacedExisting = false;
+      try {
+        const existingRows = await queryAsync(
+          "SELECT id FROM pedidos WHERE id_proyecto = ? AND pedido = ? LIMIT 1",
+          [proyectoId, pedidoNombre]
+        );
+        if (Array.isArray(existingRows) && existingRows.length) {
+          const existingId = existingRows[0].id;
+          await queryAsync("DELETE FROM pedidos WHERE id = ? AND id_proyecto = ?", [existingId, proyectoId]);
+          replacedExisting = true;
+        }
+      } catch (lookupErr) {
+        console.error("Error verificando pedido existente:", lookupErr);
+        detailsLog.push({ index: idx + 1, pedido: pedidoNombre, ok: false, replaced: false, error: "No se pudo validar duplicados" });
+        continue;
+      }
+
+      const importePedido = Number(p.importe);
+      const importeValue = Number.isFinite(importePedido) ? importePedido : 0;
+      const values = [
+        proyectoId,
+        normalizeTextValue(p.nombre_proyecto),
+        pedidoNombre,
+        normalizeTextValue(p.clan),
+        normalizeTextValue(p.familia),
+        normalizeTextValue(p.proveedor),
+        fechaISO,
+        normalizeTextValue(p.concepto),
+        normalizeTextValue(p.situaciones_especiales) || null,
+        importeValue,
+        username,
+      ];
+      try {
+        const result = await queryAsync(sql, values);
+        const pedidoId = result.insertId;
+        await insertPedidoDetallesRows(pedidoId, p.detalles);
+        okCount += 1;
+        detailsLog.push({ index: idx + 1, pedido: pedidoNombre, ok: true, replaced: replacedExisting, error: null });
+      } catch (err) {
+        console.error("Error insertando pedido:", err);
+        detailsLog.push({ index: idx + 1, pedido: pedidoNombre, ok: false, replaced: replacedExisting, error: String(err?.message || err) });
+      }
+    }
+
+    const failCount = detailsLog.length - okCount;
+    return res.json({
+      success: okCount > 0,
+      inserted: okCount,
+      failed: failCount,
+      message: `Pedidos insertados: ${okCount}${failCount ? ", fallidos: " + failCount : ""}`,
+      details: detailsLog,
     });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ success: false, message: "Error interno del servidor" });
+  }
 });
 
 // Cobranza - listar por proyecto (ambos roles pueden ver)
