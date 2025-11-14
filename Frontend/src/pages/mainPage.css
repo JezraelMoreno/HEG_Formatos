@@ -18,6 +18,43 @@
   margin: 0;
 }
 
+.search-bar {
+  position: absolute;
+  top: 20px;
+  left: 35%;
+  transform: translateX(-50%);
+  width: min(360px, calc(100% - 260px));
+  display: flex;
+  align-items: center;
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+}
+.search-bar input {
+  flex: 1;
+  border: none;
+  outline: none;
+  font-size: 14px;
+  color: #1a202c;
+  background: transparent;
+}
+.search-bar input::placeholder {
+  color: #94a3b8;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
 /* Acciones arriba a la derecha */
 .actions {
   position: absolute;
@@ -63,15 +100,163 @@
 
 /* Contenido */
 .contenido {
-  max-width: 800px;
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
+
+.mensajes-globales {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.paneles {
+  display: flex;
+  gap: 30px;
+  align-items: flex-start;
+}
+
+.panel {
+  flex: 1;
+  min-width: 300px;
+}
+
+.panel-proyectos {
+  flex: 0 0 600px;   
+  max-width: 600px;
+}
+
+.panel-resumen {
+  background: #fff;
+  border-radius: 12px;
+  border: 1px solid #e0e0e0;
+  padding: 18px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+  flex: 1;   
+  max-width: 600px;
+  margin-left: 140px;
+  align-self: flex-start;
+}
+
+.panel-resumen-header {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.panel-resumen-header h2 {
+  margin: 0;
+  color: #0b2f4a;
+}
+
+.resumen-filtros {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-end;
+}
+
+.resumen-filtros label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: #4a5568;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.calendar-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.calendar-field input[type="date"] {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid #cbd5e0;
+  min-width: 160px;
+  font-size: 14px;
+}
+
+.calendar-button {
+  border: none;
+  background: #125ca1;
+  color: #fff;
+  border-radius: 8px;
+  padding: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.calendar-button:hover {
+  background: #0f4c85;
+}
+
+.resumen-filtros select {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid #cbd5e0;
+  min-width: 180px;
+  font-size: 14px;
+}
+
+.panel-resumen-body {
+  margin-top: 12px;
+}
+
+.tabla-resumen {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.tabla-resumen th,
+.tabla-resumen td {
+  padding: 10px 8px;
+  border-bottom: 1px solid #e0e0e0;
+  text-align: left;
+  font-size: 14px;
+}
+
+.tabla-resumen th {
+  background: #f1f5fb;
+  color: #1a365d;
+  font-weight: 600;
+}
+
+.tabla-resumen tbody tr:hover {
+  background: #f9fcff;
+}
+
+.panel-resumen-body p {
+  margin: 12px 0;
+  color: #333;
+  font-size: 14px;
+}
+
+.panel-resumen-body .error-text {
+  margin: 0;
+}
+
+.panel-resumen-body .error-text,
+.panel-resumen-body .success-text {
+  max-width: 100%;
+}
+
 .lista-proyectos {
   list-style: none;
   padding: 0;
   margin: 10px 0 0;
   display: flex;
   flex-direction: column;
-  align-items: center; /* centrar tarjetas */
+  align-items: flex-start;
 }
 .item-proyecto {
   background: #fff;
@@ -84,7 +269,7 @@
   border: 1px solid #e0e0e0;
   width: 100%;
   max-width: 600px; /* ancho de tarjeta */
-  margin: 10px auto; /* centra horizontalmente */
+  margin: 10px 0;
 }
 .proyecto-info {
   display: flex;
@@ -127,7 +312,7 @@
   border-radius: 8px;
   display: block;
   width: 100%;
-  max-width: 600px;
+  max-width: 100%;
   margin: 0 auto;
   text-align: center;
 }
@@ -139,7 +324,7 @@
   border-radius: 8px;
   display: block;
   width: 100%;
-  max-width: 600px;
+  max-width: 100%;
   margin: 0 auto;
   text-align: center;
 }
@@ -222,4 +407,29 @@
 .danger-button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+@media (max-width: 900px){
+  .paneles {
+  display: flex;
+  gap: 30px;
+  align-items: flex-start;
+}
+}
+
+@media (max-width: 768px) {
+  .main-page {
+    padding-top: 140px;
+  }
+  .search-bar {
+    position: static;
+    transform: none;
+    width: 100%;
+    margin-top: 12px;
+  }
+  .actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+  }
 }

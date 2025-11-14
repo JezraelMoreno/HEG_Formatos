@@ -12,6 +12,21 @@ type Proyecto = {
   fecha_proyecto: string; // formato YYYY-MM-DD
 };
 
+type PedidoResumen = {
+  id: number;
+  nombre_proyecto: string;
+  pedido: string;
+  nombre_usuario: string;
+  fecha_subida: string;
+};
+
+type DateInputWithPicker = HTMLInputElement & { showPicker?: () => void };
+
+const getTodayISO = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+};
+
 const TrashIcon = () => (
   <svg
     width="18"
@@ -32,6 +47,25 @@ const TrashIcon = () => (
   </svg>
 );
 
+const CalendarIcon = () => (
+  <svg
+    width="18"
+    height="18"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <rect x="3" y="4" width="18" height="18" rx="2" />
+    <line x1="16" y1="2" x2="16" y2="6" />
+    <line x1="8" y1="2" x2="8" y2="6" />
+    <line x1="3" y1="10" x2="21" y2="10" />
+  </svg>
+);
+
 export function MainPage() {
   const navigate = useNavigate();
   const [proyectos, setProyectos] = useState<Proyecto[]>([]);
@@ -47,7 +81,15 @@ export function MainPage() {
   const [proyectoAEliminar, setProyectoAEliminar] = useState<Proyecto | null>(null);
   const [confirmacionProyecto, setConfirmacionProyecto] = useState<string>("");
   const [eliminandoProyecto, setEliminandoProyecto] = useState(false);
+  const [resumenPedidos, setResumenPedidos] = useState<PedidoResumen[]>([]);
+  const [usuariosPedidos, setUsuariosPedidos] = useState<string[]>([]);
+  const [usuarioFiltro, setUsuarioFiltro] = useState<string>("");
+  const [fechaFiltroPedidos, setFechaFiltroPedidos] = useState<string>(() => getTodayISO());
+  const [cargandoResumen, setCargandoResumen] = useState(false);
+  const [errorResumen, setErrorResumen] = useState("");
+  const [busquedaProyecto, setBusquedaProyecto] = useState("");
   const pedidoFileInputRef = useRef<HTMLInputElement | null>(null);
+  const filtroFechaRef = useRef<HTMLInputElement | null>(null);
   const role = (getRole() || "").toLowerCase();
   const isAdmin = role === "administrador";
 
@@ -182,6 +224,52 @@ export function MainPage() {
   };
 
   useEffect(() => {
+    if (!isAdmin) {
+      setResumenPedidos([]);
+      setUsuariosPedidos([]);
+      setCargandoResumen(false);
+      setErrorResumen("");
+      return;
+    }
+    let activo = true;
+    const cargarResumen = async () => {
+      setCargandoResumen(true);
+      setErrorResumen("");
+      try {
+        const params = new URLSearchParams();
+        if (fechaFiltroPedidos) params.append("fecha", fechaFiltroPedidos);
+        if (usuarioFiltro) params.append("usuario", usuarioFiltro);
+        const qs = params.toString();
+        const res = await fetch(`http://localhost:3000/pedidos/resumen${qs ? `?${qs}` : ""}`, {
+          headers: { ...authHeader() },
+        });
+        const data = await res.json();
+        if (!activo) return;
+        if (res.ok && data?.success) {
+          setResumenPedidos((data.data as PedidoResumen[]) || []);
+          setUsuariosPedidos(Array.isArray(data.usuarios) ? data.usuarios.filter(Boolean) : []);
+          if (data.fechaFiltro && typeof data.fechaFiltro === "string" && data.fechaFiltro !== fechaFiltroPedidos) {
+            setFechaFiltroPedidos(data.fechaFiltro);
+          }
+        } else {
+          setResumenPedidos([]);
+          setErrorResumen(data?.message || "No se pudo cargar los pedidos del día");
+        }
+      } catch {
+        if (!activo) return;
+        setResumenPedidos([]);
+        setErrorResumen("Error de conexión al cargar pedidos");
+      } finally {
+        if (activo) setCargandoResumen(false);
+      }
+    };
+    cargarResumen();
+    return () => {
+      activo = false;
+    };
+  }, [isAdmin, fechaFiltroPedidos, usuarioFiltro]);
+
+  useEffect(() => {
     if (!mensajePedidos) return;
     const timeout = setTimeout(() => setMensajePedidos(""), 2000);
     return () => clearTimeout(timeout);
@@ -296,9 +384,46 @@ export function MainPage() {
     }
   };
 
+  const abrirCalendarioFiltro = () => {
+    const input = filtroFechaRef.current as DateInputWithPicker | null;
+    if (!input) return;
+    if (typeof input.showPicker === "function") {
+      input.showPicker();
+    } else {
+      input.focus();
+      input.click();
+    }
+  };
+
+  const cambiarFechaFiltro: ChangeEventHandler<HTMLInputElement> = (e) => {
+    const valor = e.target.value;
+    if (!valor) {
+      setFechaFiltroPedidos(getTodayISO());
+      return;
+    }
+    setFechaFiltroPedidos(valor);
+  };
+
+  const filtroNormalizado = busquedaProyecto.trim().toLowerCase();
+  const proyectosFiltrados = filtroNormalizado
+    ? proyectos.filter((proyecto) => proyecto.nombre.toLowerCase().includes(filtroNormalizado))
+    : proyectos;
+
   return (
     <div className="main-page">
       <h1 className="titulo">Página Principal</h1>
+      <div className="search-bar">
+        <label htmlFor="busqueda-proyecto" className="visually-hidden">
+          Buscar proyecto
+        </label>
+        <input
+          id="busqueda-proyecto"
+          type="text"
+          placeholder="Buscar proyecto"
+          value={busquedaProyecto}
+          onChange={(e) => setBusquedaProyecto(e.target.value)}
+        />
+      </div>
 
       <div className="actions">
         {isAdmin && (
@@ -328,43 +453,121 @@ export function MainPage() {
       </div>
 
       <div className="contenido">
-        {loading && <p>Cargando proyectos...</p>}
-        {error && <p className="error-text">{error}</p>}
-        {errorPedidos && <p className="error-text">{errorPedidos}</p>}
-        {mensajePedidos && <p className="success-text">{mensajePedidos}</p>}
-        {mensajeGeneral && <p className="success-text">{mensajeGeneral}</p>}
-        {!loading && !error && (
-          <ul className="lista-proyectos">
-            {proyectos.map((p) => (
-              <li
-                key={p.id_proyecto}
-                className="item-proyecto"
-                onClick={() =>
-                  navigate(`/proyecto/${p.id_proyecto}`, {
-                    state: { nombre: p.nombre, fecha: p.fecha_proyecto },
-                  })
-                }
-                style={{ cursor: "pointer" }}
-              >
-                <div className="proyecto-info">
-                  <span className="nombre">{p.nombre}</span>
-                  <span className="fecha">{p.fecha_proyecto}</span>
-                </div>
-                {isAdmin && (
-                  <button
-                    type="button"
-                    className="icon-button trash-button"
-                    aria-label={`Eliminar proyecto ${p.nombre}`}
-                    onClick={(event) => abrirConfirmacionEliminar(p, event)}
+        <div className="mensajes-globales">
+          {loading && <p>Cargando proyectos...</p>}
+          {error && <p className="error-text">{error}</p>}
+          {errorPedidos && <p className="error-text">{errorPedidos}</p>}
+          {mensajePedidos && <p className="success-text">{mensajePedidos}</p>}
+          {mensajeGeneral && <p className="success-text">{mensajeGeneral}</p>}
+        </div>
+
+        <div className="paneles">
+          <section className="panel panel-proyectos">
+            {!loading && !error && (
+              <ul className="lista-proyectos">
+                {proyectosFiltrados.map((p) => (
+                  <li
+                    key={p.id_proyecto}
+                    className="item-proyecto"
+                    onClick={() =>
+                      navigate(`/proyecto/${p.id_proyecto}`, {
+                        state: { nombre: p.nombre, fecha: p.fecha_proyecto },
+                      })
+                    }
+                    style={{ cursor: "pointer" }}
                   >
-                    <TrashIcon />
-                  </button>
+                    <div className="proyecto-info">
+                      <span className="nombre">{p.nombre}</span>
+                      <span className="fecha">{p.fecha_proyecto}</span>
+                    </div>
+                    {isAdmin && (
+                      <button
+                        type="button"
+                        className="icon-button trash-button"
+                        aria-label={`Eliminar proyecto ${p.nombre}`}
+                        onClick={(event) => abrirConfirmacionEliminar(p, event)}
+                      >
+                        <TrashIcon />
+                      </button>
+                    )}
+                  </li>
+                ))}
+                {proyectos.length === 0 && <li>No hay proyectos aún</li>}
+                {proyectos.length > 0 && proyectosFiltrados.length === 0 && <li>No se encontraron proyectos</li>}
+              </ul>
+            )}
+          </section>
+
+          {isAdmin && (
+            <section className="panel panel-resumen">
+              <div className="panel-resumen-header">
+                <h2>Pedidos subidos</h2>
+                <div className="resumen-filtros">
+                  <div className="filtro campo-fecha">
+                    <label htmlFor="filtro-fecha">Fecha</label>
+                    <div className="calendar-field">
+                      <input
+                        id="filtro-fecha"
+                        ref={filtroFechaRef}
+                        type="date"
+                        value={fechaFiltroPedidos}
+                        onChange={cambiarFechaFiltro}
+                      />
+                      <button type="button" className="calendar-button" onClick={abrirCalendarioFiltro} aria-label="Seleccionar fecha">
+                        <CalendarIcon />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="filtro campo-usuario">
+                    <label htmlFor="filtro-usuario">Usuario</label>
+                    <select
+                      id="filtro-usuario"
+                      value={usuarioFiltro}
+                      onChange={(e) => setUsuarioFiltro(e.target.value)}
+                    >
+                      <option value="">Todos</option>
+                      {usuariosPedidos.map((usuario) => (
+                        <option key={usuario} value={usuario}>
+                          {usuario}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+              <div className="panel-resumen-body">
+                {errorResumen ? (
+                  <p className="error-text">{errorResumen}</p>
+                ) : cargandoResumen ? (
+                  <p>Cargando pedidos del día...</p>
+                ) : resumenPedidos.length === 0 ? (
+                  <p>No hay pedidos para la fecha seleccionada.</p>
+                ) : (
+                  <table className="tabla-resumen">
+                    <thead>
+                      <tr>
+                        <th>Proyecto</th>
+                        <th>Pedido</th>
+                        <th>Ingresado por</th>
+                        <th>Día de subida</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {resumenPedidos.map((pedido) => (
+                        <tr key={pedido.id}>
+                          <td>{pedido.nombre_proyecto || "Sin proyecto"}</td>
+                          <td>{pedido.pedido}</td>
+                          <td>{pedido.nombre_usuario || "Desconocido"}</td>
+                          <td>{pedido.fecha_subida || "Sin fecha"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 )}
-              </li>
-            ))}
-            {proyectos.length === 0 && <li>No hay proyectos aún</li>}
-          </ul>
-        )}
+              </div>
+            </section>
+          )}
+        </div>
       </div>
 
       {modalAbierto && (

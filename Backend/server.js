@@ -260,6 +260,58 @@ app.get("/proyectos/:id/pedidos", authenticateToken, requireRole("administrador"
   });
 });
 
+// Pedidos - resumen por fecha de carga
+app.get("/pedidos/resumen", authenticateToken, requireRole("administrador"), async (req, res) => {
+  try {
+    const rawFecha = typeof req.query.fecha === "string" ? req.query.fecha.trim() : "";
+    const rawUsuario = typeof req.query.usuario === "string" ? req.query.usuario.trim() : "";
+    const today = new Date();
+    const todayIso = `${today.getFullYear()}-${pad2(today.getMonth() + 1)}-${pad2(today.getDate())}`;
+    const fechaFiltro = parseDateToISO(rawFecha) || todayIso;
+    let query = `
+      SELECT
+        p.id,
+        p.nombre_proyecto,
+        p.pedido,
+        p.nombre_usuario,
+        DATE_FORMAT(COALESCE(pd.fecha_subida, p.fecha_aprobacion), '%Y-%m-%d') AS fecha_subida
+      FROM pedidos p
+      LEFT JOIN (
+        SELECT id_pedido, MIN(fecha_registro) AS fecha_subida
+        FROM (
+          SELECT id_pedido, fecha_registro FROM pedidos_detalles_miscelaneos
+          UNION ALL
+          SELECT id_pedido, fecha_registro FROM pedidos_detalles_cristal
+        ) detalles
+        GROUP BY id_pedido
+      ) pd ON pd.id_pedido = p.id
+      WHERE 1 = 1
+    `;
+    const params = [];
+    if (fechaFiltro) {
+      query += " AND DATE(COALESCE(pd.fecha_subida, p.fecha_aprobacion)) = ?";
+      params.push(fechaFiltro);
+    }
+    if (rawUsuario) {
+      query += " AND p.nombre_usuario = ?";
+      params.push(rawUsuario);
+    }
+    query += " ORDER BY p.id DESC";
+
+    const rows = await queryAsync(query, params);
+    const usuariosRows = await queryAsync("SELECT DISTINCT nombre_usuario FROM pedidos ORDER BY nombre_usuario ASC");
+    res.json({
+      success: true,
+      data: rows || [],
+      usuarios: (usuariosRows || []).map((row) => row.nombre_usuario).filter(Boolean),
+      fechaFiltro,
+    });
+  } catch (err) {
+    console.error("Error consultando resumen de pedidos:", err);
+    res.status(500).json({ success: false, message: "Error interno al cargar pedidos" });
+  }
+});
+
 // Pedidos - detalles por pedido
 app.get("/pedidos/:pedidoId/detalles", authenticateToken, requireRole("administrador"), (req, res) => {
   const pedidoId = Number(req.params.pedidoId);
@@ -267,7 +319,7 @@ app.get("/pedidos/:pedidoId/detalles", authenticateToken, requireRole("administr
     return res.status(400).json({ success: false, message: "Pedido inválido" });
   }
   const sqlDetalles = `SELECT id_detalle, id_pedido, descripcion, unidad, medida, cantidad, precio_unitario, importe, clave, ml, acabado, kg, precio_x_kg
-                       FROM pedido_detalles
+                       FROM pedidos_detalles_miscelaneos
                        WHERE id_pedido = ?
                        ORDER BY id_detalle ASC`;
   db.query(sqlDetalles, [pedidoId], (err, rows) => {
@@ -275,7 +327,6 @@ app.get("/pedidos/:pedidoId/detalles", authenticateToken, requireRole("administr
       console.error("Error consultando detalles:", err);
       return res.status(500).json({ success: false, message: "Error consultando detalles del pedido" });
     }
-    const decimalOrNull = (val) => (val === null || val === undefined ? null : Number(val));
     const data = (rows || []).map((r) => ({
       id_detalle: r.id_detalle,
       id_pedido: r.id_pedido,
@@ -294,7 +345,67 @@ app.get("/pedidos/:pedidoId/detalles", authenticateToken, requireRole("administr
     return res.json({ success: true, data });
   });
 });
-    
+
+app.get("/pedidos/:pedidoId/detalles-cristal", authenticateToken, requireRole("administrador"), (req, res) => {
+  const pedidoId = Number(req.params.pedidoId);
+  if (!Number.isInteger(pedidoId) || pedidoId <= 0) {
+    return res.status(400).json({ success: false, message: "Pedido inválido" });
+  }
+  const sql = `SELECT id_detalle, id_pedido, descripcion, clave_modelo, ancho, largo, m2_corte, piezas, m2_pedido, precio_unitario, importe
+               FROM pedidos_detalles_cristal
+               WHERE id_pedido = ?
+               ORDER BY id_detalle ASC`;
+  db.query(sql, [pedidoId], (err, rows) => {
+    if (err) {
+      console.error("Error consultando detalles de cristal:", err);
+      return res.status(500).json({ success: false, message: "Error consultando detalles de cristal" });
+    }
+    const data = (rows || []).map((r) => ({
+      id_detalle: r.id_detalle,
+      id_pedido: r.id_pedido,
+      descripcion: r.descripcion,
+      clave_modelo: r.clave_modelo,
+      ancho: decimalOrNull(r.ancho),
+      largo: decimalOrNull(r.largo),
+      m2_corte: decimalOrNull(r.m2_corte),
+      piezas: Number(r.piezas || 0),
+      m2_pedido: decimalOrNull(r.m2_pedido),
+      precio_unitario: Number(r.precio_unitario || 0),
+      importe: Number(r.importe || 0),
+    }));
+    return res.json({ success: true, data });
+  });
+});
+
+app.post("/pedidos/:pedidoId/detalles-cristal", authenticateToken, requireRole("administrador"), async (req, res) => {
+  try {
+    const pedidoId = Number(req.params.pedidoId);
+    if (!Number.isInteger(pedidoId) || pedidoId <= 0) {
+      return res.status(400).json({ success: false, message: "Pedido inválido" });
+    }
+    const { detalles, reemplazar = true } = req.body || {};
+    if (!Array.isArray(detalles) || detalles.length === 0) {
+      return res.status(400).json({ success: false, message: "No hay detalles de cristal para registrar" });
+    }
+    const pedidoRows = await queryAsync("SELECT id FROM pedidos WHERE id = ? LIMIT 1", [pedidoId]);
+    if (!Array.isArray(pedidoRows) || pedidoRows.length === 0) {
+      return res.status(404).json({ success: false, message: "Pedido no encontrado" });
+    }
+    if (reemplazar !== false) {
+      await queryAsync("DELETE FROM pedidos_detalles_cristal WHERE id_pedido = ?", [pedidoId]);
+    }
+    const inserted = await insertCristalDetallesRows(pedidoId, detalles);
+    return res.json({
+      success: inserted > 0,
+      inserted,
+      message: `Detalles de cristal registrados: ${inserted}`,
+    });
+  } catch (err) {
+    console.error("Error guardando detalles de cristal:", err);
+    return res.status(500).json({ success: false, message: "Error guardando detalles de cristal" });
+  }
+});
+
 
 // Pedidos - exportar a XLSX con logo y estilos
 app.get("/proyectos/:id/pedidos/export", authenticateToken, requireRole("administrador"), (req, res) => {
@@ -515,6 +626,10 @@ function toFiniteNumber(value) {
   return Number.isFinite(num) ? num : null;
 }
 
+function decimalOrNull(value) {
+  return value === null || value === undefined ? null : Number(value);
+}
+
 function prepareDetalleForInsert(detalle) {
   const descripcion = normalizeTextValue(detalle?.descripcion) || "Detalle";
   const unidad = normalizeTextValue(detalle?.unidad) || null;
@@ -547,9 +662,42 @@ function prepareDetalleForInsert(detalle) {
   };
 }
 
+function prepareCristalDetalleForInsert(detalle) {
+  const descripcion = normalizeTextValue(detalle?.descripcion) || "Detalle cristal";
+  const claveModelo = normalizeTextValue(detalle?.clave_modelo ?? detalle?.clave) || null;
+  const ancho = toFiniteNumber(detalle?.ancho);
+  const largo = toFiniteNumber(detalle?.largo);
+  const m2Corte = toFiniteNumber(detalle?.m2_corte);
+  const piezasBase = toFiniteNumber(detalle?.piezas ?? detalle?.cantidad);
+  const piezas = piezasBase !== null ? Math.max(0, Math.round(piezasBase)) : 0;
+  const m2Pedido = toFiniteNumber(detalle?.m2_pedido);
+  let precioUnitario = toFiniteNumber(detalle?.precio_unitario);
+  let importe = toFiniteNumber(detalle?.importe);
+  if ((importe === null || importe === 0) && piezas && precioUnitario !== null) {
+    importe = Number((piezas * precioUnitario).toFixed(2));
+  }
+  if ((precioUnitario === null || precioUnitario === 0) && importe !== null && piezas) {
+    precioUnitario = Number((importe / piezas).toFixed(2));
+  }
+  if (importe === null) {
+    importe = Number(((precioUnitario || 0) * piezas).toFixed(2));
+  }
+  return {
+    descripcion,
+    clave_modelo: claveModelo,
+    ancho,
+    largo,
+    m2_corte: m2Corte,
+    piezas,
+    m2_pedido: m2Pedido,
+    precio_unitario: precioUnitario !== null ? precioUnitario : 0,
+    importe: importe !== null ? importe : 0,
+  };
+}
+
 async function insertPedidoDetallesRows(pedidoId, detallesRaw) {
   if (!Array.isArray(detallesRaw) || detallesRaw.length === 0) return;
-  const sqlDetalle = "INSERT INTO pedido_detalles (id_pedido, descripcion, unidad, medida, cantidad, precio_unitario, importe, clave, ml, acabado, kg, precio_x_kg) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+  const sqlDetalle = "INSERT INTO pedidos_detalles_miscelaneos (id_pedido, descripcion, unidad, medida, cantidad, precio_unitario, importe, clave, ml, acabado, kg, precio_x_kg) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
   for (const detalleRaw of detallesRaw) {
     const detalle = prepareDetalleForInsert(detalleRaw || {});
     const values = [
@@ -568,6 +716,40 @@ async function insertPedidoDetallesRows(pedidoId, detallesRaw) {
     ];
     await queryAsync(sqlDetalle, values);
   }
+}
+
+async function insertCristalDetallesRows(pedidoId, detallesRaw) {
+  if (!Array.isArray(detallesRaw) || detallesRaw.length === 0) return 0;
+  const sqlDetalle = "INSERT INTO pedidos_detalles_cristal (id_pedido, descripcion, clave_modelo, ancho, largo, m2_corte, piezas, m2_pedido, precio_unitario, importe) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+  let inserted = 0;
+  for (const detalleRaw of detallesRaw) {
+    const detalle = prepareCristalDetalleForInsert(detalleRaw || {});
+    const values = [
+      pedidoId,
+      detalle.descripcion,
+      detalle.clave_modelo,
+      detalle.ancho,
+      detalle.largo,
+      detalle.m2_corte,
+      detalle.piezas,
+      detalle.m2_pedido,
+      detalle.precio_unitario,
+      detalle.importe,
+    ];
+    await queryAsync(sqlDetalle, values);
+    inserted += 1;
+  }
+  return inserted;
+}
+
+async function insertDetallesSegunFamilia(pedidoId, familia, detallesRaw) {
+  if (!Array.isArray(detallesRaw) || detallesRaw.length === 0) return;
+  const familiaVal = normalizeTextValue(familia).toUpperCase();
+  if (familiaVal === "CR") {
+    await insertCristalDetallesRows(pedidoId, detallesRaw);
+    return;
+  }
+  await insertPedidoDetallesRows(pedidoId, detallesRaw);
 }
 
 // Pedidos - carga masiva desde CSV (parseado en el frontend)
@@ -639,7 +821,7 @@ app.post("/proyectos/:id/pedidos", authenticateToken, requireRole("administrador
       try {
         const result = await queryAsync(sql, values);
         const pedidoId = result.insertId;
-        await insertPedidoDetallesRows(pedidoId, p.detalles);
+        await insertDetallesSegunFamilia(pedidoId, p.familia, p.detalles);
         okCount += 1;
         detailsLog.push({ index: idx + 1, pedido: pedidoNombre, ok: true, replaced: replacedExisting, error: null });
       } catch (err) {
