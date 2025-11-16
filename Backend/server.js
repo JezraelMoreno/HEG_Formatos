@@ -282,6 +282,8 @@ app.get("/pedidos/resumen", authenticateToken, requireRole("administrador"), asy
           SELECT id_pedido, fecha_registro FROM pedidos_detalles_miscelaneos
           UNION ALL
           SELECT id_pedido, fecha_registro FROM pedidos_detalles_cristal
+          UNION ALL
+          SELECT id_pedido, fecha_registro FROM pedidos_detalles_aluminio
         ) detalles
         GROUP BY id_pedido
       ) pd ON pd.id_pedido = p.id
@@ -403,6 +405,69 @@ app.post("/pedidos/:pedidoId/detalles-cristal", authenticateToken, requireRole("
   } catch (err) {
     console.error("Error guardando detalles de cristal:", err);
     return res.status(500).json({ success: false, message: "Error guardando detalles de cristal" });
+  }
+});
+
+app.get("/pedidos/:pedidoId/detalles-aluminio", authenticateToken, requireRole("administrador"), (req, res) => {
+  const pedidoId = Number(req.params.pedidoId);
+  if (!Number.isInteger(pedidoId) || pedidoId <= 0) {
+    return res.status(400).json({ success: false, message: "Pedido inválido" });
+  }
+  const sql = `SELECT id_detalle, id_pedido, numero_perfil, descripcion, medida_tramo, unidad, peso_kg_ml, perimetro_m2_ml, acabado, total_tramos, ml, kg, m2, importe
+               FROM pedidos_detalles_aluminio
+               WHERE id_pedido = ?
+               ORDER BY id_detalle ASC`;
+  db.query(sql, [pedidoId], (err, rows) => {
+    if (err) {
+      console.error("Error consultando detalles de aluminio:", err);
+      return res.status(500).json({ success: false, message: "Error consultando detalles de aluminio" });
+    }
+    const data = (rows || []).map((r) => ({
+      id_detalle: r.id_detalle,
+      id_pedido: r.id_pedido,
+      numero_perfil: r.numero_perfil,
+      descripcion: r.descripcion,
+      medida_tramo: decimalOrNull(r.medida_tramo),
+      unidad: r.unidad,
+      peso_kg_ml: decimalOrNull(r.peso_kg_ml),
+      perimetro_m2_ml: decimalOrNull(r.perimetro_m2_ml),
+      acabado: r.acabado,
+      total_tramos: r.total_tramos !== null && r.total_tramos !== undefined ? Number(r.total_tramos) : null,
+      ml: decimalOrNull(r.ml),
+      kg: decimalOrNull(r.kg),
+      m2: decimalOrNull(r.m2),
+      importe: Number(r.importe || 0),
+    }));
+    return res.json({ success: true, data });
+  });
+});
+
+app.post("/pedidos/:pedidoId/detalles-aluminio", authenticateToken, requireRole("administrador"), async (req, res) => {
+  try {
+    const pedidoId = Number(req.params.pedidoId);
+    if (!Number.isInteger(pedidoId) || pedidoId <= 0) {
+      return res.status(400).json({ success: false, message: "Pedido inválido" });
+    }
+    const { detalles, reemplazar = true } = req.body || {};
+    if (!Array.isArray(detalles) || detalles.length === 0) {
+      return res.status(400).json({ success: false, message: "No hay detalles de aluminio para registrar" });
+    }
+    const pedidoRows = await queryAsync("SELECT id FROM pedidos WHERE id = ? LIMIT 1", [pedidoId]);
+    if (!Array.isArray(pedidoRows) || pedidoRows.length === 0) {
+      return res.status(404).json({ success: false, message: "Pedido no encontrado" });
+    }
+    if (reemplazar !== false) {
+      await queryAsync("DELETE FROM pedidos_detalles_aluminio WHERE id_pedido = ?", [pedidoId]);
+    }
+    const inserted = await insertAluminioDetallesRows(pedidoId, detalles);
+    return res.json({
+      success: inserted > 0,
+      inserted,
+      message: `Detalles de aluminio registrados: ${inserted}`,
+    });
+  } catch (err) {
+    console.error("Error guardando detalles de aluminio:", err);
+    return res.status(500).json({ success: false, message: "Error guardando detalles de aluminio" });
   }
 });
 
@@ -695,6 +760,36 @@ function prepareCristalDetalleForInsert(detalle) {
   };
 }
 
+function prepareAluminioDetalleForInsert(detalle) {
+  const descripcion = normalizeTextValue(detalle?.descripcion) || "Detalle aluminio";
+  const numeroPerfil = normalizeTextValue(detalle?.numero_perfil) || null;
+  const medidaTramo = toFiniteNumber(detalle?.medida_tramo);
+  const unidad = normalizeTextValue(detalle?.unidad) || null;
+  const pesoKgMl = toFiniteNumber(detalle?.peso_kg_ml);
+  const perimetroM2Ml = toFiniteNumber(detalle?.perimetro_m2_ml);
+  const acabado = normalizeTextValue(detalle?.acabado) || null;
+  const totalTramosBase = toFiniteNumber(detalle?.total_tramos);
+  const totalTramos = totalTramosBase !== null ? Math.max(0, Math.round(totalTramosBase)) : null;
+  const ml = toFiniteNumber(detalle?.ml);
+  const kg = toFiniteNumber(detalle?.kg);
+  const m2 = toFiniteNumber(detalle?.m2);
+  const importe = toFiniteNumber(detalle?.importe) || 0;
+  return {
+    numero_perfil: numeroPerfil,
+    descripcion,
+    medida_tramo: medidaTramo,
+    unidad,
+    peso_kg_ml: pesoKgMl,
+    perimetro_m2_ml: perimetroM2Ml,
+    acabado,
+    total_tramos: totalTramos,
+    ml,
+    kg,
+    m2,
+    importe,
+  };
+}
+
 async function insertPedidoDetallesRows(pedidoId, detallesRaw) {
   if (!Array.isArray(detallesRaw) || detallesRaw.length === 0) return;
   const sqlDetalle = "INSERT INTO pedidos_detalles_miscelaneos (id_pedido, descripcion, unidad, medida, cantidad, precio_unitario, importe, clave, ml, acabado, kg, precio_x_kg) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
@@ -742,11 +837,44 @@ async function insertCristalDetallesRows(pedidoId, detallesRaw) {
   return inserted;
 }
 
+async function insertAluminioDetallesRows(pedidoId, detallesRaw) {
+  if (!Array.isArray(detallesRaw) || detallesRaw.length === 0) return 0;
+  const sqlDetalle = `INSERT INTO pedidos_detalles_aluminio
+    (id_pedido, numero_perfil, descripcion, medida_tramo, unidad, peso_kg_ml, perimetro_m2_ml, acabado, total_tramos, ml, kg, m2, importe)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+  let inserted = 0;
+  for (const detalleRaw of detallesRaw) {
+    const detalle = prepareAluminioDetalleForInsert(detalleRaw || {});
+    const values = [
+      pedidoId,
+      detalle.numero_perfil,
+      detalle.descripcion,
+      detalle.medida_tramo,
+      detalle.unidad,
+      detalle.peso_kg_ml,
+      detalle.perimetro_m2_ml,
+      detalle.acabado,
+      detalle.total_tramos,
+      detalle.ml,
+      detalle.kg,
+      detalle.m2,
+      detalle.importe,
+    ];
+    await queryAsync(sqlDetalle, values);
+    inserted += 1;
+  }
+  return inserted;
+}
+
 async function insertDetallesSegunFamilia(pedidoId, familia, detallesRaw) {
   if (!Array.isArray(detallesRaw) || detallesRaw.length === 0) return;
   const familiaVal = normalizeTextValue(familia).toUpperCase();
   if (familiaVal === "CR") {
     await insertCristalDetallesRows(pedidoId, detallesRaw);
+    return;
+  }
+  if (familiaVal === "AL") {
+    await insertAluminioDetallesRows(pedidoId, detallesRaw);
     return;
   }
   await insertPedidoDetallesRows(pedidoId, detallesRaw);

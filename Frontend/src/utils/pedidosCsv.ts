@@ -16,6 +16,12 @@ export type PedidoDetalleCsv = {
   m2_corte?: number;
   piezas?: number;
   m2_pedido?: number;
+  numero_perfil?: string;
+  medida_tramo?: number;
+  peso_kg_ml?: number;
+  perimetro_m2_ml?: number;
+  total_tramos?: number;
+  m2?: number;
 };
 
 export type PedidoCsv = {
@@ -143,16 +149,15 @@ const isDetailHeader = (row: string[]) => {
   if (!row.length) return false;
   const normalized = row.map(normalizeKey);
 
-  // 🔧 Ajuste: permitir encabezados como PZAS y similares para cantidad
   const hasCantidad =
     normalized.includes("CANTIDAD") ||
     normalized.includes("PIEZAS") ||
     normalized.includes("PZ") ||
     normalized.includes("PZAS") ||
     normalized.includes("PIEZA") ||
-    normalized.includes("PIEZ");
+    normalized.includes("PIEZ") ||
+    normalized.includes("TOTAL TRAMOS");
 
-  // 🔧 Ajuste: permitir PU / P U como precio unitario (ej. "P.U.")
   const hasUnitPrice =
     normalized.includes("P UNITARIO") ||
     normalized.includes("P UNIT") ||
@@ -167,13 +172,19 @@ const isDetailHeader = (row: string[]) => {
     normalized.includes("#") ||
     normalized.includes("NUMERO");
 
+  const hasAlColumns =
+    normalized.includes("PARTIDA") &&
+    normalized.includes("N° PERFIL") &&
+    normalized.includes("TOTAL TRAMOS") &&
+    normalized.includes("IMPORTE");
+
   return (
     hasNumero &&
     normalized.includes("DESCRIPCION") &&
     hasCantidad &&
     normalized.includes("IMPORTE") &&
-    hasUnitPrice
-  );
+    (hasUnitPrice || hasAlColumns)
+  ) || hasAlColumns;
 };
 
 const parseDetailBlock = (rows: string[][], headerIndex: number) => {
@@ -246,13 +257,52 @@ const parseDetailBlock = (rows: string[][], headerIndex: number) => {
     idxM2Pedido = headerKeys.indexOf("M2", idxM2Corte + 1);
   }
 
-  const cantidadCol = idxCantidad >= 0 ? idxCantidad : idxPiezas;
+  const idxNumeroPerfil = idx([
+    "N° PERFIL",
+    "NO PERFIL",
+    "NUMERO PERFIL",
+    "N PERFIL",
+    "NUMERO DE PERFIL",
+  ]);
+  const idxMedidaTramo = idx([
+    "MEDIDA (TRAMO)",
+    "MEDIDA TRAMO",
+    "MEDIDATRAMO",
+  ]);
+  const idxPesoKgMl = idx([
+    "PESO (KG/ML)",
+    "PESO KG/ML",
+    "PESO KG ML",
+    "PESO KG",
+    "PESO",
+  ]);
+  const idxPerimetro = idx([
+    "PERIM (M2/ML)",
+    "PERÍM (M2/ML)",
+    "PERIMETRO",
+    "PERIM",
+  ]);
+  const idxTotalTramos = idx([
+    "TOTAL TRAMOS",
+    "TOTAL TRAMO",
+    "TOT TRAMOS",
+    "TOTALTRAMOS",
+  ]);
+  const idxM2 = idx(["M2", "M 2", "M.2.", "METROS CUADRADOS"]);
+
+  const cantidadCol =
+    idxCantidad >= 0
+      ? idxCantidad
+      : idxPiezas >= 0
+        ? idxPiezas
+        : idxTotalTramos;
+  const isAlHeader = idxNumeroPerfil >= 0 && idxTotalTramos >= 0;
 
   if (
     idxDescripcion < 0 ||
     cantidadCol < 0 ||
-    idxPrecioUnitario < 0 ||
-    idxImporte < 0
+    idxImporte < 0 ||
+    (!isAlHeader && idxPrecioUnitario < 0)
   ) {
     return { detalles: [] as PedidoDetalleCsv[], nextIndex: headerIndex + 1 };
   }
@@ -289,7 +339,8 @@ const parseDetailBlock = (rows: string[][], headerIndex: number) => {
       idxPiezas >= 0
         ? toNumberValue(row[idxPiezas], { integer: true })
         : null;
-    const precioUnitario = toNumberValue(row[idxPrecioUnitario]);
+    const precioUnitario =
+      idxPrecioUnitario >= 0 ? toNumberValue(row[idxPrecioUnitario]) : null;
     const importe = toNumberValue(row[idxImporte]);
     const clave = cleanText(row[idxClave]);
     const unidad = cleanText(row[idxUnidad]);
@@ -303,6 +354,15 @@ const parseDetailBlock = (rows: string[][], headerIndex: number) => {
     const largo = toNumberValue(row[idxLargo]);
     const m2Corte = toNumberValue(row[idxM2Corte]);
     const m2Pedido = toNumberValue(row[idxM2Pedido]);
+    const numeroPerfil = cleanText(row[idxNumeroPerfil]);
+    const medidaTramo = toNumberValue(row[idxMedidaTramo]);
+    const pesoKgMl = toNumberValue(row[idxPesoKgMl]);
+    const perimetroM2Ml = toNumberValue(row[idxPerimetro]);
+    const totalTramosVal =
+      idxTotalTramos >= 0
+        ? toNumberValue(row[idxTotalTramos], { integer: true })
+        : null;
+    const m2Valor = toNumberValue(row[idxM2]);
 
     if (!descripcion && importe === null && cantidad === null) {
       i += 1;
@@ -323,12 +383,26 @@ const parseDetailBlock = (rows: string[][], headerIndex: number) => {
       precio_x_kg: precioKg ?? null,
     };
 
+    if (
+      detalle.precio_unitario === undefined &&
+      importe !== null &&
+      cantidad !== null &&
+      cantidad !== 0
+    ) {
+      detalle.precio_unitario = Number((importe / cantidad).toFixed(2));
+    }
     if (piezasValue !== null) detalle.piezas = piezasValue;
     if (claveModelo) detalle.clave_modelo = claveModelo;
     if (ancho !== null) detalle.ancho = ancho;
     if (largo !== null) detalle.largo = largo;
     if (m2Corte !== null) detalle.m2_corte = m2Corte;
     if (m2Pedido !== null) detalle.m2_pedido = m2Pedido;
+    if (numeroPerfil) detalle.numero_perfil = numeroPerfil;
+    if (medidaTramo !== null) detalle.medida_tramo = medidaTramo;
+    if (pesoKgMl !== null) detalle.peso_kg_ml = pesoKgMl;
+    if (perimetroM2Ml !== null) detalle.perimetro_m2_ml = perimetroM2Ml;
+    if (totalTramosVal !== null) detalle.total_tramos = totalTramosVal;
+    if (m2Valor !== null) detalle.m2 = m2Valor;
 
     detalles.push(detalle);
     i += 1;

@@ -366,7 +366,7 @@
 
 .pedido-detalle-table th:first-child,
 .pedido-detalle-table td:first-child {
-  width: 48px;
+  width: 20px;
   text-align: center;
 }
 

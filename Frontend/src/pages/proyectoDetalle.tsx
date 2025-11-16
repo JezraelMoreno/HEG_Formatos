@@ -35,6 +35,35 @@ type PedidoDetalleItem = {
   precio_x_kg?: number | null;
 };
 
+type PedidoDetalleCristalItem = {
+  id_detalle: number;
+  descripcion: string;
+  clave_modelo?: string | null;
+  ancho?: number | null;
+  largo?: number | null;
+  m2_corte?: number | null;
+  piezas: number;
+  m2_pedido?: number | null;
+  precio_unitario: number;
+  importe: number;
+};
+
+type PedidoDetalleAluminioItem = {
+  id_detalle: number;
+  descripcion: string;
+  numero_perfil?: string | null;
+  medida_tramo?: number | null;
+  unidad?: string | null;
+  peso_kg_ml?: number | null;
+  perimetro_m2_ml?: number | null;
+  acabado?: string | null;
+  total_tramos?: number | null;
+  ml?: number | null;
+  kg?: number | null;
+  m2?: number | null;
+  importe: number;
+};
+
 type Cobranza = {
   id_cobranza: number;
   id_proyecto: number;
@@ -186,12 +215,20 @@ export function ProyectoDetalle() {
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [pedidoSeleccionado, setPedidoSeleccionado] = useState<Pedido | null>(null);
   const [detallesPedido, setDetallesPedido] = useState<PedidoDetalleItem[]>([]);
+  const [detallesCristal, setDetallesCristal] = useState<PedidoDetalleCristalItem[]>([]);
+  const [detallesAluminio, setDetallesAluminio] = useState<PedidoDetalleAluminioItem[]>([]);
+  const [tipoDetallePedido, setTipoDetallePedido] = useState<"miscelaneos" | "cristal" | "aluminio">("miscelaneos");
   const [cargandoDetalles, setCargandoDetalles] = useState(false);
   const [detalleError, setDetalleError] = useState("");
-  const totalDetalles = useMemo(
-    () => detallesPedido.reduce((sum, det) => sum + Number(det.importe || 0), 0),
-    [detallesPedido]
-  );
+  const totalDetalles = useMemo(() => {
+    if (tipoDetallePedido === "cristal") {
+      return detallesCristal.reduce((sum, det) => sum + Number(det.importe || 0), 0);
+    }
+    if (tipoDetallePedido === "aluminio") {
+      return detallesAluminio.reduce((sum, det) => sum + Number(det.importe || 0), 0);
+    }
+    return detallesPedido.reduce((sum, det) => sum + Number(det.importe || 0), 0);
+  }, [detallesAluminio, detallesCristal, detallesPedido, tipoDetallePedido]);
 
   // filtros
   const [familiasSeleccionadas, setFamiliasSeleccionadas] = useState<string[]>([]);
@@ -421,52 +458,131 @@ export function ProyectoDetalle() {
   const cerrarModalDetalles = useCallback(() => {
     setPedidoSeleccionado(null);
     setDetallesPedido([]);
+    setDetallesCristal([]);
+    setDetallesAluminio([]);
     setDetalleError("");
   }, []);
 
   const abrirDetallesPedido = (pedido: Pedido) => {
     setPedidoSeleccionado(pedido);
     setDetallesPedido([]);
+    setDetallesCristal([]);
+    setDetallesAluminio([]);
     setDetalleError("");
+    const familia = (pedido.familia || "").trim().toUpperCase();
+    const esCristal = familia === "CR";
+    const esAluminio = familia === "AL";
+    setTipoDetallePedido(esCristal ? "cristal" : esAluminio ? "aluminio" : "miscelaneos");
     setCargandoDetalles(true);
     const cargar = async () => {
       try {
-        const res = await fetch(`http://localhost:3000/pedidos/${pedido.id}/detalles`, { headers: { ...authHeader() } });
+        const endpoint = esCristal ? "detalles-cristal" : esAluminio ? "detalles-aluminio" : "detalles";
+        const res = await fetch(`http://localhost:3000/pedidos/${pedido.id}/${endpoint}`, { headers: { ...authHeader() } });
         const data = await res.json().catch(() => ({}));
         if (res.ok && data?.success) {
-          const parsed: PedidoDetalleItem[] = (Array.isArray(data.data) ? data.data : []).map((det: any, index: number) => {
-            const descripcion = typeof det.descripcion === "string" ? det.descripcion.trim() : String(det.descripcion || "").trim();
-            const cleanString = (value: any) => {
-              if (value === null || value === undefined) return null;
-              const str = typeof value === "string" ? value : String(value);
-              const trimmed = str.trim();
-              return trimmed.length ? trimmed : null;
-            };
-            const toNumberValue = (value: any) => {
-              const num = Number(value);
-              return Number.isFinite(num) ? num : 0;
-            };
-            const toNullableNumber = (value: any) => {
-              if (value === null || value === undefined || value === "") return null;
-              const num = Number(value);
-              return Number.isFinite(num) ? num : null;
-            };
-            return {
-              id_detalle: typeof det.id_detalle === "number" ? det.id_detalle : index + 1,
-              descripcion: descripcion || `Detalle ${index + 1}`,
-              unidad: cleanString(det.unidad),
-              medida: cleanString(det.medida),
-              cantidad: toNumberValue(det.cantidad),
-              precio_unitario: toNumberValue(det.precio_unitario),
-              importe: toNumberValue(det.importe),
-              clave: cleanString(det.clave),
-              ml: toNullableNumber(det.ml),
-              acabado: cleanString(det.acabado),
-              kg: toNullableNumber(det.kg),
-              precio_x_kg: toNullableNumber(det.precio_x_kg),
-            };
-          });
-          setDetallesPedido(parsed);
+          const rows = Array.isArray(data.data) ? data.data : [];
+          if (esCristal) {
+            const parsedCristal: PedidoDetalleCristalItem[] = rows.map((det: any, index: number) => {
+              const descripcion = typeof det.descripcion === "string" ? det.descripcion.trim() : String(det.descripcion || "").trim();
+              const cleanString = (value: any) => {
+                if (value === null || value === undefined) return null;
+                const str = typeof value === "string" ? value : String(value);
+                const trimmed = str.trim();
+                return trimmed.length ? trimmed : null;
+              };
+              const toNumberValue = (value: any) => {
+                const num = Number(value);
+                return Number.isFinite(num) ? num : 0;
+              };
+              const toNullableNumber = (value: any) => {
+                if (value === null || value === undefined || value === "") return null;
+                const num = Number(value);
+                return Number.isFinite(num) ? num : null;
+              };
+              return {
+                id_detalle: typeof det.id_detalle === "number" ? det.id_detalle : index + 1,
+                descripcion: descripcion || `Detalle ${index + 1}`,
+                clave_modelo: cleanString(det.clave_modelo),
+                ancho: toNullableNumber(det.ancho),
+                largo: toNullableNumber(det.largo),
+                m2_corte: toNullableNumber(det.m2_corte),
+                piezas: toNumberValue(det.piezas),
+                m2_pedido: toNullableNumber(det.m2_pedido),
+                precio_unitario: toNumberValue(det.precio_unitario),
+                importe: toNumberValue(det.importe),
+              };
+            });
+            setDetallesCristal(parsedCristal);
+          } else if (esAluminio) {
+            const parsedAluminio: PedidoDetalleAluminioItem[] = rows.map((det: any, index: number) => {
+              const descripcion = typeof det.descripcion === "string" ? det.descripcion.trim() : String(det.descripcion || "").trim();
+              const cleanString = (value: any) => {
+                if (value === null || value === undefined) return null;
+                const str = typeof value === "string" ? value : String(value);
+                const trimmed = str.trim();
+                return trimmed.length ? trimmed : null;
+              };
+              const toNumberValue = (value: any) => {
+                const num = Number(value);
+                return Number.isFinite(num) ? num : 0;
+              };
+              const toNullableNumber = (value: any) => {
+                if (value === null || value === undefined || value === "") return null;
+                const num = Number(value);
+                return Number.isFinite(num) ? num : null;
+              };
+              return {
+                id_detalle: typeof det.id_detalle === "number" ? det.id_detalle : index + 1,
+                descripcion: descripcion || `Detalle ${index + 1}`,
+                numero_perfil: cleanString(det.numero_perfil),
+                medida_tramo: toNullableNumber(det.medida_tramo),
+                unidad: cleanString(det.unidad),
+                peso_kg_ml: toNullableNumber(det.peso_kg_ml),
+                perimetro_m2_ml: toNullableNumber(det.perimetro_m2_ml),
+                acabado: cleanString(det.acabado),
+                total_tramos: toNullableNumber(det.total_tramos),
+                ml: toNullableNumber(det.ml),
+                kg: toNullableNumber(det.kg),
+                m2: toNullableNumber(det.m2),
+                importe: toNumberValue(det.importe),
+              };
+            });
+            setDetallesAluminio(parsedAluminio);
+          } else {
+            const parsed: PedidoDetalleItem[] = rows.map((det: any, index: number) => {
+              const descripcion = typeof det.descripcion === "string" ? det.descripcion.trim() : String(det.descripcion || "").trim();
+              const cleanString = (value: any) => {
+                if (value === null || value === undefined) return null;
+                const str = typeof value === "string" ? value : String(value);
+                const trimmed = str.trim();
+                return trimmed.length ? trimmed : null;
+              };
+              const toNumberValue = (value: any) => {
+                const num = Number(value);
+                return Number.isFinite(num) ? num : 0;
+              };
+              const toNullableNumber = (value: any) => {
+                if (value === null || value === undefined || value === "") return null;
+                const num = Number(value);
+                return Number.isFinite(num) ? num : null;
+              };
+              return {
+                id_detalle: typeof det.id_detalle === "number" ? det.id_detalle : index + 1,
+                descripcion: descripcion || `Detalle ${index + 1}`,
+                unidad: cleanString(det.unidad),
+                medida: cleanString(det.medida),
+                cantidad: toNumberValue(det.cantidad),
+                precio_unitario: toNumberValue(det.precio_unitario),
+                importe: toNumberValue(det.importe),
+                clave: cleanString(det.clave),
+                ml: toNullableNumber(det.ml),
+                acabado: cleanString(det.acabado),
+                kg: toNullableNumber(det.kg),
+                precio_x_kg: toNullableNumber(det.precio_x_kg),
+              };
+            });
+            setDetallesPedido(parsed);
+          }
         } else {
           setDetalleError(data?.message || "No se pudieron cargar los detalles del pedido");
         }
@@ -783,60 +899,168 @@ export function ProyectoDetalle() {
               {detalleError && <p className="pedido-modal-error">{detalleError}</p>}
               {cargandoDetalles ? (
                 <p className="pedido-modal-status">Cargando detalles...</p>
-              ) : detallesPedido.length === 0 ? (
+              ) : (
+                tipoDetallePedido === "cristal"
+                  ? detallesCristal.length === 0
+                  : tipoDetallePedido === "aluminio"
+                    ? detallesAluminio.length === 0
+                    : detallesPedido.length === 0
+              ) ? (
                 <p className="pedido-modal-status">Este pedido no tiene detalles registrados.</p>
               ) : (
                 <>
                   <div className="pedido-detalle-ledger">
                     <div className="pedido-detalle-table-wrapper">
-                      <table className="pedido-detalle-table">
-                        <thead>
-                          <tr>
-                            <th>#</th>
-                            <th>Descripción</th>
-                            <th>Unidad</th>
-                            <th>Medida</th>
-                            <th>Cantidad</th>
-                            <th>P. Unitario</th>
-                            <th>Importe</th>
-                            <th>Clave</th>
-                            <th>M.L.</th>
-                            <th>Acabado</th>
-                            <th>KG</th>
-                            <th>Precio x KG</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {detallesPedido.map((detalle, index) => (
-                            <tr key={`${detalle.id_detalle}-${index}`}>
-                              <td>{index + 1}</td>
-                              <td>{detalle.descripcion || "-"}</td>
-                              <td>{detalle.unidad || "-"}</td>
-                              <td>{detalle.medida || "-"}</td>
-                              <td>{Number(detalle.cantidad || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
-                              <td>{formatCurrency(detalle.precio_unitario)}</td>
-                              <td>{formatCurrency(detalle.importe)}</td>
-                              <td>{detalle.clave || "-"}</td>
-                              <td>
-                                {detalle.ml === null || detalle.ml === undefined
-                                  ? "-"
-                                  : Number(detalle.ml).toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                              </td>
-                              <td>{detalle.acabado || "-"}</td>
-                              <td>
-                                {detalle.kg === null || detalle.kg === undefined
-                                  ? "-"
-                                  : Number(detalle.kg).toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                              </td>
-                              <td>
-                                {detalle.precio_x_kg === null || detalle.precio_x_kg === undefined
-                                  ? "-"
-                                  : formatCurrency(detalle.precio_x_kg)}
-                              </td>
+                      {tipoDetallePedido === "cristal" ? (
+                        <table className="pedido-detalle-table">
+                          <thead>
+                            <tr>
+                              <th>No #</th>
+                              <th>Descripción</th>
+                              <th>Clave/Modelo</th>
+                              <th>Ancho</th>
+                              <th>Largo</th>
+                              <th>M2 corte</th>
+                              <th>Piezas</th>
+                              <th>M2 pedido</th>
+                              <th>P. Unitario</th>
+                              <th>Importe (MXN)</th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                          </thead>
+                          <tbody>
+                            {detallesCristal.map((detalle, index) => (
+                              <tr key={`${detalle.id_detalle}-${index}`}>
+                                <td>{index + 1}</td>
+                                <td>{detalle.descripcion || "-"}</td>
+                                <td>{detalle.clave_modelo || "-"}</td>
+                                <td>{detalle.ancho === null || detalle.ancho === undefined ? "-" : Number(detalle.ancho).toLocaleString(undefined, { maximumFractionDigits: 3 })}</td>
+                                <td>{detalle.largo === null || detalle.largo === undefined ? "-" : Number(detalle.largo).toLocaleString(undefined, { maximumFractionDigits: 3 })}</td>
+                                <td>{detalle.m2_corte === null || detalle.m2_corte === undefined ? "-" : Number(detalle.m2_corte).toLocaleString(undefined, { maximumFractionDigits: 3 })}</td>
+                                <td>{Number(detalle.piezas || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                                <td>{detalle.m2_pedido === null || detalle.m2_pedido === undefined ? "-" : Number(detalle.m2_pedido).toLocaleString(undefined, { maximumFractionDigits: 3 })}</td>
+                                <td>{formatCurrency(detalle.precio_unitario)}</td>
+                                <td>{formatCurrency(detalle.importe)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      ) : tipoDetallePedido === "aluminio" ? (
+                        <table className="pedido-detalle-table">
+                          <thead>
+                            <tr>
+                              <th>No #</th>
+                              <th>Descripción</th>
+                              <th>N° Perfil</th>
+                              <th>Medida (tramo)</th>
+                              <th>Unidad</th>
+                              <th>Peso (KG/ML)</th>
+                              <th>Perím (M2/ML)</th>
+                              <th>Acabado</th>
+                              <th>Total tramos</th>
+                              <th>M.L.</th>
+                              <th>KG</th>
+                              <th>M2</th>
+                              <th>Importe (USD)</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {detallesAluminio.map((detalle, index) => (
+                              <tr key={`${detalle.id_detalle}-${index}`}>
+                                <td>{index + 1}</td>
+                                <td>{detalle.descripcion || "-"}</td>
+                                <td>{detalle.numero_perfil || "-"}</td>
+                                <td>
+                                  {detalle.medida_tramo === null || detalle.medida_tramo === undefined
+                                    ? "-"
+                                    : Number(detalle.medida_tramo).toLocaleString(undefined, { maximumFractionDigits: 3 })}
+                                </td>
+                                <td>{detalle.unidad || "-"}</td>
+                                <td>
+                                  {detalle.peso_kg_ml === null || detalle.peso_kg_ml === undefined
+                                    ? "-"
+                                    : Number(detalle.peso_kg_ml).toLocaleString(undefined, { maximumFractionDigits: 3 })}
+                                </td>
+                                <td>
+                                  {detalle.perimetro_m2_ml === null || detalle.perimetro_m2_ml === undefined
+                                    ? "-"
+                                    : Number(detalle.perimetro_m2_ml).toLocaleString(undefined, { maximumFractionDigits: 3 })}
+                                </td>
+                                <td>{detalle.acabado || "-"}</td>
+                                <td>
+                                  {detalle.total_tramos === null || detalle.total_tramos === undefined
+                                    ? "-"
+                                    : Number(detalle.total_tramos).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                </td>
+                                <td>
+                                  {detalle.ml === null || detalle.ml === undefined
+                                    ? "-"
+                                    : Number(detalle.ml).toLocaleString(undefined, { maximumFractionDigits: 3 })}
+                                </td>
+                                <td>
+                                  {detalle.kg === null || detalle.kg === undefined
+                                    ? "-"
+                                    : Number(detalle.kg).toLocaleString(undefined, { maximumFractionDigits: 3 })}
+                                </td>
+                                <td>
+                                  {detalle.m2 === null || detalle.m2 === undefined
+                                    ? "-"
+                                    : Number(detalle.m2).toLocaleString(undefined, { maximumFractionDigits: 3 })}
+                                </td>
+                                <td>{formatCurrency(detalle.importe)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      ) : (
+                        <table className="pedido-detalle-table">
+                          <thead>
+                            <tr>
+                              <th>No #</th>
+                              <th>Descripción</th>
+                              <th>Unidad</th>
+                              <th>Medida</th>
+                              <th>Cantidad</th>
+                              <th>P. Unitario</th>
+                              <th>Importe (MXN)</th>
+                              <th>Clave</th>
+                              <th>M.L.</th>
+                              <th>Acabado</th>
+                              <th>KG</th>
+                              <th>Precio x KG</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {detallesPedido.map((detalle, index) => (
+                              <tr key={`${detalle.id_detalle}-${index}`}>
+                                <td>{index + 1}</td>
+                                <td>{detalle.descripcion || "-"}</td>
+                                <td>{detalle.unidad || "-"}</td>
+                                <td>{detalle.medida || "-"}</td>
+                                <td>{Number(detalle.cantidad || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+                                <td>{formatCurrency(detalle.precio_unitario)}</td>
+                                <td>{formatCurrency(detalle.importe)}</td>
+                                <td>{detalle.clave || "-"}</td>
+                                <td>
+                                  {detalle.ml === null || detalle.ml === undefined
+                                    ? "-"
+                                    : Number(detalle.ml).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                                </td>
+                                <td>{detalle.acabado || "-"}</td>
+                                <td>
+                                  {detalle.kg === null || detalle.kg === undefined
+                                    ? "-"
+                                    : Number(detalle.kg).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                                </td>
+                                <td>
+                                  {detalle.precio_x_kg === null || detalle.precio_x_kg === undefined
+                                    ? "-"
+                                    : formatCurrency(detalle.precio_x_kg)}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
                     </div>
                     <div className="pedido-detalle-summary">
                       <div className="pedido-detalle-summary-cell">

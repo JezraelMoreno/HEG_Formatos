@@ -79,6 +79,35 @@ CREATE TABLE IF NOT EXISTS pedidos_detalles_miscelaneos (
 );
 
 ------------------------------------------------------------
+-- Tabla pedidos_detalles_aluminio
+------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS pedidos_detalles_aluminio (
+  id_detalle INT AUTO_INCREMENT PRIMARY KEY,
+  id_pedido INT NOT NULL,
+
+  numero_perfil VARCHAR(50),              -- N° PERFIL
+  descripcion VARCHAR(255) NOT NULL,      -- DESCRIPCION
+  medida_tramo DECIMAL(10,3),             -- MEDIDA (TRAMO)
+  unidad VARCHAR(50),                     -- UNIDAD (ej. TRAMO)
+
+  peso_kg_ml DECIMAL(10,3),               -- PESO (KG/ML)
+  perimetro_m2_ml DECIMAL(10,3),          -- PERÍM (M2/ML)
+  acabado VARCHAR(255),                   -- ACABADO
+
+  total_tramos INT,                       -- TOTAL TRAMOS
+  ml DECIMAL(15,3),                       -- M.L.
+  kg DECIMAL(15,3),                       -- KG
+  m2 DECIMAL(15,3),                       -- M2
+
+  importe DECIMAL(15,2) DEFAULT 0.00,     -- IMPORTE (se captura directo)
+
+  fecha_registro DATE DEFAULT (CURRENT_DATE()),
+
+  FOREIGN KEY (id_pedido) REFERENCES pedidos(id)
+    ON DELETE CASCADE
+);
+
+------------------------------------------------------------
 -- Tabla pedidos_detalles_cristal
 ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS pedidos_detalles_cristal (
@@ -190,7 +219,6 @@ BEGIN
   WHERE id = OLD.id_pedido;
 END;
 //
-
 ------------------------------------------------------------
 -- TRIGGERS PARA CRISTAL
 ------------------------------------------------------------
@@ -199,7 +227,7 @@ CREATE TRIGGER trg_cristal_before_insert
 BEFORE INSERT ON pedidos_detalles_cristal
 FOR EACH ROW
 BEGIN
-  SET NEW.importe = NEW.piezas * NEW.precio_unitario;
+  SET NEW.importe = NEW.m2_pedido * NEW.precio_unitario;
 END;
 //
 
