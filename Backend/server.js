@@ -737,6 +737,11 @@ function parseSituacionEspecialInfo(texto) {
   return { tipo: esAmort ? "amortizacion" : "traspaso", porcentaje: pctSeguro };
 }
 
+function isSalidaTlatilco(texto) {
+  const val = normalizeTextValue(texto).toUpperCase();
+  return val.includes("SALIDA TLATILCO");
+}
+
 function calcularSubtotalDetalles(detalles = []) {
   if (!Array.isArray(detalles) || !detalles.length) return 0;
   return detalles.reduce((sum, det) => {
@@ -765,13 +770,14 @@ async function calcularImporteDesdeDetalles(row, { includeSubtotal = false } = {
   const sumRows = await queryAsync(`SELECT SUM(importe) AS subtotal FROM ${table} WHERE id_pedido = ?`, [pedidoId]);
   const subtotal = Number(sumRows?.[0]?.subtotal || 0);
   const subtotalBase = Number(subtotal.toFixed(2));
+  const salidaTlatilco = isSalidaTlatilco(row?.situaciones_especiales);
   let pct = Number(row?.porcentaje_descuento || 0);
   if (pct > 0 && pct <= 1) pct = pct * 100;
   if (!Number.isFinite(pct) || pct < 0) pct = 0;
   const descuentoMonto = subtotalBase * (pct / 100);
   const subtotalConDesc = subtotalBase - descuentoMonto;
   const ivaMonto = subtotalConDesc * 0.16;
-  const total = Number(Math.max(0, subtotalConDesc + ivaMonto).toFixed(2));
+  const total = salidaTlatilco ? 0 : Number(Math.max(0, subtotalConDesc + ivaMonto).toFixed(2));
   if (includeSubtotal) return { subtotal: subtotalBase, total };
   return total;
 }
@@ -1023,6 +1029,7 @@ app.post("/proyectos/:id/pedidos", authenticateToken, requireRole("administrador
           porcentajeDescuento = porcentaje;
         }
       }
+      const tieneSalidaTlatilco = isSalidaTlatilco(p.situaciones_especiales);
       const subtotalDetalles = calcularSubtotalDetalles(p.detalles);
       const importePedido = toFiniteNumber(p.importe);
       const baseSinIva =
@@ -1035,7 +1042,7 @@ app.post("/proyectos/:id/pedidos", authenticateToken, requireRole("administrador
       const descuentoMonto = subtotalBase * ((porcentajeDescuento || 0) / 100);
       const subtotalConDesc = subtotalBase - descuentoMonto;
       const ivaMonto = subtotalConDesc * 0.16;
-      const importeTotal = Number(Math.max(0, subtotalConDesc + ivaMonto).toFixed(2));
+      const importeTotal = tieneSalidaTlatilco ? 0 : Number(Math.max(0, subtotalConDesc + ivaMonto).toFixed(2));
 
       let replacedExisting = false;
       try {
