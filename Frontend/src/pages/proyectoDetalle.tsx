@@ -94,6 +94,15 @@ type MultiSelectFilterProps = {
   disabled?: boolean;
 };
 
+type ProyectoInfo = {
+  id_proyecto: number;
+  nombre: string;
+  fecha_proyecto: string;
+  presupuesto?: number;
+  total_pedidos?: number;
+  presupuesto_disponible?: number;
+};
+
 const formatCurrency = (value: number | null | undefined) =>
   `$${Number(value ?? 0).toLocaleString(undefined, {
     minimumFractionDigits: 2,
@@ -205,8 +214,19 @@ function MultiSelectFilter({
 export function ProyectoDetalle() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { state } = useLocation() as { state?: { nombre?: string; fecha?: string } };
+  const { state } = useLocation() as { state?: { nombre?: string; fecha?: string; presupuesto?: number; presupuesto_disponible?: number } };
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [proyectoInfo, setProyectoInfo] = useState<ProyectoInfo | null>(() => {
+    if (!state) return null;
+    return {
+      id_proyecto: Number(id) || 0,
+      nombre: state.nombre || "Proyecto",
+      fecha_proyecto: state.fecha || "",
+      presupuesto: state.presupuesto,
+      presupuesto_disponible: state.presupuesto_disponible,
+    };
+  });
+  const [cargandoProyecto, setCargandoProyecto] = useState(false);
 
   const [subiendo, setSubiendo] = useState(false);
   const [mensaje, setMensaje] = useState<string>("");
@@ -229,6 +249,9 @@ export function ProyectoDetalle() {
     }
     return detallesPedido.reduce((sum, det) => sum + Number(det.importe || 0), 0);
   }, [detallesAluminio, detallesCristal, detallesPedido, tipoDetallePedido]);
+  const totalPedidosProyecto = proyectoInfo?.total_pedidos ?? 0;
+  const presupuestoAsignado = proyectoInfo?.presupuesto ?? state?.presupuesto ?? 0;
+  const presupuestoDisponible = presupuestoAsignado - totalPedidosProyecto;
 
   // filtros
   const [familiasSeleccionadas, setFamiliasSeleccionadas] = useState<string[]>([]);
@@ -241,7 +264,7 @@ export function ProyectoDetalle() {
   const [conceptos, setConceptos] = useState<string[]>([]);
   const [fecha, setFecha] = useState<string>("");
 
-  const nombreProyecto = state?.nombre || "Proyecto";
+  const nombreProyecto = proyectoInfo?.nombre || state?.nombre || "Proyecto";
   const role = (getRole() || '').toLowerCase();
   const isAdmin = role === 'administrador';
 
@@ -306,6 +329,7 @@ export function ProyectoDetalle() {
       } else {
         setMensaje(data?.message || "Pedidos cargados correctamente");
         await cargarPedidos();
+        await cargarProyecto();
       }
     } catch (_) {
       setError("No se pudo procesar los archivos CSV");
@@ -375,9 +399,27 @@ export function ProyectoDetalle() {
       setCargandoCobranza(false);
     }
   }, [id]);
+  const cargarProyecto = useCallback(async () => {
+    if (!id) return;
+    setCargandoProyecto(true);
+    try {
+      const res = await fetch(`http://localhost:3000/proyectos/${id}`, { headers: { ...authHeader() } });
+      const data = await res.json();
+      if (res.ok && data?.success) {
+        setProyectoInfo(data.data as ProyectoInfo);
+      } else {
+        setError(data?.message || "Error cargando proyecto");
+      }
+    } catch (_) {
+      setError("Error de conexion al cargar proyecto");
+    } finally {
+      setCargandoProyecto(false);
+    }
+  }, [id]);
 
   useEffect(() => {
     if (!isTokenValid(getToken())) { navigate("/"); return; }
+    cargarProyecto();
     if (isAdmin) {
       cargarPedidos();
     } else {
@@ -385,7 +427,8 @@ export function ProyectoDetalle() {
       setMensaje("");
       setError("");
     }
-  }, [cargarPedidos, navigate, isAdmin]);
+    cargarCobranza();
+  }, [cargarPedidos, cargarProyecto, cargarCobranza, navigate, isAdmin]);
 
   useEffect(() => {
     const combinar = (prev: string[], valores: (string | null | undefined)[], adicionales: string[] = []) => {
@@ -596,14 +639,6 @@ export function ProyectoDetalle() {
   };
 
   useEffect(() => {
-    if (!isTokenValid(getToken())) { navigate("/"); return; }
-    if (isAdmin) {
-      cargarPedidos();
-    }
-    cargarCobranza();
-  }, [cargarPedidos, cargarCobranza, navigate, isAdmin]);
-
-  useEffect(() => {
     if (!pedidoSeleccionado) return;
     const handleKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -791,6 +826,24 @@ export function ProyectoDetalle() {
       </header>
 
       <main className="detalle-contenido">
+        <div className="presupuesto-summary">
+          <div className="presupuesto-card">
+            <span>Presupuesto asignado</span>
+            <strong>{formatCurrency(presupuestoAsignado)}</strong>
+            <small>Definido al crear el proyecto</small>
+          </div>
+          <div className="presupuesto-card">
+            <span>Total de pedidos</span>
+            <strong>{formatCurrency(totalPedidosProyecto)}</strong>
+            <small>Aluminio, cristal y misceláneos</small>
+          </div>
+          <div className={`presupuesto-card ${presupuestoDisponible < 0 ? "presupuesto-alerta" : ""}`}>
+            <span>Presupuesto disponible</span>
+            <strong>{formatCurrency(presupuestoDisponible)}</strong>
+            <small>{cargandoProyecto ? "Actualizando..." : "Se descuenta automáticamente de los pedidos"}</small>
+          </div>
+        </div>
+
         {mensaje && <p className="alert success">{mensaje}</p>}
         {error && <p className="alert error">{error}</p>}
         {!isAdmin ? null : (

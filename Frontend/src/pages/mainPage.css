@@ -276,6 +276,13 @@
   flex-direction: column;
   gap: 4px;
 }
+.presupuesto-resumen {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: #0b2f4a;
+}
 .item-proyecto .nombre {
   font-weight: 600;
 }

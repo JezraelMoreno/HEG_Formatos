@@ -11,6 +11,41 @@
   gap: 12px;
   padding: 16px 20px;
 }
+.presupuesto-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  padding: 0 20px 12px;
+}
+.presupuesto-card {
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 12px;
+  padding: 12px 14px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.05);
+}
+.presupuesto-card span {
+  display: block;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #475569;
+}
+.presupuesto-card strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 1.25rem;
+  color: #0f172a;
+}
+.presupuesto-card small {
+  display: block;
+  margin-top: 4px;
+  color: #64748b;
+}
+.presupuesto-alerta {
+  border-color: #b3261e;
+  box-shadow: 0 8px 18px rgba(179, 38, 30, 0.12);
+}
 
 .detalle-titulo {
   margin: 0;

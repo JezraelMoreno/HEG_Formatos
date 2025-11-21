@@ -10,6 +10,9 @@ type Proyecto = {
   id_proyecto: number;
   nombre: string;
   fecha_proyecto: string; // formato YYYY-MM-DD
+  presupuesto: number;
+  total_pedidos?: number;
+  presupuesto_disponible?: number;
 };
 
 type PedidoResumen = {
@@ -26,6 +29,9 @@ const getTodayISO = () => {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 };
+
+const formatCurrency = (value: number | null | undefined) =>
+  `$${Number(value ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 const TrashIcon = () => (
   <svg
@@ -78,6 +84,7 @@ export function MainPage() {
   const [modalAbierto, setModalAbierto] = useState(false);
   const [nombre, setNombre] = useState("");
   const [fecha, setFecha] = useState("");
+  const [presupuesto, setPresupuesto] = useState("");
   const [proyectoAEliminar, setProyectoAEliminar] = useState<Proyecto | null>(null);
   const [confirmacionProyecto, setConfirmacionProyecto] = useState<string>("");
   const [eliminandoProyecto, setEliminandoProyecto] = useState(false);
@@ -131,13 +138,16 @@ export function MainPage() {
     setModalAbierto(false);
     setNombre("");
     setFecha("");
+    setPresupuesto("");
     setError("");
   };
 
   const crearProyecto = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!nombre || !fecha) {
-      setError("Completa nombre y fecha");
+    const presupuestoNum = Number(presupuesto);
+    const presupuestoNoVacio = presupuesto.trim() !== "";
+    if (!nombre || !fecha || !presupuestoNoVacio || !Number.isFinite(presupuestoNum) || presupuestoNum < 0) {
+      setError("Completa nombre, fecha y un presupuesto válido");
       return;
     }
     try {
@@ -145,7 +155,7 @@ export function MainPage() {
       const res = await fetch("http://localhost:3000/proyectos", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeader() },
-        body: JSON.stringify({ nombre, fecha_proyecto: fecha }),
+        body: JSON.stringify({ nombre, fecha_proyecto: fecha, presupuesto: presupuestoNum }),
       });
       const data = await res.json();
       if (res.status === 201 && data.success) {
@@ -469,19 +479,30 @@ export function MainPage() {
                   <li
                     key={p.id_proyecto}
                     className="item-proyecto"
-                    onClick={() =>
-                      navigate(`/proyecto/${p.id_proyecto}`, {
-                        state: { nombre: p.nombre, fecha: p.fecha_proyecto },
-                      })
-                    }
-                    style={{ cursor: "pointer" }}
-                  >
-                    <div className="proyecto-info">
-                      <span className="nombre">{p.nombre}</span>
-                      <span className="fecha">{p.fecha_proyecto}</span>
+                  onClick={() =>
+                    navigate(`/proyecto/${p.id_proyecto}`, {
+                      state: {
+                        nombre: p.nombre,
+                        fecha: p.fecha_proyecto,
+                        presupuesto: p.presupuesto,
+                        presupuesto_disponible: p.presupuesto_disponible,
+                      },
+                    })
+                  }
+                  style={{ cursor: "pointer" }}
+                >
+                  <div className="proyecto-info">
+                    <span className="nombre">{p.nombre}</span>
+                    <span className="fecha">{p.fecha_proyecto}</span>
+                    <div className="presupuesto-resumen">
+                      <span>Presupuesto: {formatCurrency(p.presupuesto)}</span>
+                      <span>
+                        Disponible: {formatCurrency((p.presupuesto_disponible ?? (p.presupuesto - (p.total_pedidos || 0))))}
+                      </span>
                     </div>
-                    {isAdmin && (
-                      <button
+                  </div>
+                  {isAdmin && (
+                    <button
                         type="button"
                         className="icon-button trash-button"
                         aria-label={`Eliminar proyecto ${p.nombre}`}
@@ -589,6 +610,16 @@ export function MainPage() {
                 type="date"
                 value={fecha}
                 onChange={(e) => setFecha(e.target.value)}
+                required
+              />
+              <label>Presupuesto</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={presupuesto}
+                onChange={(e) => setPresupuesto(e.target.value)}
+                placeholder="Presupuesto asignado"
                 required
               />
               <div className="modal-actions">

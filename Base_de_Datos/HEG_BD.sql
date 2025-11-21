@@ -18,7 +18,8 @@ CREATE TABLE IF NOT EXISTS usuarios (
 CREATE TABLE IF NOT EXISTS proyectos (
   id_proyecto INT AUTO_INCREMENT PRIMARY KEY,
   nombre VARCHAR(50),
-  fecha_proyecto DATE
+  fecha_proyecto DATE,
+  presupuesto DECIMAL (15,2) NOT NULL
 );
 
 ------------------------------------------------------------

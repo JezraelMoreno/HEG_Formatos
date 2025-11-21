@@ -136,43 +136,49 @@ function authenticateToken(req, res, next) {
 }
 
 // Proyectos - listar
-app.get("/proyectos", authenticateToken, (req, res) => {
-  const query =
-    "SELECT id_proyecto, nombre, fecha_proyecto FROM proyectos ORDER BY id_proyecto DESC";
-  db.query(query, (err, results) => {
-    if (err) {
-      console.error("Error consultando proyectos:", err);
-      return res
-        .status(500)
-        .json({ success: false, message: "Error interno del servidor" });
-    }
+app.get("/proyectos", authenticateToken, async (req, res) => {
+  try {
+    const query = `
+      SELECT
+        p.id_proyecto,
+        p.nombre,
+        p.fecha_proyecto,
+        p.presupuesto,
+        COALESCE(SUM(pe.importe_total), 0) AS total_pedidos,
+        p.presupuesto - COALESCE(SUM(pe.importe_total), 0) AS presupuesto_disponible
+      FROM proyectos p
+      LEFT JOIN pedidos pe ON pe.id_proyecto = p.id_proyecto
+      GROUP BY p.id_proyecto, p.nombre, p.fecha_proyecto, p.presupuesto
+      ORDER BY p.id_proyecto DESC
+    `;
+    const results = await queryAsync(query);
     res.json({ success: true, data: results });
-  });
+  } catch (err) {
+    console.error("Error consultando proyectos:", err);
+    res.status(500).json({ success: false, message: "Error interno del servidor" });
+  }
 });
 
 // Proyectos - crear
-app.post("/proyectos", authenticateToken, (req, res) => {
-  const { nombre, fecha_proyecto } = req.body;
-  if (!nombre || !fecha_proyecto) {
-    return res
-      .status(400)
-      .json({ success: false, message: "Faltan datos" });
-  }
-
-  const query =
-    "INSERT INTO proyectos (nombre, fecha_proyecto) VALUES (?, ?)";
-  db.query(query, [nombre, fecha_proyecto], (err, result) => {
-    if (err) {
-      console.error("Error creando proyecto:", err);
-      return res
-        .status(500)
-        .json({ success: false, message: "Error interno del servidor" });
+app.post("/proyectos", authenticateToken, async (req, res) => {
+  try {
+    const { nombre, fecha_proyecto, presupuesto } = req.body;
+    const presupuestoNum = Number(presupuesto);
+    if (!nombre || !fecha_proyecto || !Number.isFinite(presupuestoNum) || presupuestoNum < 0) {
+      return res.status(400).json({ success: false, message: "Faltan datos o presupuesto inválido" });
     }
+
+    const query =
+      "INSERT INTO proyectos (nombre, fecha_proyecto, presupuesto) VALUES (?, ?, ?)";
+    const result = await queryAsync(query, [nombre, fecha_proyecto, presupuestoNum]);
     res.status(201).json({
       success: true,
-      data: { id_proyecto: result.insertId, nombre, fecha_proyecto },
+      data: { id_proyecto: result.insertId, nombre, fecha_proyecto, presupuesto: presupuestoNum },
     });
-  });
+  } catch (err) {
+    console.error("Error creando proyecto:", err);
+    res.status(500).json({ success: false, message: "Error interno del servidor" });
+  }
 });
 
 app.delete("/proyectos/:id", authenticateToken, requireRole("administrador"), (req, res) => {
@@ -205,22 +211,32 @@ app.delete("/proyectos/:id", authenticateToken, requireRole("administrador"), (r
 });
 
 // Proyectos - obtener uno por id
-app.get("/proyectos/:id", authenticateToken, (req, res) => {
-  const { id } = req.params;
-  const query =
-    "SELECT id_proyecto, nombre, fecha_proyecto FROM proyectos WHERE id_proyecto = ?";
-  db.query(query, [id], (err, results) => {
-    if (err) {
-      console.error("Error consultando proyecto:", err);
-      return res
-        .status(500)
-        .json({ success: false, message: "Error interno del servidor" });
-    }
+app.get("/proyectos/:id", authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const query = `
+      SELECT
+        p.id_proyecto,
+        p.nombre,
+        p.fecha_proyecto,
+        p.presupuesto,
+        COALESCE(SUM(pe.importe_total), 0) AS total_pedidos,
+        p.presupuesto - COALESCE(SUM(pe.importe_total), 0) AS presupuesto_disponible
+      FROM proyectos p
+      LEFT JOIN pedidos pe ON pe.id_proyecto = p.id_proyecto
+      WHERE p.id_proyecto = ?
+      GROUP BY p.id_proyecto, p.nombre, p.fecha_proyecto, p.presupuesto
+      LIMIT 1
+    `;
+    const results = await queryAsync(query, [id]);
     if (!results || results.length === 0) {
       return res.status(404).json({ success: false, message: "No encontrado" });
     }
     res.json({ success: true, data: results[0] });
-  });
+  } catch (err) {
+    console.error("Error consultando proyecto:", err);
+    res.status(500).json({ success: false, message: "Error interno del servidor" });
+  }
 });
 
 // Pedidos - listar por proyecto
