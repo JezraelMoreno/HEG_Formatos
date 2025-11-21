@@ -236,7 +236,7 @@ const parseDetailBlock = (rows: string[][], headerIndex: number) => {
   const idxAncho = idx(["ANCHO"]);
   const idxLargo = idx(["LARGO", "ALTO"]);
 
-  // 🔧 M2 CORTE / M2 PEDIDO:
+  //  M2 CORTE / M2 PEDIDO:
   // primero intentamos con alias; si no, usamos las dos columnas "M2" tal como vienen
   let idxM2Corte = idx([
     "M2 CORTE",

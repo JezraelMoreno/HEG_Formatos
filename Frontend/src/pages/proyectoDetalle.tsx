@@ -539,7 +539,7 @@ export function ProyectoDetalle() {
     setDetalleError("");
     const familia = (pedido.familia || "").trim().toUpperCase();
     const esCristal = familia === "CR";
-    const esAluminio = familia === "AL";
+    const esAluminio = familia === "AL" || familia === "MQAL";
     setTipoDetallePedido(esCristal ? "cristal" : esAluminio ? "aluminio" : "miscelaneos");
     setCargandoDetalles(true);
     const cargar = async () => {
@@ -1038,7 +1038,7 @@ export function ProyectoDetalle() {
                               <th>M.L.</th>
                               <th>KG</th>
                               <th>M2</th>
-                              <th>Importe (USD)</th>
+                              <th>Importe (MXN)</th>
                             </tr>
                           </thead>
                           <tbody>
