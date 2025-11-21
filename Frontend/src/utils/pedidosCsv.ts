@@ -148,8 +148,37 @@ const DETAIL_SUMMARY_TOKENS = new Set([
 
 const isDetailHeader = (row: string[]) => {
   if (!row.length) return false;
+
   const normalized = row.map(normalizeKey);
 
+  //  PRIMER FILTRO: si contiene tokens que son claramente de resumen, descartar
+  const summaryBlacklist = [
+    "IMPORTE ALUMINIO",
+    "AMORTIZACION",
+    "SUMA",
+    "TOTAL",
+    "IVA",
+    "APROBADO",
+    "ANTICIPO",
+    "TOTAL A PAGAR",
+  ];
+
+  if (summaryBlacklist.some((token) => normalized.includes(token))) {
+    return false;
+  }
+
+  // SEGUNDO FILTRO:
+  // si la fila tiene IMPORTE pero no tiene DESCRIPCION NI N° PERFIL,
+  // entonces NO es un encabezado válido de detalles.
+  if (
+    normalized.includes("IMPORTE") &&
+    !normalized.includes("DESCRIPCION") &&
+    !normalized.includes("N° PERFIL")
+  ) {
+    return false;
+  }
+
+  //  Reglas originales
   const hasCantidad =
     normalized.includes("CANTIDAD") ||
     normalized.includes("PIEZAS") ||
@@ -180,13 +209,15 @@ const isDetailHeader = (row: string[]) => {
     normalized.includes("IMPORTE");
 
   return (
-    hasNumero &&
-    normalized.includes("DESCRIPCION") &&
-    hasCantidad &&
-    normalized.includes("IMPORTE") &&
-    (hasUnitPrice || hasAlColumns)
-  ) || hasAlColumns;
+    (hasNumero &&
+      normalized.includes("DESCRIPCION") &&
+      hasCantidad &&
+      normalized.includes("IMPORTE") &&
+      (hasUnitPrice || hasAlColumns)) ||
+    hasAlColumns
+  );
 };
+
 
 const parseDetailBlock = (rows: string[][], headerIndex: number) => {
   const headerRow = rows[headerIndex] || [];

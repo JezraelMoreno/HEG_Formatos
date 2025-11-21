@@ -980,10 +980,13 @@ app.post("/proyectos/:id/pedidos", authenticateToken, requireRole("administrador
       }
       const subtotalDetalles = calcularSubtotalDetalles(p.detalles);
       const importePedido = toFiniteNumber(p.importe);
-      const subtotalBase =
-        importePedido !== null && importePedido !== 0
-          ? Number(importePedido.toFixed(2))
-          : Number(subtotalDetalles.toFixed(2));
+      const baseSinIva =
+        subtotalDetalles > 0
+          ? subtotalDetalles
+          : importePedido !== null && importePedido !== 0
+            ? importePedido
+            : 0;
+      const subtotalBase = Number(baseSinIva.toFixed(2));
       const descuentoMonto = subtotalBase * ((porcentajeDescuento || 0) / 100);
       const subtotalConDesc = subtotalBase - descuentoMonto;
       const ivaMonto = subtotalConDesc * 0.16;
