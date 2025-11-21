@@ -265,14 +265,38 @@ app.get("/proyectos/:id/pedidos", authenticateToken, requireRole("administrador"
     params.push(String(fecha));
   }
   query += " ORDER BY id ASC";
-  db.query(query, params, (err, results) => {
+  db.query(query, params, async (err, results) => {
     if (err) {
       console.error("Error consultando pedidos:", err);
       return res
         .status(500)
         .json({ success: false, message: "Error interno del servidor" });
     }
-    res.json({ success: true, data: results || [] });
+    try {
+      const rows = Array.isArray(results) ? results : [];
+      const data = await Promise.all(
+        rows.map(async (row) => {
+          let importe = Number(row.importe || 0);
+          try {
+            const calc = await calcularImporteDesdeDetalles(row, { includeSubtotal: true });
+            if (
+              !Number.isFinite(importe) ||
+              importe <= 0 ||
+              (calc.subtotal > 0 && importe < calc.subtotal * 1.15)
+            ) {
+              importe = calc.total;
+            }
+          } catch (calcErr) {
+            console.error("Error recalculando importe de pedido:", calcErr);
+          }
+          return { ...row, importe };
+        })
+      );
+      res.json({ success: true, data });
+    } catch (calcErr) {
+      console.error("Error procesando pedidos:", calcErr);
+      res.json({ success: true, data: results || [] });
+    }
   });
 });
 
@@ -729,6 +753,27 @@ function toFiniteNumber(value) {
 
 function decimalOrNull(value) {
   return value === null || value === undefined ? null : Number(value);
+}
+
+async function calcularImporteDesdeDetalles(row, { includeSubtotal = false } = {}) {
+  const pedidoId = Number(row?.id);
+  if (!Number.isFinite(pedidoId) || pedidoId <= 0) return 0;
+  const familia = normalizeTextValue(row?.familia).toUpperCase();
+  let table = "pedidos_detalles_miscelaneos";
+  if (familia === "CR") table = "pedidos_detalles_cristal";
+  if (familia === "AL" || familia === "MQAL") table = "pedidos_detalles_aluminio";
+  const sumRows = await queryAsync(`SELECT SUM(importe) AS subtotal FROM ${table} WHERE id_pedido = ?`, [pedidoId]);
+  const subtotal = Number(sumRows?.[0]?.subtotal || 0);
+  const subtotalBase = Number(subtotal.toFixed(2));
+  let pct = Number(row?.porcentaje_descuento || 0);
+  if (pct > 0 && pct <= 1) pct = pct * 100;
+  if (!Number.isFinite(pct) || pct < 0) pct = 0;
+  const descuentoMonto = subtotalBase * (pct / 100);
+  const subtotalConDesc = subtotalBase - descuentoMonto;
+  const ivaMonto = subtotalConDesc * 0.16;
+  const total = Number(Math.max(0, subtotalConDesc + ivaMonto).toFixed(2));
+  if (includeSubtotal) return { subtotal: subtotalBase, total };
+  return total;
 }
 
 function prepareDetalleForInsert(detalle) {
