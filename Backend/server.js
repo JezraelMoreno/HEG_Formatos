@@ -978,6 +978,16 @@ app.post("/proyectos/:id/pedidos", authenticateToken, requireRole("administrador
           porcentajeDescuento = porcentaje;
         }
       }
+      const subtotalDetalles = calcularSubtotalDetalles(p.detalles);
+      const importePedido = toFiniteNumber(p.importe);
+      const subtotalBase =
+        importePedido !== null && importePedido !== 0
+          ? Number(importePedido.toFixed(2))
+          : Number(subtotalDetalles.toFixed(2));
+      const descuentoMonto = subtotalBase * ((porcentajeDescuento || 0) / 100);
+      const subtotalConDesc = subtotalBase - descuentoMonto;
+      const ivaMonto = subtotalConDesc * 0.16;
+      const importeTotal = Number(Math.max(0, subtotalConDesc + ivaMonto).toFixed(2));
 
       let replacedExisting = false;
       try {
@@ -1007,7 +1017,7 @@ app.post("/proyectos/:id/pedidos", authenticateToken, requireRole("administrador
         normalizeTextValue(p.concepto),
         normalizeTextValue(p.situaciones_especiales) || null,
         porcentajeDescuento,
-        0,
+        importeTotal,
         username,
       ];
       try {
