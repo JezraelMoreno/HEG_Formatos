@@ -737,6 +737,14 @@ function parseSituacionEspecialInfo(texto) {
   return { tipo: esAmort ? "amortizacion" : "traspaso", porcentaje: pctSeguro };
 }
 
+function clampPctForDb(raw) {
+  if (raw === null || raw === undefined) return null;
+  let pct = Number(raw);
+  if (!Number.isFinite(pct) || pct <= 0) return null;
+  if (pct > 0 && pct <= 1) pct = pct * 100;
+  return Number(Math.min(pct, 100).toFixed(2));
+}
+
 function isSalidaTlatilco(texto) {
   const val = normalizeTextValue(texto).toUpperCase();
   return val.includes("SALIDA TLATILCO");
@@ -771,9 +779,7 @@ async function calcularImporteDesdeDetalles(row, { includeSubtotal = false } = {
   const subtotal = Number(sumRows?.[0]?.subtotal || 0);
   const subtotalBase = Number(subtotal.toFixed(2));
   const salidaTlatilco = isSalidaTlatilco(row?.situaciones_especiales);
-  let pct = Number(row?.porcentaje_descuento || 0);
-  if (pct > 0 && pct <= 1) pct = pct * 100;
-  if (!Number.isFinite(pct) || pct < 0) pct = 0;
+  const pct = clampPctForDb(row?.porcentaje_descuento) || 0;
   const descuentoMonto = subtotalBase * (pct / 100);
   const subtotalConDesc = subtotalBase - descuentoMonto;
   const ivaMonto = subtotalConDesc * 0.16;
@@ -1004,10 +1010,7 @@ app.post("/proyectos/:id/pedidos", authenticateToken, requireRole("administrador
       const parsePct = (raw) => {
         const num = toFiniteNumber(raw);
         if (num === null) return null;
-        let pct = num;
-        if (pct > 0 && pct <= 1) pct = pct * 100;
-        if (!Number.isFinite(pct) || pct <= 0) return null;
-        return pct;
+        return clampPctForDb(num);
       };
       let porcentajeDescuento = null;
       const posiblesDescuentos = [
@@ -1025,9 +1028,10 @@ app.post("/proyectos/:id/pedidos", authenticateToken, requireRole("administrador
       }
       if (porcentajeDescuento === null) {
         const { porcentaje } = parseSituacionEspecialInfo(p.situaciones_especiales);
-        if (porcentaje > 0) {
-          porcentajeDescuento = porcentaje;
-        }
+        if (porcentaje > 0) porcentajeDescuento = clampPctForDb(porcentaje);
+      }
+      if (porcentajeDescuento !== null) {
+        porcentajeDescuento = clampPctForDb(porcentajeDescuento);
       }
       const tieneSalidaTlatilco = isSalidaTlatilco(p.situaciones_especiales);
       const subtotalDetalles = calcularSubtotalDetalles(p.detalles);
