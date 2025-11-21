@@ -909,7 +909,7 @@ async function insertDetallesSegunFamilia(pedidoId, familia, detallesRaw) {
     await insertCristalDetallesRows(pedidoId, detallesRaw);
     return;
   }
-  if (familiaVal === "AL") {
+  if (familiaVal === "AL" || familiaVal === "MQAL") {
     await insertAluminioDetallesRows(pedidoId, detallesRaw);
     return;
   }
