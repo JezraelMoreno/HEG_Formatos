@@ -34,6 +34,7 @@ export type PedidoCsv = {
   concepto: string;
   situaciones_especiales?: string;
   importe: number;
+  porcentaje_descuento?: number;
   detalles: PedidoDetalleCsv[];
 };
 
@@ -471,6 +472,7 @@ export function parsePedidosCsv(
     return idx1;
   })();
   const iImporte = idx(["IMPORTE"]);
+  const iPctDesc = idx(["% SITUACION ESPECIAL"]);
 
   if (
     [
@@ -509,6 +511,7 @@ export function parsePedidosCsv(
     const situaciones_especiales =
       iSitEsp >= 0 ? cleanText(cols[iSitEsp]) : "";
     const importeNum = cleanNumber(cols[iImporte]);
+    const pctDesc = iPctDesc >= 0 ? cleanNumber(cols[iPctDesc]) : null;
 
     pedidos.push({
       nombre_proyecto: nombreProyecto,
@@ -520,6 +523,7 @@ export function parsePedidosCsv(
       concepto,
       situaciones_especiales: situaciones_especiales || undefined,
       importe: importeNum ?? 0,
+      porcentaje_descuento: pctDesc ?? undefined,
       detalles: [],
     });
   }

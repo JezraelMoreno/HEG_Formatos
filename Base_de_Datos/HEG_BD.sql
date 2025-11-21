@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS pedidos (
   fecha_aprobacion DATE NOT NULL,
   concepto VARCHAR(100) NOT NULL,
   situaciones_especiales VARCHAR(100),
+  porcentaje_descuento DECIMAL (4,2),
 
   importe_total DECIMAL(15,2) DEFAULT 0.00, 
   nombre_usuario VARCHAR(50) NOT NULL,

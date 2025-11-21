@@ -244,7 +244,7 @@ app.get("/proyectos/:id/pedidos", authenticateToken, requireRole("administrador"
   const { id } = req.params;
   const { familia } = req.query;
   let query =
-    "SELECT id, id_proyecto, nombre_proyecto, pedido, clan, familia, proveedor, DATE_FORMAT(fecha_aprobacion, '%Y-%m-%d') AS fecha_aprobacion, concepto, situaciones_especiales, importe_total AS importe FROM pedidos WHERE id_proyecto = ?";
+    "SELECT id, id_proyecto, nombre_proyecto, pedido, clan, familia, proveedor, DATE_FORMAT(fecha_aprobacion, '%Y-%m-%d') AS fecha_aprobacion, concepto, situaciones_especiales, porcentaje_descuento, importe_total AS importe FROM pedidos WHERE id_proyecto = ?";
   const params = [id];
   const toList = (v) => Array.isArray(v) ? v : (typeof v === 'string' ? v.split(',').map(s=>s.trim()).filter(Boolean) : []);
   const addMulti = (field, values) => {
@@ -701,6 +701,26 @@ function normalizeTextValue(value) {
   return String(value).trim();
 }
 
+function parseSituacionEspecialInfo(texto) {
+  const val = normalizeTextValue(texto).toUpperCase();
+  if (!val) return { tipo: null, porcentaje: 0 };
+  const esAmort = val.includes("AMORT");
+  const esTrasp = val.includes("TRASP");
+  if (!esAmort && !esTrasp) return { tipo: null, porcentaje: 0 };
+  const m = val.match(/(-?\d+(?:[.,]\d+)?)\s*%/);
+  const pct = m ? Number(String(m[1]).replace(",", ".")) : 0;
+  const pctSeguro = Number.isFinite(pct) ? Math.max(0, Math.min(100, pct)) : 0;
+  return { tipo: esAmort ? "amortizacion" : "traspaso", porcentaje: pctSeguro };
+}
+
+function calcularSubtotalDetalles(detalles = []) {
+  if (!Array.isArray(detalles) || !detalles.length) return 0;
+  return detalles.reduce((sum, det) => {
+    const importe = toFiniteNumber(det?.importe);
+    return sum + (Number.isFinite(importe) ? importe : 0);
+  }, 0);
+}
+
 function toFiniteNumber(value) {
   if (value === null || value === undefined || value === "") return null;
   const num = Number(value);
@@ -913,7 +933,7 @@ app.post("/proyectos/:id/pedidos", authenticateToken, requireRole("administrador
       return res.status(400).json({ success: false, message: "Usuario inválido" });
     }
     const sql =
-      "INSERT INTO pedidos (id_proyecto, nombre_proyecto, pedido, clan, familia, proveedor, fecha_aprobacion, concepto, situaciones_especiales, importe_total, nombre_usuario) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+      "INSERT INTO pedidos (id_proyecto, nombre_proyecto, pedido, clan, familia, proveedor, fecha_aprobacion, concepto, situaciones_especiales, porcentaje_descuento, importe_total, nombre_usuario) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
     const detailsLog = [];
     let okCount = 0;
@@ -928,6 +948,35 @@ app.post("/proyectos/:id/pedidos", authenticateToken, requireRole("administrador
       if (!pedidoNombre) {
         detailsLog.push({ index: idx + 1, pedido: null, ok: false, replaced: false, error: "Pedido sin nombre" });
         continue;
+      }
+
+      const parsePct = (raw) => {
+        const num = toFiniteNumber(raw);
+        if (num === null) return null;
+        let pct = num;
+        if (pct > 0 && pct <= 1) pct = pct * 100;
+        if (!Number.isFinite(pct) || pct <= 0) return null;
+        return pct;
+      };
+      let porcentajeDescuento = null;
+      const posiblesDescuentos = [
+        p?.porcentaje_descuento,
+        p?.porcentaje,
+        p?.porcentaje_situacion_especial,
+        p?.["% situacion especial"],
+      ];
+      for (const candidato of posiblesDescuentos) {
+        const pct = parsePct(candidato);
+        if (pct !== null) {
+          porcentajeDescuento = pct;
+          break;
+        }
+      }
+      if (porcentajeDescuento === null) {
+        const { porcentaje } = parseSituacionEspecialInfo(p.situaciones_especiales);
+        if (porcentaje > 0) {
+          porcentajeDescuento = porcentaje;
+        }
       }
 
       let replacedExisting = false;
@@ -947,8 +996,6 @@ app.post("/proyectos/:id/pedidos", authenticateToken, requireRole("administrador
         continue;
       }
 
-      const importePedido = Number(p.importe);
-      const importeValue = Number.isFinite(importePedido) ? importePedido : 0;
       const values = [
         proyectoId,
         normalizeTextValue(p.nombre_proyecto),
@@ -959,7 +1006,8 @@ app.post("/proyectos/:id/pedidos", authenticateToken, requireRole("administrador
         fechaISO,
         normalizeTextValue(p.concepto),
         normalizeTextValue(p.situaciones_especiales) || null,
-        importeValue,
+        porcentajeDescuento,
+        0,
         username,
       ];
       try {

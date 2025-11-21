@@ -18,6 +18,7 @@ type Pedido = {
   concepto: string;
   situaciones_especiales?: string | null;
   importe: number;
+  porcentaje_descuento?: number | null;
 };
 
 type PedidoDetalleItem = {
@@ -249,6 +250,30 @@ export function ProyectoDetalle() {
     }
     return detallesPedido.reduce((sum, det) => sum + Number(det.importe || 0), 0);
   }, [detallesAluminio, detallesCristal, detallesPedido, tipoDetallePedido]);
+  const porcentajeDescuento = useMemo(() => {
+    if (!pedidoSeleccionado) return 0;
+    let pct = Number(pedidoSeleccionado.porcentaje_descuento ?? 0);
+    if (!Number.isFinite(pct) || pct <= 0) return 0;
+    if (pct > 0 && pct <= 1) pct = pct * 100;
+    return pct;
+  }, [pedidoSeleccionado]);
+  const subtotalBase = totalDetalles || 0;
+  const descuentoMonto = useMemo(
+    () => subtotalBase * (porcentajeDescuento / 100),
+    [subtotalBase, porcentajeDescuento]
+  );
+  const subtotalConDescuento = useMemo(
+    () => subtotalBase - descuentoMonto,
+    [subtotalBase, descuentoMonto]
+  );
+  const ivaMonto = useMemo(
+    () => subtotalConDescuento * 0.16,
+    [subtotalConDescuento]
+  );
+  const totalFinal = useMemo(
+    () => subtotalConDescuento + ivaMonto,
+    [subtotalConDescuento, ivaMonto]
+  );
   const totalPedidosProyecto = proyectoInfo?.total_pedidos ?? 0;
   const presupuestoAsignado = proyectoInfo?.presupuesto ?? state?.presupuesto ?? 0;
   const presupuestoDisponible = presupuestoAsignado - totalPedidosProyecto;
@@ -1118,23 +1143,29 @@ export function ProyectoDetalle() {
                     <div className="pedido-detalle-summary">
                       <div className="pedido-detalle-summary-cell">
                         <span>Importe</span>
-                        <strong>{formatCurrency(totalDetalles || 0)}</strong>
+                        <strong>{formatCurrency(subtotalBase)}</strong>
                       </div>
                       <div className="pedido-detalle-summary-cell">
                         <span>Descuento</span>
-                        <strong>-</strong>
+                        {porcentajeDescuento > 0 ? (
+                          <strong>
+                            {formatCurrency(descuentoMonto)} ({porcentajeDescuento.toFixed(2)}%)
+                          </strong>
+                        ) : (
+                          <strong>-</strong>
+                        )}
                       </div>
                       <div className="pedido-detalle-summary-cell">
                         <span>Subtotal</span>
-                        <strong>{formatCurrency(totalDetalles || 0)}</strong>
+                        <strong>{formatCurrency(subtotalConDescuento)}</strong>
                       </div>
                       <div className="pedido-detalle-summary-cell">
-                        <span>IVA</span>
-                        <strong>-</strong>
+                        <span>IVA (16%)</span>
+                        <strong>{formatCurrency(ivaMonto)}</strong>
                       </div>
                       <div className="pedido-detalle-summary-cell total">
                         <span>Total</span>
-                        <strong>{formatCurrency(totalDetalles || 0)}</strong>
+                        <strong>{formatCurrency(totalFinal)}</strong>
                       </div>
                     </div>
                     <div className="pedido-detalle-situaciones">
