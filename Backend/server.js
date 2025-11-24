@@ -856,7 +856,13 @@ function prepareCristalDetalleForInsert(detalle) {
   const m2Corte = toFiniteNumber(detalle?.m2_corte);
   const piezasBase = toFiniteNumber(detalle?.piezas ?? detalle?.cantidad);
   const piezas = piezasBase !== null ? Math.max(0, Math.round(piezasBase)) : 0;
-  const m2Pedido = toFiniteNumber(detalle?.m2_pedido);
+  let m2Pedido = toFiniteNumber(detalle?.m2_pedido);
+  if (m2Pedido === null && piezas > 0) {
+    m2Pedido = piezas;
+  }
+  if (m2Pedido === null && m2Corte !== null && m2Corte > 0) {
+    m2Pedido = m2Corte;
+  }
   let precioUnitario = toFiniteNumber(detalle?.precio_unitario);
   let importe = toFiniteNumber(detalle?.importe);
   if ((importe === null || importe === 0) && piezas && precioUnitario !== null) {
