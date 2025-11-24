@@ -232,7 +232,31 @@ app.get("/proyectos/:id", authenticateToken, async (req, res) => {
     if (!results || results.length === 0) {
       return res.status(404).json({ success: false, message: "No encontrado" });
     }
-    res.json({ success: true, data: results[0] });
+    const proyecto = results[0];
+    try {
+      const pedidosRows = await queryAsync(
+        "SELECT id, familia, situaciones_especiales, porcentaje_descuento FROM pedidos WHERE id_proyecto = ?",
+        [id]
+      );
+      let totalRecalc = 0;
+      for (const row of pedidosRows || []) {
+        const importe = await calcularImporteDesdeDetalles(row, { includeSubtotal: false });
+        totalRecalc += Number(importe || 0);
+      }
+      const totalFix = Number(totalRecalc.toFixed(2));
+      const presupuestoNum = Number(proyecto.presupuesto || 0);
+      res.json({
+        success: true,
+        data: {
+          ...proyecto,
+          total_pedidos: totalFix,
+          presupuesto_disponible: Number((presupuestoNum - totalFix).toFixed(2)),
+        },
+      });
+    } catch (calcErr) {
+      console.error("Error recalculando totales del proyecto:", calcErr);
+      res.json({ success: true, data: proyecto });
+    }
   } catch (err) {
     console.error("Error consultando proyecto:", err);
     res.status(500).json({ success: false, message: "Error interno del servidor" });
