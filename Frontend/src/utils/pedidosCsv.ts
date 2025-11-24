@@ -164,7 +164,17 @@ const isDetailHeader = (row: string[]) => {
   ];
 
   if (summaryBlacklist.some((token) => normalized.includes(token))) {
-    return false;
+    const hasDescripcionCol = normalized.includes("DESCRIPCION") || normalized.includes("N° PERFIL");
+    const hasImporteCol = normalized.includes("IMPORTE");
+    const hasQtyCol =
+      normalized.includes("CANTIDAD") ||
+      normalized.includes("PIEZAS") ||
+      normalized.includes("PZ") ||
+      normalized.includes("PZAS") ||
+      normalized.includes("TOTAL TRAMOS");
+    if (!(hasDescripcionCol && hasImporteCol && hasQtyCol)) {
+      return false;
+    }
   }
 
   // SEGUNDO FILTRO:
