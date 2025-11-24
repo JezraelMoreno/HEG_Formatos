@@ -737,12 +737,16 @@ function parseSituacionEspecialInfo(texto) {
   return { tipo: esAmort ? "amortizacion" : "traspaso", porcentaje: pctSeguro };
 }
 
-function clampPctForDb(raw) {
-  if (raw === null || raw === undefined) return null;
+function normalizePct(raw) {
+  if (raw === null || raw === undefined) return { mathPct: 0, dbPct: null };
   let pct = Number(raw);
-  if (!Number.isFinite(pct) || pct <= 0) return null;
+  if (!Number.isFinite(pct) || pct <= 0) return { mathPct: 0, dbPct: null };
+  // permitir valores 0-1 como 0%-100%
   if (pct > 0 && pct <= 1) pct = pct * 100;
-  return Number(Math.min(pct, 100).toFixed(2));
+  const mathPct = Math.min(Math.max(pct, 0), 100); // para cálculos usamos hasta 100%
+  // para DB ahora aceptamos hasta 100.00 (esquema 6,2)
+  const dbPct = Number(Math.min(mathPct, 100).toFixed(2));
+  return { mathPct, dbPct };
 }
 
 function isSalidaTlatilco(texto) {
@@ -779,8 +783,8 @@ async function calcularImporteDesdeDetalles(row, { includeSubtotal = false } = {
   const subtotal = Number(sumRows?.[0]?.subtotal || 0);
   const subtotalBase = Number(subtotal.toFixed(2));
   const salidaTlatilco = isSalidaTlatilco(row?.situaciones_especiales);
-  const pct = clampPctForDb(row?.porcentaje_descuento) || 0;
-  const descuentoMonto = subtotalBase * (pct / 100);
+  const { mathPct } = normalizePct(row?.porcentaje_descuento);
+  const descuentoMonto = subtotalBase * (mathPct / 100);
   const subtotalConDesc = subtotalBase - descuentoMonto;
   const ivaMonto = subtotalConDesc * 0.16;
   const total = salidaTlatilco ? 0 : Number(Math.max(0, subtotalConDesc + ivaMonto).toFixed(2));
@@ -1010,9 +1014,10 @@ app.post("/proyectos/:id/pedidos", authenticateToken, requireRole("administrador
       const parsePct = (raw) => {
         const num = toFiniteNumber(raw);
         if (num === null) return null;
-        return clampPctForDb(num);
+        return normalizePct(num);
       };
-      let porcentajeDescuento = null;
+      let porcentajeDescuento = null; // usamos mathPct para cálculos
+      let porcentajeDescuentoDb = null; // usamos dbPct para DB
       const posiblesDescuentos = [
         p?.porcentaje_descuento,
         p?.porcentaje,
@@ -1022,16 +1027,23 @@ app.post("/proyectos/:id/pedidos", authenticateToken, requireRole("administrador
       for (const candidato of posiblesDescuentos) {
         const pct = parsePct(candidato);
         if (pct !== null) {
-          porcentajeDescuento = pct;
+          porcentajeDescuento = pct.mathPct;
+          porcentajeDescuentoDb = pct.dbPct;
           break;
         }
       }
       if (porcentajeDescuento === null) {
         const { porcentaje } = parseSituacionEspecialInfo(p.situaciones_especiales);
-        if (porcentaje > 0) porcentajeDescuento = clampPctForDb(porcentaje);
+        if (porcentaje > 0) {
+          const norm = normalizePct(porcentaje);
+          porcentajeDescuento = norm.mathPct;
+          porcentajeDescuentoDb = norm.dbPct;
+        }
       }
-      if (porcentajeDescuento !== null) {
-        porcentajeDescuento = clampPctForDb(porcentajeDescuento);
+      if (porcentajeDescuento !== null && porcentajeDescuentoDb === null) {
+        const norm = normalizePct(porcentajeDescuento);
+        porcentajeDescuento = norm.mathPct;
+        porcentajeDescuentoDb = norm.dbPct;
       }
       const tieneSalidaTlatilco = isSalidaTlatilco(p.situaciones_especiales);
       const subtotalDetalles = calcularSubtotalDetalles(p.detalles);
@@ -1075,7 +1087,7 @@ app.post("/proyectos/:id/pedidos", authenticateToken, requireRole("administrador
         fechaISO,
         normalizeTextValue(p.concepto),
         normalizeTextValue(p.situaciones_especiales) || null,
-        porcentajeDescuento,
+        porcentajeDescuentoDb,
         importeTotal,
         username,
       ];
