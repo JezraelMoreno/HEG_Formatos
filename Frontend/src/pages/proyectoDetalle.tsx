@@ -234,6 +234,7 @@ export function ProyectoDetalle() {
   const [error, setError] = useState<string>("");
   const [cargandoPedidos, setCargandoPedidos] = useState(false);
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
+  const [ordenPedidos, setOrdenPedidos] = useState<"desc" | "asc">("desc");
   const [pedidoSeleccionado, setPedidoSeleccionado] = useState<Pedido | null>(null);
   const [detallesPedido, setDetallesPedido] = useState<PedidoDetalleItem[]>([]);
   const [detallesCristal, setDetallesCristal] = useState<PedidoDetalleCristalItem[]>([]);
@@ -277,6 +278,18 @@ export function ProyectoDetalle() {
   const totalPedidosProyecto = proyectoInfo?.total_pedidos ?? 0;
   const presupuestoAsignado = proyectoInfo?.presupuesto ?? state?.presupuesto ?? 0;
   const presupuestoDisponible = presupuestoAsignado - totalPedidosProyecto;
+  const pedidosOrdenados = useMemo(() => {
+    const toTime = (valor: string) => {
+      const time = Date.parse(valor);
+      return Number.isNaN(time) ? 0 : time;
+    };
+    const copia = [...pedidos];
+    copia.sort((a, b) => {
+      const diff = toTime(b.fecha_aprobacion) - toTime(a.fecha_aprobacion);
+      return ordenPedidos === "desc" ? diff : -diff;
+    });
+    return copia;
+  }, [ordenPedidos, pedidos]);
 
   // filtros
   const [familiasSeleccionadas, setFamiliasSeleccionadas] = useState<string[]>([]);
@@ -522,6 +535,10 @@ export function ProyectoDetalle() {
     setFecha("");
     cargarPedidos({ familias: [], clanes: [], proveedores: [], concepto: "", fecha: "" });
   }, [cargarPedidos]);
+
+  const alternarOrdenPedidos = useCallback(() => {
+    setOrdenPedidos((prev) => (prev === "desc" ? "asc" : "desc"));
+  }, []);
 
   const cerrarModalDetalles = useCallback(() => {
     setPedidoSeleccionado(null);
@@ -879,9 +896,19 @@ export function ProyectoDetalle() {
         <div className="tabla-wrapper">
           <div className="tabla-toolbar">
             <div className="tabla-header">Pedidos del proyecto</div>
-            <button className="btn btn-primary" onClick={exportarExplosion} disabled={pedidos.length === 0}>
-              Generar explosión de insumos
-            </button>
+            <div className="tabla-actions">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={alternarOrdenPedidos}
+                disabled={pedidos.length === 0}
+              >
+                Ordenar por fecha ({ordenPedidos === "desc" ? "recientes primero" : "antiguos primero"})
+              </button>
+              <button className="btn btn-primary" onClick={exportarExplosion} disabled={pedidos.length === 0}>
+                Generar explosión de insumos
+              </button>
+            </div>
           </div>
           {cargandoPedidos ? (
             <p>Cargando...</p>
@@ -902,7 +929,7 @@ export function ProyectoDetalle() {
                 </tr>
               </thead>
               <tbody>
-                {pedidos.map((p) => (
+                {pedidosOrdenados.map((p) => (
                   <tr
                     key={p.id}
                     className="clickable-row"
