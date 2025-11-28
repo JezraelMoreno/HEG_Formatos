@@ -121,6 +121,7 @@ app.post("/login", (req, res) => {
 
 // Middleware de autenticación con JWT
 function authenticateToken(req, res, next) {
+  if (req.user) return next();
   try {
     const auth = req.headers["authorization"] || req.headers["Authorization"];
     if (!auth || typeof auth !== "string" || !auth.startsWith("Bearer ")) {
@@ -134,6 +135,14 @@ function authenticateToken(req, res, next) {
     return res.status(401).json({ success: false, message: "Token inválido o expirado" });
   }
 }
+
+// Middleware global: todo requiere sesión iniciada excepto /login y preflight
+const PUBLIC_ROUTES = ["/login"];
+app.use((req, res, next) => {
+  if (req.method === "OPTIONS") return next();
+  if (PUBLIC_ROUTES.includes(req.path)) return next();
+  return authenticateToken(req, res, next);
+});
 
 // Proyectos - listar
 app.get("/proyectos", authenticateToken, async (req, res) => {

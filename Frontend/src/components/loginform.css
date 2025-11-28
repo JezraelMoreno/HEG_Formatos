@@ -16,6 +16,13 @@
   flex-direction: column;
 }
 
+.login-logo {
+  width: 160px;
+  height: auto;
+  margin: 0 auto 0.75rem;
+  display: block;
+}
+
 .login-form h2 {
   text-align: center;
   margin-bottom: 1rem;

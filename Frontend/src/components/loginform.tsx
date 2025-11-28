@@ -38,6 +38,11 @@ export function LoginForm() {
   return (
     <div className="login-container">
       <form className="login-form" onSubmit={handleSubmit}>
+        <img
+          src="http://localhost:3000/assets/heg_logo.jpg"
+          alt="HEG"
+          className="login-logo"
+        />
         <h2>Iniciar Sesión</h2>
 
         {error && <p className="error">{error}</p>}
