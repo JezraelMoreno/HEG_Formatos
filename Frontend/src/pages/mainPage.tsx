@@ -475,44 +475,48 @@ export function MainPage() {
           <section className="panel panel-proyectos">
             {!loading && !error && (
               <ul className="lista-proyectos">
-                {proyectosFiltrados.map((p) => (
-                  <li
-                    key={p.id_proyecto}
-                    className="item-proyecto"
-                  onClick={() =>
-                    navigate(`/proyecto/${p.id_proyecto}`, {
-                      state: {
-                        nombre: p.nombre,
-                        fecha: p.fecha_proyecto,
-                        presupuesto: p.presupuesto,
-                        presupuesto_disponible: p.presupuesto_disponible,
-                      },
-                    })
-                  }
-                  style={{ cursor: "pointer" }}
-                >
-                  <div className="proyecto-info">
-                    <span className="nombre">{p.nombre}</span>
-                    <span className="fecha">{p.fecha_proyecto}</span>
-                    <div className="presupuesto-resumen">
-                      <span>Presupuesto: {formatCurrency(p.presupuesto)}</span>
-                      <span>
-                        Disponible: {formatCurrency((p.presupuesto_disponible ?? (p.presupuesto - (p.total_pedidos || 0))))}
-                      </span>
-                    </div>
-                  </div>
-                  {isAdmin && (
-                    <button
-                        type="button"
-                        className="icon-button trash-button"
-                        aria-label={`Eliminar proyecto ${p.nombre}`}
-                        onClick={(event) => abrirConfirmacionEliminar(p, event)}
-                      >
-                        <TrashIcon />
-                      </button>
-                    )}
-                  </li>
-                ))}
+                {proyectosFiltrados.map((p) => {
+                  const presupuestoDisponible = p.presupuesto_disponible ?? (p.presupuesto - (p.total_pedidos || 0));
+                  const claseDisponible = presupuestoDisponible < 0 ? "presupuesto-disponible negativo" : "presupuesto-disponible positivo";
+                  return (
+                    <li
+                      key={p.id_proyecto}
+                      className="item-proyecto"
+                      onClick={() =>
+                        navigate(`/proyecto/${p.id_proyecto}`, {
+                          state: {
+                            nombre: p.nombre,
+                            fecha: p.fecha_proyecto,
+                            presupuesto: p.presupuesto,
+                            presupuesto_disponible: p.presupuesto_disponible,
+                          },
+                        })
+                      }
+                      style={{ cursor: "pointer" }}
+                    >
+                      <div className="proyecto-info">
+                        <span className="nombre">{p.nombre}</span>
+                        <span className="fecha">{p.fecha_proyecto}</span>
+                        <div className="presupuesto-resumen">
+                          <span>Presupuesto: {formatCurrency(p.presupuesto)}</span>
+                          <span className={claseDisponible}>
+                            Disponible: {formatCurrency(presupuestoDisponible)}
+                          </span>
+                        </div>
+                      </div>
+                      {isAdmin && (
+                        <button
+                          type="button"
+                          className="icon-button trash-button"
+                          aria-label={`Eliminar proyecto ${p.nombre}`}
+                          onClick={(event) => abrirConfirmacionEliminar(p, event)}
+                        >
+                          <TrashIcon />
+                        </button>
+                      )}
+                    </li>
+                  );
+                })}
                 {proyectos.length === 0 && <li>No hay proyectos aún</li>}
                 {proyectos.length > 0 && proyectosFiltrados.length === 0 && <li>No se encontraron proyectos</li>}
               </ul>

@@ -278,6 +278,7 @@ export function ProyectoDetalle() {
   const totalPedidosProyecto = proyectoInfo?.total_pedidos ?? 0;
   const presupuestoAsignado = proyectoInfo?.presupuesto ?? state?.presupuesto ?? 0;
   const presupuestoDisponible = presupuestoAsignado - totalPedidosProyecto;
+  const clasePresupuestoDisponible = presupuestoDisponible < 0 ? "monto-negativo" : "monto-positivo";
   const pedidosOrdenados = useMemo(() => {
     const toTime = (valor: string) => {
       const time = Date.parse(valor);
@@ -881,7 +882,7 @@ export function ProyectoDetalle() {
           </div>
           <div className={`presupuesto-card ${presupuestoDisponible < 0 ? "presupuesto-alerta" : ""}`}>
             <span>Presupuesto disponible</span>
-            <strong>{formatCurrency(presupuestoDisponible)}</strong>
+            <strong className={clasePresupuestoDisponible}>{formatCurrency(presupuestoDisponible)}</strong>
             <small>{cargandoProyecto ? "Actualizando..." : "Se descuenta automáticamente de los pedidos"}</small>
           </div>
         </div>

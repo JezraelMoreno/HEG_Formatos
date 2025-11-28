@@ -283,6 +283,15 @@
   font-size: 13px;
   color: #0b2f4a;
 }
+.presupuesto-resumen .presupuesto-disponible {
+  font-weight: 600;
+}
+.presupuesto-resumen .presupuesto-disponible.positivo {
+  color: #1b5e20;
+}
+.presupuesto-resumen .presupuesto-disponible.negativo {
+  color: #b3261e;
+}
 .item-proyecto .nombre {
   font-weight: 600;
 }

@@ -37,6 +37,12 @@
   font-size: 1.25rem;
   color: #0f172a;
 }
+.presupuesto-card .monto-positivo {
+  color: #1b5e20;
+}
+.presupuesto-card .monto-negativo {
+  color: #b3261e;
+}
 .presupuesto-card small {
   display: block;
   margin-top: 4px;
