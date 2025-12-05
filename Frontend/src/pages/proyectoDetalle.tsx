@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { authHeader, getToken, isTokenValid, getRole } from "../auth";
 import { parsePedidosCsv } from "../utils/pedidosCsv";
@@ -100,15 +100,48 @@ type ProyectoInfo = {
   nombre: string;
   fecha_proyecto: string;
   presupuesto?: number;
+  presupuesto_total?: number;
+  presupuesto_cristal?: number;
+  presupuesto_aluminio?: number;
+  presupuesto_miscelaneos?: number;
   total_pedidos?: number;
   presupuesto_disponible?: number;
 };
 
-const formatCurrency = (value: number | null | undefined) =>
-  `$${Number(value ?? 0).toLocaleString(undefined, {
+type ProyectoLocationState = {
+  nombre?: string;
+  fecha?: string;
+  presupuesto?: number;
+  presupuesto_total?: number;
+  presupuesto_cristal?: number;
+  presupuesto_aluminio?: number;
+  presupuesto_miscelaneos?: number;
+  total_pedidos?: number;
+  presupuesto_disponible?: number;
+};
+
+type PresupuestoHistorial = {
+  id_historial: number;
+  fecha_presupuesto: string;
+  presupuesto_cristal: number;
+  presupuesto_aluminio: number;
+  presupuesto_miscelaneos: number;
+  presupuesto_total: number;
+};
+
+const getTodayISO = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+};
+
+const formatCurrency = (value: number | null | undefined) => {
+  const num = Number(value ?? 0);
+  const safe = Number.isFinite(num) ? num : 0;
+  return `$${safe.toLocaleString(undefined, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
+};
 
 function MultiSelectFilter({
   label,
@@ -215,16 +248,22 @@ function MultiSelectFilter({
 export function ProyectoDetalle() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { state } = useLocation() as { state?: { nombre?: string; fecha?: string; presupuesto?: number; presupuesto_disponible?: number } };
+  const { state } = useLocation() as { state?: ProyectoLocationState };
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [proyectoInfo, setProyectoInfo] = useState<ProyectoInfo | null>(() => {
     if (!state) return null;
+    const presupuestoTotalEstado = state.presupuesto_total ?? state.presupuesto ?? 0;
     return {
       id_proyecto: Number(id) || 0,
       nombre: state.nombre || "Proyecto",
       fecha_proyecto: state.fecha || "",
-      presupuesto: state.presupuesto,
-      presupuesto_disponible: state.presupuesto_disponible,
+      presupuesto: presupuestoTotalEstado,
+      presupuesto_total: presupuestoTotalEstado,
+      presupuesto_cristal: state.presupuesto_cristal,
+      presupuesto_aluminio: state.presupuesto_aluminio,
+      presupuesto_miscelaneos: state.presupuesto_miscelaneos,
+      total_pedidos: state.total_pedidos,
+      presupuesto_disponible: state.presupuesto_disponible ?? presupuestoTotalEstado,
     };
   });
   const [cargandoProyecto, setCargandoProyecto] = useState(false);
@@ -242,6 +281,16 @@ export function ProyectoDetalle() {
   const [tipoDetallePedido, setTipoDetallePedido] = useState<"miscelaneos" | "cristal" | "aluminio">("miscelaneos");
   const [cargandoDetalles, setCargandoDetalles] = useState(false);
   const [detalleError, setDetalleError] = useState("");
+  const [historialPresupuesto, setHistorialPresupuesto] = useState<PresupuestoHistorial[]>([]);
+  const [cargandoHistorial, setCargandoHistorial] = useState(false);
+  const [modalPresupuestoAbierto, setModalPresupuestoAbierto] = useState(false);
+  const [guardandoPresupuesto, setGuardandoPresupuesto] = useState(false);
+  const [formPresupuesto, setFormPresupuesto] = useState({
+    cristal: "",
+    aluminio: "",
+    miscelaneos: "",
+    fecha: getTodayISO(),
+  });
   const totalDetalles = useMemo(() => {
     if (tipoDetallePedido === "cristal") {
       return detallesCristal.reduce((sum, det) => sum + Number(det.importe || 0), 0);
@@ -275,10 +324,21 @@ export function ProyectoDetalle() {
     () => subtotalConDescuento + ivaMonto,
     [subtotalConDescuento, ivaMonto]
   );
-  const totalPedidosProyecto = proyectoInfo?.total_pedidos ?? 0;
-  const presupuestoAsignado = proyectoInfo?.presupuesto ?? state?.presupuesto ?? 0;
-  const presupuestoDisponible = presupuestoAsignado - totalPedidosProyecto;
-  const clasePresupuestoDisponible = presupuestoDisponible < 0 ? "monto-negativo" : "monto-positivo";
+  const totalPedidosProyecto = proyectoInfo?.total_pedidos ?? state?.total_pedidos ?? 0;
+  const presupuestoRestanteTotal =
+    proyectoInfo?.presupuesto_total ??
+    proyectoInfo?.presupuesto ??
+    state?.presupuesto_total ??
+    state?.presupuesto ??
+    0;
+  const presupuestoAsignado = presupuestoRestanteTotal + totalPedidosProyecto;
+  const clasePresupuestoDisponible = presupuestoRestanteTotal < 0 ? "monto-negativo" : "monto-positivo";
+  const presupuestoCristal = proyectoInfo?.presupuesto_cristal ?? state?.presupuesto_cristal ?? 0;
+  const presupuestoAluminio = proyectoInfo?.presupuesto_aluminio ?? state?.presupuesto_aluminio ?? 0;
+  const presupuestoMiscelaneos = proyectoInfo?.presupuesto_miscelaneos ?? state?.presupuesto_miscelaneos ?? 0;
+  const clasePresupuestoCristal = presupuestoCristal < 0 ? "monto-negativo" : "monto-positivo";
+  const clasePresupuestoAluminio = presupuestoAluminio < 0 ? "monto-negativo" : "monto-positivo";
+  const clasePresupuestoMiscelaneos = presupuestoMiscelaneos < 0 ? "monto-negativo" : "monto-positivo";
   const pedidosOrdenados = useMemo(() => {
     const toTime = (valor: string) => {
       const time = Date.parse(valor);
@@ -445,7 +505,14 @@ export function ProyectoDetalle() {
       const res = await fetch(`http://localhost:3000/proyectos/${id}`, { headers: { ...authHeader() } });
       const data = await res.json();
       if (res.ok && data?.success) {
-        setProyectoInfo(data.data as ProyectoInfo);
+        const info = data.data as ProyectoInfo;
+        const presupuestoTotalResp = info.presupuesto_total ?? info.presupuesto ?? 0;
+        setProyectoInfo({
+          ...info,
+          presupuesto: presupuestoTotalResp,
+          presupuesto_total: presupuestoTotalResp,
+          presupuesto_disponible: info.presupuesto_disponible ?? presupuestoTotalResp,
+        });
       } else {
         setError(data?.message || "Error cargando proyecto");
       }
@@ -453,6 +520,26 @@ export function ProyectoDetalle() {
       setError("Error de conexion al cargar proyecto");
     } finally {
       setCargandoProyecto(false);
+    }
+  }, [id]);
+
+  const cargarHistorialPresupuesto = useCallback(async () => {
+    if (!id) return;
+    setCargandoHistorial(true);
+    try {
+      const res = await fetch(`http://localhost:3000/proyectos/${id}/presupuestos/historial`, {
+        headers: { ...authHeader() },
+      });
+      const data = await res.json();
+      if (res.ok && data?.success) {
+        setHistorialPresupuesto((data.data as PresupuestoHistorial[]) || []);
+      } else {
+        setHistorialPresupuesto([]);
+      }
+    } catch {
+      setHistorialPresupuesto([]);
+    } finally {
+      setCargandoHistorial(false);
     }
   }, [id]);
 
@@ -467,7 +554,8 @@ export function ProyectoDetalle() {
       setError("");
     }
     cargarCobranza();
-  }, [cargarPedidos, cargarProyecto, cargarCobranza, navigate, isAdmin]);
+    cargarHistorialPresupuesto();
+  }, [cargarPedidos, cargarProyecto, cargarCobranza, cargarHistorialPresupuesto, navigate, isAdmin]);
 
   useEffect(() => {
     const combinar = (prev: string[], valores: (string | null | undefined)[], adicionales: string[] = []) => {
@@ -536,6 +624,82 @@ export function ProyectoDetalle() {
     setFecha("");
     cargarPedidos({ familias: [], clanes: [], proveedores: [], concepto: "", fecha: "" });
   }, [cargarPedidos]);
+
+  const abrirModalPresupuesto = () => {
+    setMensaje("");
+    setError("");
+    setFormPresupuesto({
+      cristal: String(presupuestoCristal ?? 0),
+      aluminio: String(presupuestoAluminio ?? 0),
+      miscelaneos: String(presupuestoMiscelaneos ?? 0),
+      fecha: getTodayISO(),
+    });
+    setModalPresupuestoAbierto(true);
+  };
+
+  const cerrarModalPresupuesto = () => {
+    setModalPresupuestoAbierto(false);
+  };
+
+  const actualizarCampoPresupuesto = (campo: "cristal" | "aluminio" | "miscelaneos" | "fecha") => (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setFormPresupuesto((prev) => ({ ...prev, [campo]: value }));
+  };
+
+  const guardarPresupuesto = async (e: FormEvent) => {
+    e.preventDefault();
+    const parseMonto = (value: string) => {
+      const num = Number(value);
+      if (!Number.isFinite(num) || num < 0) return NaN;
+      return Number(num.toFixed(2));
+    };
+    const cristalNum = parseMonto(formPresupuesto.cristal);
+    const aluminioNum = parseMonto(formPresupuesto.aluminio);
+    const miscelaneosNum = parseMonto(formPresupuesto.miscelaneos);
+    if ([cristalNum, aluminioNum, miscelaneosNum].some((n) => Number.isNaN(n))) {
+      setError("Ingresa montos válidos (0 o mayores) para cada familia");
+      return;
+    }
+    setGuardandoPresupuesto(true);
+    try {
+      const res = await fetch(`http://localhost:3000/proyectos/${id}/presupuesto`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...authHeader() },
+        body: JSON.stringify({
+          presupuesto_cristal: cristalNum,
+          presupuesto_aluminio: aluminioNum,
+          presupuesto_miscelaneos: miscelaneosNum,
+          fecha_presupuesto: formPresupuesto.fecha,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        setError(data?.message || "No se pudo actualizar el presupuesto");
+        return;
+      }
+      const nuevoTotal = data.data?.presupuesto_total ?? cristalNum + aluminioNum + miscelaneosNum;
+      setProyectoInfo((prev) => ({
+        ...(prev || {
+          id_proyecto: Number(id) || 0,
+          nombre: state?.nombre || "Proyecto",
+          fecha_proyecto: state?.fecha || "",
+        }),
+        presupuesto_cristal: cristalNum,
+        presupuesto_aluminio: aluminioNum,
+        presupuesto_miscelaneos: miscelaneosNum,
+        presupuesto_total: nuevoTotal,
+        presupuesto: nuevoTotal,
+        presupuesto_disponible: nuevoTotal,
+      }));
+      setMensaje("Presupuestos actualizados correctamente");
+      setModalPresupuestoAbierto(false);
+      await cargarHistorialPresupuesto();
+    } catch {
+      setError("Error de conexión al actualizar presupuesto");
+    } finally {
+      setGuardandoPresupuesto(false);
+    }
+  };
 
   const alternarOrdenPedidos = useCallback(() => {
     setOrdenPedidos((prev) => (prev === "desc" ? "asc" : "desc"));
@@ -695,7 +859,7 @@ export function ProyectoDetalle() {
     };
   }, [pedidoSeleccionado, cerrarModalDetalles]);
 
-  const submitCobranza = async (e: React.FormEvent) => {
+  const submitCobranza = async (e: FormEvent) => {
     e.preventDefault();
     if (!id) return;
     try {
@@ -869,23 +1033,145 @@ export function ProyectoDetalle() {
       </header>
 
       <main className="detalle-contenido">
+        <div className="presupuesto-actions-bar">
+          {isAdmin && (
+            <button type="button" className="btn btn-primary" onClick={abrirModalPresupuesto}>
+              Editar presupuestos
+            </button>
+          )}
+        </div>
         <div className="presupuesto-summary">
           <div className="presupuesto-card">
-            <span>Presupuesto asignado</span>
+            <span>Presupuesto total cargado</span>
             <strong>{formatCurrency(presupuestoAsignado)}</strong>
-            <small>Definido al crear el proyecto</small>
+            <small>Disponible + pedidos registrados</small>
           </div>
           <div className="presupuesto-card">
-            <span>Total de pedidos</span>
+            <span>Pedidos registrados</span>
             <strong>{formatCurrency(totalPedidosProyecto)}</strong>
             <small>Aluminio, cristal y misceláneos</small>
           </div>
-          <div className={`presupuesto-card ${presupuestoDisponible < 0 ? "presupuesto-alerta" : ""}`}>
-            <span>Presupuesto disponible</span>
-            <strong className={clasePresupuestoDisponible}>{formatCurrency(presupuestoDisponible)}</strong>
-            <small>{cargandoProyecto ? "Actualizando..." : "Se descuenta automáticamente de los pedidos"}</small>
+          <div className={`presupuesto-card ${presupuestoRestanteTotal < 0 ? "presupuesto-alerta" : ""}`}>
+            <span>Disponible total</span>
+            <strong className={clasePresupuestoDisponible}>{formatCurrency(presupuestoRestanteTotal)}</strong>
+            <small>{cargandoProyecto ? "Actualizando..." : "Se descuenta según la familia"}</small>
+          </div>
+          <div className={`presupuesto-card ${presupuestoCristal < 0 ? "presupuesto-alerta" : ""}`}>
+            <span>Disponible cristal</span>
+            <strong className={clasePresupuestoCristal}>{formatCurrency(presupuestoCristal)}</strong>
+            <small>Pedidos familia CR</small>
+          </div>
+          <div className={`presupuesto-card ${presupuestoAluminio < 0 ? "presupuesto-alerta" : ""}`}>
+            <span>Disponible aluminio</span>
+            <strong className={clasePresupuestoAluminio}>{formatCurrency(presupuestoAluminio)}</strong>
+            <small>Pedidos familia AL/MQAL</small>
+          </div>
+          <div className={`presupuesto-card ${presupuestoMiscelaneos < 0 ? "presupuesto-alerta" : ""}`}>
+            <span>Disponible misceláneos</span>
+            <strong className={clasePresupuestoMiscelaneos}>{formatCurrency(presupuestoMiscelaneos)}</strong>
+            <small>Pedidos resto de familias</small>
           </div>
         </div>
+
+        <section className="historial-presupuesto">
+          <div className="historial-header">
+            <h3>Historial de presupuestos</h3>
+            {isAdmin && (
+              <button type="button" className="btn btn-secondary" onClick={abrirModalPresupuesto}>
+                Ajustar presupuesto
+              </button>
+            )}
+          </div>
+          {cargandoHistorial ? (
+            <p>Cargando historial...</p>
+          ) : historialPresupuesto.length === 0 ? (
+            <p>No hay cambios registrados.</p>
+          ) : (
+            <table className="tabla-historial">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Cristal</th>
+                  <th>Aluminio</th>
+                  <th>Misceláneos</th>
+                  <th>Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {historialPresupuesto.map((row) => (
+                  <tr key={row.id_historial}>
+                    <td>{row.fecha_presupuesto}</td>
+                    <td>{formatCurrency(row.presupuesto_cristal)}</td>
+                    <td>{formatCurrency(row.presupuesto_aluminio)}</td>
+                    <td>{formatCurrency(row.presupuesto_miscelaneos)}</td>
+                    <td>{formatCurrency(row.presupuesto_total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </section>
+
+        {modalPresupuestoAbierto && (
+          <div className="presupuesto-modal-backdrop" onClick={cerrarModalPresupuesto}>
+            <div className="presupuesto-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+              <h3>Editar presupuestos</h3>
+              <p className="modal-subtitle">Actualiza el disponible por familia y guarda una fecha de referencia.</p>
+              <form className="form-presupuesto" onSubmit={guardarPresupuesto}>
+                <label>
+                  Presupuesto cristal
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={formPresupuesto.cristal}
+                    onChange={actualizarCampoPresupuesto("cristal")}
+                    required
+                  />
+                </label>
+                <label>
+                  Presupuesto aluminio
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={formPresupuesto.aluminio}
+                    onChange={actualizarCampoPresupuesto("aluminio")}
+                    required
+                  />
+                </label>
+                <label>
+                  Presupuesto misceláneos
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={formPresupuesto.miscelaneos}
+                    onChange={actualizarCampoPresupuesto("miscelaneos")}
+                    required
+                  />
+                </label>
+                <label>
+                  Fecha de presupuesto
+                  <input
+                    type="date"
+                    value={formPresupuesto.fecha}
+                    onChange={actualizarCampoPresupuesto("fecha")}
+                    required
+                  />
+                </label>
+                <div className="modal-actions">
+                  <button type="button" className="btn btn-secondary" onClick={cerrarModalPresupuesto} disabled={guardandoPresupuesto}>
+                    Cancelar
+                  </button>
+                  <button type="submit" className="btn btn-primary" disabled={guardandoPresupuesto}>
+                    {guardandoPresupuesto ? "Guardando..." : "Guardar cambios"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
 
         {mensaje && <p className="alert success">{mensaje}</p>}
         {error && <p className="alert error">{error}</p>}

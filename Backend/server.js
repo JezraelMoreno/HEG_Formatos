@@ -152,12 +152,31 @@ app.get("/proyectos", authenticateToken, async (req, res) => {
         p.id_proyecto,
         p.nombre,
         p.fecha_proyecto,
-        p.presupuesto,
+        COALESCE(p.presupuesto_cristal, 0) AS presupuesto_cristal,
+        COALESCE(p.presupuesto_aluminio, 0) AS presupuesto_aluminio,
+        COALESCE(p.presupuesto_miscelaneos, 0) AS presupuesto_miscelaneos,
+        COALESCE(
+          NULLIF(p.presupuesto_total, 0),
+          NULLIF(COALESCE(p.presupuesto_cristal, 0) + COALESCE(p.presupuesto_aluminio, 0) + COALESCE(p.presupuesto_miscelaneos, 0), 0),
+          p.presupuesto,
+          0
+        ) AS presupuesto_total,
+        COALESCE(
+          NULLIF(p.presupuesto, 0),
+          NULLIF(p.presupuesto_total, 0),
+          NULLIF(COALESCE(p.presupuesto_cristal, 0) + COALESCE(p.presupuesto_aluminio, 0) + COALESCE(p.presupuesto_miscelaneos, 0), 0),
+          0
+        ) AS presupuesto,
         COALESCE(SUM(pe.importe_total), 0) AS total_pedidos,
-        p.presupuesto - COALESCE(SUM(pe.importe_total), 0) AS presupuesto_disponible
+        COALESCE(
+          NULLIF(p.presupuesto_total, 0),
+          NULLIF(COALESCE(p.presupuesto_cristal, 0) + COALESCE(p.presupuesto_aluminio, 0) + COALESCE(p.presupuesto_miscelaneos, 0), 0),
+          p.presupuesto,
+          0
+        ) AS presupuesto_disponible
       FROM proyectos p
       LEFT JOIN pedidos pe ON pe.id_proyecto = p.id_proyecto
-      GROUP BY p.id_proyecto, p.nombre, p.fecha_proyecto, p.presupuesto
+      GROUP BY p.id_proyecto, p.nombre, p.fecha_proyecto, p.presupuesto, p.presupuesto_cristal, p.presupuesto_aluminio, p.presupuesto_miscelaneos, p.presupuesto_total
       ORDER BY p.id_proyecto DESC
     `;
     const results = await queryAsync(query);
@@ -171,18 +190,80 @@ app.get("/proyectos", authenticateToken, async (req, res) => {
 // Proyectos - crear
 app.post("/proyectos", authenticateToken, async (req, res) => {
   try {
-    const { nombre, fecha_proyecto, presupuesto } = req.body;
-    const presupuestoNum = Number(presupuesto);
-    if (!nombre || !fecha_proyecto || !Number.isFinite(presupuestoNum) || presupuestoNum < 0) {
-      return res.status(400).json({ success: false, message: "Faltan datos o presupuesto inválido" });
+    const {
+      nombre,
+      fecha_proyecto,
+      presupuesto_cristal,
+      presupuesto_aluminio,
+      presupuesto_miscelaneos,
+      presupuesto,
+    } = req.body || {};
+
+    const parseBudget = (raw) => {
+      if (raw === undefined || raw === null || String(raw).trim() === "") return null;
+      const num = Number(raw);
+      if (!Number.isFinite(num) || num < 0) return null;
+      return Number(num.toFixed(2));
+    };
+
+    let presupuestoCristal = parseBudget(presupuesto_cristal);
+    let presupuestoAluminio = parseBudget(presupuesto_aluminio);
+    let presupuestoMiscelaneos = parseBudget(presupuesto_miscelaneos);
+
+    const algunPresupuesto =
+      presupuestoCristal !== null || presupuestoAluminio !== null || presupuestoMiscelaneos !== null;
+
+    if (!algunPresupuesto) {
+      const legado = parseBudget(presupuesto);
+      if (legado !== null) {
+        presupuestoMiscelaneos = legado;
+      }
+    }
+
+    presupuestoCristal = presupuestoCristal ?? 0;
+    presupuestoAluminio = presupuestoAluminio ?? 0;
+    presupuestoMiscelaneos = presupuestoMiscelaneos ?? 0;
+
+    const presupuestoTotal = Number((presupuestoCristal + presupuestoAluminio + presupuestoMiscelaneos).toFixed(2));
+    if (!nombre || !fecha_proyecto || !Number.isFinite(presupuestoTotal) || presupuestoTotal < 0) {
+      return res.status(400).json({ success: false, message: "Faltan datos o presupuestos inválidos" });
     }
 
     const query =
-      "INSERT INTO proyectos (nombre, fecha_proyecto, presupuesto) VALUES (?, ?, ?)";
-    const result = await queryAsync(query, [nombre, fecha_proyecto, presupuestoNum]);
+      "INSERT INTO proyectos (nombre, fecha_proyecto, presupuesto, presupuesto_cristal, presupuesto_aluminio, presupuesto_miscelaneos, presupuesto_total) VALUES (?, ?, ?, ?, ?, ?, ?)";
+    const params = [
+      nombre,
+      fecha_proyecto,
+      presupuestoTotal,
+      presupuestoCristal,
+      presupuestoAluminio,
+      presupuestoMiscelaneos,
+      presupuestoTotal,
+    ];
+    const result = await queryAsync(query, params);
+    try {
+      await registrarHistorialPresupuesto(result.insertId, {
+        fecha: fecha_proyecto,
+        presupuesto_cristal: presupuestoCristal,
+        presupuesto_aluminio: presupuestoAluminio,
+        presupuesto_miscelaneos: presupuestoMiscelaneos,
+        presupuesto_total: presupuestoTotal,
+      });
+    } catch (histErr) {
+      console.error("No se pudo registrar historial inicial de presupuesto:", histErr);
+    }
     res.status(201).json({
       success: true,
-      data: { id_proyecto: result.insertId, nombre, fecha_proyecto, presupuesto: presupuestoNum },
+      data: {
+        id_proyecto: result.insertId,
+        nombre,
+        fecha_proyecto,
+        presupuesto: presupuestoTotal,
+        presupuesto_total: presupuestoTotal,
+        presupuesto_cristal: presupuestoCristal,
+        presupuesto_aluminio: presupuestoAluminio,
+        presupuesto_miscelaneos: presupuestoMiscelaneos,
+      },
     });
   } catch (err) {
     console.error("Error creando proyecto:", err);
@@ -228,13 +309,32 @@ app.get("/proyectos/:id", authenticateToken, async (req, res) => {
         p.id_proyecto,
         p.nombre,
         p.fecha_proyecto,
-        p.presupuesto,
+        COALESCE(p.presupuesto_cristal, 0) AS presupuesto_cristal,
+        COALESCE(p.presupuesto_aluminio, 0) AS presupuesto_aluminio,
+        COALESCE(p.presupuesto_miscelaneos, 0) AS presupuesto_miscelaneos,
+        COALESCE(
+          NULLIF(p.presupuesto_total, 0),
+          NULLIF(COALESCE(p.presupuesto_cristal, 0) + COALESCE(p.presupuesto_aluminio, 0) + COALESCE(p.presupuesto_miscelaneos, 0), 0),
+          p.presupuesto,
+          0
+        ) AS presupuesto_total,
+        COALESCE(
+          NULLIF(p.presupuesto, 0),
+          NULLIF(p.presupuesto_total, 0),
+          NULLIF(COALESCE(p.presupuesto_cristal, 0) + COALESCE(p.presupuesto_aluminio, 0) + COALESCE(p.presupuesto_miscelaneos, 0), 0),
+          0
+        ) AS presupuesto,
         COALESCE(SUM(pe.importe_total), 0) AS total_pedidos,
-        p.presupuesto - COALESCE(SUM(pe.importe_total), 0) AS presupuesto_disponible
+        COALESCE(
+          NULLIF(p.presupuesto_total, 0),
+          NULLIF(COALESCE(p.presupuesto_cristal, 0) + COALESCE(p.presupuesto_aluminio, 0) + COALESCE(p.presupuesto_miscelaneos, 0), 0),
+          p.presupuesto,
+          0
+        ) AS presupuesto_disponible
       FROM proyectos p
       LEFT JOIN pedidos pe ON pe.id_proyecto = p.id_proyecto
       WHERE p.id_proyecto = ?
-      GROUP BY p.id_proyecto, p.nombre, p.fecha_proyecto, p.presupuesto
+      GROUP BY p.id_proyecto, p.nombre, p.fecha_proyecto, p.presupuesto, p.presupuesto_cristal, p.presupuesto_aluminio, p.presupuesto_miscelaneos, p.presupuesto_total
       LIMIT 1
     `;
     const results = await queryAsync(query, [id]);
@@ -242,6 +342,22 @@ app.get("/proyectos/:id", authenticateToken, async (req, res) => {
       return res.status(404).json({ success: false, message: "No encontrado" });
     }
     const proyecto = results[0];
+    const presupuestoCristal = Number(proyecto.presupuesto_cristal || 0);
+    const presupuestoAluminio = Number(proyecto.presupuesto_aluminio || 0);
+    const presupuestoMiscelaneos = Number(proyecto.presupuesto_miscelaneos || 0);
+    let presupuestoTotal = Number(proyecto.presupuesto_total || 0);
+    if (!Number.isFinite(presupuestoTotal) || presupuestoTotal === 0) {
+      presupuestoTotal = Number((presupuestoCristal + presupuestoAluminio + presupuestoMiscelaneos).toFixed(2));
+    }
+    const baseProyecto = {
+      ...proyecto,
+      presupuesto_cristal: presupuestoCristal,
+      presupuesto_aluminio: presupuestoAluminio,
+      presupuesto_miscelaneos: presupuestoMiscelaneos,
+      presupuesto_total: presupuestoTotal,
+      presupuesto: Number(proyecto.presupuesto ?? presupuestoTotal ?? 0),
+      presupuesto_disponible: presupuestoTotal,
+    };
     try {
       const pedidosRows = await queryAsync(
         "SELECT id, familia, situaciones_especiales, porcentaje_descuento FROM pedidos WHERE id_proyecto = ?",
@@ -253,21 +369,105 @@ app.get("/proyectos/:id", authenticateToken, async (req, res) => {
         totalRecalc += Number(importe || 0);
       }
       const totalFix = Number(totalRecalc.toFixed(2));
-      const presupuestoNum = Number(proyecto.presupuesto || 0);
       res.json({
         success: true,
         data: {
-          ...proyecto,
+          ...baseProyecto,
           total_pedidos: totalFix,
-          presupuesto_disponible: Number((presupuestoNum - totalFix).toFixed(2)),
         },
       });
     } catch (calcErr) {
       console.error("Error recalculando totales del proyecto:", calcErr);
-      res.json({ success: true, data: proyecto });
+      res.json({ success: true, data: baseProyecto });
     }
   } catch (err) {
     console.error("Error consultando proyecto:", err);
+    res.status(500).json({ success: false, message: "Error interno del servidor" });
+  }
+});
+
+// Proyectos - actualizar presupuestos por familia y registrar historial
+app.put("/proyectos/:id/presupuesto", authenticateToken, requireRole("administrador"), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const proyectoId = Number(id);
+    if (!Number.isInteger(proyectoId) || proyectoId <= 0) {
+      return res.status(400).json({ success: false, message: "Proyecto inválido" });
+    }
+    const { presupuesto_cristal, presupuesto_aluminio, presupuesto_miscelaneos, fecha_presupuesto } = req.body || {};
+    const existentes = await queryAsync(
+      "SELECT presupuesto_cristal, presupuesto_aluminio, presupuesto_miscelaneos FROM proyectos WHERE id_proyecto = ? LIMIT 1",
+      [proyectoId]
+    );
+    if (!Array.isArray(existentes) || existentes.length === 0) {
+      return res.status(404).json({ success: false, message: "Proyecto no encontrado" });
+    }
+    const actuales = existentes[0];
+    const cristal = parseBudgetValue(presupuesto_cristal) ?? Number(actuales.presupuesto_cristal || 0);
+    const aluminio = parseBudgetValue(presupuesto_aluminio) ?? Number(actuales.presupuesto_aluminio || 0);
+    const miscelaneos = parseBudgetValue(presupuesto_miscelaneos) ?? Number(actuales.presupuesto_miscelaneos || 0);
+    if (![cristal, aluminio, miscelaneos].every((v) => Number.isFinite(v) && v >= 0)) {
+      return res.status(400).json({ success: false, message: "Presupuestos inválidos" });
+    }
+    const total = Number((cristal + aluminio + miscelaneos).toFixed(2));
+    await queryAsync(
+      `UPDATE proyectos
+         SET presupuesto_cristal = ?, presupuesto_aluminio = ?, presupuesto_miscelaneos = ?,
+             presupuesto_total = ?, presupuesto = ?
+       WHERE id_proyecto = ?`,
+      [cristal, aluminio, miscelaneos, total, total, proyectoId]
+    );
+    try {
+      await registrarHistorialPresupuesto(proyectoId, {
+        fecha: fecha_presupuesto,
+        presupuesto_cristal: cristal,
+        presupuesto_aluminio: aluminio,
+        presupuesto_miscelaneos: miscelaneos,
+        presupuesto_total: total,
+      });
+    } catch (histErr) {
+      console.error("No se pudo registrar historial de cambio de presupuesto:", histErr);
+    }
+    return res.json({
+      success: true,
+      data: {
+        id_proyecto: proyectoId,
+        presupuesto_cristal: cristal,
+        presupuesto_aluminio: aluminio,
+        presupuesto_miscelaneos: miscelaneos,
+        presupuesto_total: total,
+        presupuesto: total,
+      },
+    });
+  } catch (err) {
+    console.error("Error actualizando presupuesto del proyecto:", err);
+    res.status(500).json({ success: false, message: "Error interno del servidor" });
+  }
+});
+
+// Proyectos - historial de presupuestos
+app.get("/proyectos/:id/presupuestos/historial", authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const proyectoId = Number(id);
+    if (!Number.isInteger(proyectoId) || proyectoId <= 0) {
+      return res.status(400).json({ success: false, message: "Proyecto inválido" });
+    }
+    const rows = await queryAsync(
+      `SELECT id_historial,
+              DATE_FORMAT(fecha_presupuesto, '%Y-%m-%d') AS fecha_presupuesto,
+              presupuesto_cristal,
+              presupuesto_aluminio,
+              presupuesto_miscelaneos,
+              presupuesto_total
+       FROM proyectos_presupuestos_historial
+       WHERE id_proyecto = ?
+       ORDER BY fecha_presupuesto DESC, id_historial DESC`,
+      [proyectoId]
+    );
+    res.json({ success: true, data: rows || [] });
+  } catch (err) {
+    console.error("Error consultando historial de presupuestos:", err);
     res.status(500).json({ success: false, message: "Error interno del servidor" });
   }
 });
@@ -758,6 +958,11 @@ function normalizeTextValue(value) {
   return String(value).trim();
 }
 
+function todayISO() {
+  const now = new Date();
+  return `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
+}
+
 function parseSituacionEspecialInfo(texto) {
   const val = normalizeTextValue(texto).toUpperCase();
   if (!val) return { tipo: null, porcentaje: 0 };
@@ -823,6 +1028,66 @@ async function calcularImporteDesdeDetalles(row, { includeSubtotal = false } = {
   const total = salidaTlatilco ? 0 : Number(Math.max(0, subtotalConDesc + ivaMonto).toFixed(2));
   if (includeSubtotal) return { subtotal: subtotalBase, total };
   return total;
+}
+
+const PRESUPUESTO_FAMILIA_COL = {
+  cristal: "presupuesto_cristal",
+  aluminio: "presupuesto_aluminio",
+  miscelaneos: "presupuesto_miscelaneos",
+};
+
+function parseBudgetValue(raw, { allowNull = true } = {}) {
+  if (raw === undefined || raw === null || String(raw).trim() === "") {
+    return allowNull ? null : 0;
+  }
+  const num = Number(raw);
+  if (!Number.isFinite(num)) return null;
+  return Number(num.toFixed(2));
+}
+
+function normalizarFamiliaPresupuesto(familia) {
+  const fam = normalizeTextValue(familia).toUpperCase();
+  if (fam.startsWith("CR")) return "cristal";
+  if (fam === "MQAL" || fam.startsWith("AL") || fam.includes("ALUM")) return "aluminio";
+  return "miscelaneos";
+}
+
+async function ajustarPresupuestoProyecto(idProyecto, familia, importe, { revert = false } = {}) {
+  const proyectoId = Number(idProyecto);
+  const monto = toFiniteNumber(importe);
+  if (!Number.isInteger(proyectoId) || proyectoId <= 0 || monto === null) return;
+  if (monto === 0) return;
+  const tipoFamilia = normalizarFamiliaPresupuesto(familia);
+  const columna = PRESUPUESTO_FAMILIA_COL[tipoFamilia];
+  if (!columna) return;
+  const deltaBase = revert ? monto : -monto;
+  const delta = Number(deltaBase.toFixed(2));
+  await queryAsync(
+    `UPDATE proyectos SET ${columna} = COALESCE(${columna}, 0) + ? WHERE id_proyecto = ?`,
+    [delta, proyectoId]
+  );
+  await queryAsync(
+    `UPDATE proyectos
+        SET presupuesto_total = COALESCE(presupuesto_cristal, 0) + COALESCE(presupuesto_aluminio, 0) + COALESCE(presupuesto_miscelaneos, 0),
+            presupuesto = COALESCE(presupuesto_cristal, 0) + COALESCE(presupuesto_aluminio, 0) + COALESCE(presupuesto_miscelaneos, 0)
+      WHERE id_proyecto = ?`,
+    [proyectoId]
+  );
+}
+
+async function registrarHistorialPresupuesto(idProyecto, { fecha, presupuesto_cristal, presupuesto_aluminio, presupuesto_miscelaneos, presupuesto_total }) {
+  const proyectoId = Number(idProyecto);
+  if (!Number.isInteger(proyectoId) || proyectoId <= 0) return;
+  const fechaISO = parseDateToISO(fecha) || todayISO();
+  const cristal = parseBudgetValue(presupuesto_cristal, { allowNull: false });
+  const aluminio = parseBudgetValue(presupuesto_aluminio, { allowNull: false });
+  const miscelaneos = parseBudgetValue(presupuesto_miscelaneos, { allowNull: false });
+  const total =
+    parseBudgetValue(presupuesto_total, { allowNull: true }) ??
+    Number(((cristal || 0) + (aluminio || 0) + (miscelaneos || 0)).toFixed(2));
+  const sql = `INSERT INTO proyectos_presupuestos_historial (id_proyecto, fecha_presupuesto, presupuesto_cristal, presupuesto_aluminio, presupuesto_miscelaneos, presupuesto_total)
+               VALUES (?, ?, ?, ?, ?, ?)`;
+  await queryAsync(sql, [proyectoId, fechaISO, cristal || 0, aluminio || 0, miscelaneos || 0, total]);
 }
 
 function prepareDetalleForInsert(detalle) {
@@ -1049,6 +1314,8 @@ app.post("/proyectos/:id/pedidos", authenticateToken, requireRole("administrador
         detailsLog.push({ index: idx + 1, pedido: null, ok: false, replaced: false, error: "Pedido sin nombre" });
         continue;
       }
+      const situacionesEspeciales = normalizeTextValue(p.situaciones_especiales) || null;
+      const familiaValor = normalizeTextValue(p.familia);
 
       const parsePct = (raw) => {
         const num = toFiniteNumber(raw);
@@ -1102,12 +1369,26 @@ app.post("/proyectos/:id/pedidos", authenticateToken, requireRole("administrador
       let replacedExisting = false;
       try {
         const existingRows = await queryAsync(
-          "SELECT id FROM pedidos WHERE id_proyecto = ? AND pedido = ? LIMIT 1",
+          "SELECT id, familia, situaciones_especiales, porcentaje_descuento, importe_total FROM pedidos WHERE id_proyecto = ? AND pedido = ? LIMIT 1",
           [proyectoId, pedidoNombre]
         );
         if (Array.isArray(existingRows) && existingRows.length) {
-          const existingId = existingRows[0].id;
-          await queryAsync("DELETE FROM pedidos WHERE id = ? AND id_proyecto = ?", [existingId, proyectoId]);
+          const existingRow = existingRows[0];
+          let importePrevio = toFiniteNumber(existingRow.importe_total) || 0;
+          try {
+            const importeCalc = await calcularImporteDesdeDetalles(existingRow, { includeSubtotal: false });
+            if (Number.isFinite(importeCalc) && importeCalc !== null) {
+              importePrevio = Number(importeCalc);
+            }
+          } catch (calcErr) {
+            console.error("Error recalculando importe previo del pedido:", calcErr);
+          }
+          try {
+            await ajustarPresupuestoProyecto(proyectoId, existingRow.familia, importePrevio, { revert: true });
+          } catch (presErr) {
+            console.error("No se pudo reintegrar presupuesto del pedido previo:", presErr);
+          }
+          await queryAsync("DELETE FROM pedidos WHERE id = ? AND id_proyecto = ?", [existingRow.id, proyectoId]);
           replacedExisting = true;
         }
       } catch (lookupErr) {
@@ -1121,11 +1402,11 @@ app.post("/proyectos/:id/pedidos", authenticateToken, requireRole("administrador
         normalizeTextValue(p.nombre_proyecto),
         pedidoNombre,
         normalizeTextValue(p.clan),
-        normalizeTextValue(p.familia),
+        familiaValor,
         normalizeTextValue(p.proveedor),
         fechaISO,
         normalizeTextValue(p.concepto),
-        normalizeTextValue(p.situaciones_especiales) || null,
+        situacionesEspeciales,
         porcentajeDescuentoDb,
         importeTotal,
         username,
@@ -1134,6 +1415,36 @@ app.post("/proyectos/:id/pedidos", authenticateToken, requireRole("administrador
         const result = await queryAsync(sql, values);
         const pedidoId = result.insertId;
         await insertDetallesSegunFamilia(pedidoId, p.familia, p.detalles);
+        let importeFinal = importeTotal;
+        try {
+          const calc = await calcularImporteDesdeDetalles(
+            {
+              id: pedidoId,
+              familia: familiaValor,
+              situaciones_especiales: situacionesEspeciales,
+              porcentaje_descuento: porcentajeDescuentoDb,
+            },
+            { includeSubtotal: true }
+          );
+          if (calc && Number.isFinite(calc.total)) {
+            importeFinal = Number(calc.total);
+          }
+        } catch (calcErr) {
+          console.error("No se pudo recalcular el importe del pedido insertado:", calcErr);
+        }
+        const importeFinalSeguro = Number(
+          Number.isFinite(importeFinal) ? importeFinal.toFixed(2) : Number(importeTotal.toFixed(2))
+        );
+        try {
+          await queryAsync("UPDATE pedidos SET importe_total = ? WHERE id = ?", [importeFinalSeguro, pedidoId]);
+        } catch (updErr) {
+          console.error("No se pudo actualizar el importe_total del pedido:", updErr);
+        }
+        try {
+          await ajustarPresupuestoProyecto(proyectoId, familiaValor, importeFinalSeguro);
+        } catch (presErr) {
+          console.error("No se pudo descontar del presupuesto del proyecto:", presErr);
+        }
         okCount += 1;
         detailsLog.push({ index: idx + 1, pedido: pedidoNombre, ok: true, replaced: replacedExisting, error: null });
       } catch (err) {

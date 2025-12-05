@@ -10,7 +10,11 @@ type Proyecto = {
   id_proyecto: number;
   nombre: string;
   fecha_proyecto: string; // formato YYYY-MM-DD
-  presupuesto: number;
+  presupuesto?: number;
+  presupuesto_total?: number;
+  presupuesto_cristal?: number;
+  presupuesto_aluminio?: number;
+  presupuesto_miscelaneos?: number;
   total_pedidos?: number;
   presupuesto_disponible?: number;
 };
@@ -30,8 +34,11 @@ const getTodayISO = () => {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 };
 
-const formatCurrency = (value: number | null | undefined) =>
-  `$${Number(value ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const formatCurrency = (value: number | null | undefined) => {
+  const num = Number(value ?? 0);
+  const safe = Number.isFinite(num) ? num : 0;
+  return `$${safe.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+};
 
 const TrashIcon = () => (
   <svg
@@ -84,7 +91,9 @@ export function MainPage() {
   const [modalAbierto, setModalAbierto] = useState(false);
   const [nombre, setNombre] = useState("");
   const [fecha, setFecha] = useState("");
-  const [presupuesto, setPresupuesto] = useState("");
+  const [presupuestoCristal, setPresupuestoCristal] = useState("");
+  const [presupuestoAluminio, setPresupuestoAluminio] = useState("");
+  const [presupuestoMiscelaneos, setPresupuestoMiscelaneos] = useState("");
   const [proyectoAEliminar, setProyectoAEliminar] = useState<Proyecto | null>(null);
   const [confirmacionProyecto, setConfirmacionProyecto] = useState<string>("");
   const [eliminandoProyecto, setEliminandoProyecto] = useState(false);
@@ -99,6 +108,13 @@ export function MainPage() {
   const filtroFechaRef = useRef<HTMLInputElement | null>(null);
   const role = (getRole() || "").toLowerCase();
   const isAdmin = role === "administrador";
+  const presupuestoTotalPreview = [presupuestoCristal, presupuestoAluminio, presupuestoMiscelaneos].reduce(
+    (sum, val) => {
+      const num = Number(val);
+      return Number.isFinite(num) && num >= 0 ? sum + num : sum;
+    },
+    0
+  );
 
   const handleLogout = () => {
     clearToken();
@@ -138,24 +154,40 @@ export function MainPage() {
     setModalAbierto(false);
     setNombre("");
     setFecha("");
-    setPresupuesto("");
+    setPresupuestoCristal("");
+    setPresupuestoAluminio("");
+    setPresupuestoMiscelaneos("");
     setError("");
   };
 
   const crearProyecto = async (e: React.FormEvent) => {
     e.preventDefault();
-    const presupuestoNum = Number(presupuesto);
-    const presupuestoNoVacio = presupuesto.trim() !== "";
-    if (!nombre || !fecha || !presupuestoNoVacio || !Number.isFinite(presupuestoNum) || presupuestoNum < 0) {
-      setError("Completa nombre, fecha y un presupuesto válido");
+    const parseBudgetInput = (value: string) => {
+      if (value.trim() === "") return 0;
+      const num = Number(value);
+      return Number.isFinite(num) && num >= 0 ? Number(num.toFixed(2)) : NaN;
+    };
+    const cristalNum = parseBudgetInput(presupuestoCristal);
+    const aluminioNum = parseBudgetInput(presupuestoAluminio);
+    const miscelaneosNum = parseBudgetInput(presupuestoMiscelaneos);
+    if (!nombre || !fecha || [cristalNum, aluminioNum, miscelaneosNum].some((n) => Number.isNaN(n))) {
+      setError("Completa nombre, fecha y presupuestos válidos (usa 0 si no aplica)");
       return;
     }
+    const presupuestoTotal = cristalNum + aluminioNum + miscelaneosNum;
     try {
       setError("");
       const res = await fetch("http://localhost:3000/proyectos", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeader() },
-        body: JSON.stringify({ nombre, fecha_proyecto: fecha, presupuesto: presupuestoNum }),
+        body: JSON.stringify({
+          nombre,
+          fecha_proyecto: fecha,
+          presupuesto_cristal: cristalNum,
+          presupuesto_aluminio: aluminioNum,
+          presupuesto_miscelaneos: miscelaneosNum,
+          presupuesto_total: presupuestoTotal,
+        }),
       });
       const data = await res.json();
       if (res.status === 201 && data.success) {
@@ -476,8 +508,16 @@ export function MainPage() {
             {!loading && !error && (
               <ul className="lista-proyectos">
                 {proyectosFiltrados.map((p) => {
-                  const presupuestoDisponible = p.presupuesto_disponible ?? (p.presupuesto - (p.total_pedidos || 0));
-                  const claseDisponible = presupuestoDisponible < 0 ? "presupuesto-disponible negativo" : "presupuesto-disponible positivo";
+                  const totalPedidos = p.total_pedidos ?? 0;
+                  const sumaFamilias = (p.presupuesto_cristal ?? 0) + (p.presupuesto_aluminio ?? 0) + (p.presupuesto_miscelaneos ?? 0);
+                  const presupuestoRestante = (p.presupuesto_total ?? 0) || sumaFamilias || (p.presupuesto ?? 0);
+                  const presupuestoAsignado = presupuestoRestante + totalPedidos;
+                  const claseDisponible = presupuestoRestante < 0 ? "presupuesto-disponible negativo" : "presupuesto-disponible positivo";
+                  const presupuestoFamilias = {
+                    cristal: p.presupuesto_cristal ?? 0,
+                    aluminio: p.presupuesto_aluminio ?? 0,
+                    miscelaneos: p.presupuesto_miscelaneos ?? 0,
+                  };
                   return (
                     <li
                       key={p.id_proyecto}
@@ -487,8 +527,12 @@ export function MainPage() {
                           state: {
                             nombre: p.nombre,
                             fecha: p.fecha_proyecto,
-                            presupuesto: p.presupuesto,
-                            presupuesto_disponible: p.presupuesto_disponible,
+                            presupuesto: presupuestoAsignado,
+                            presupuesto_total: presupuestoRestante,
+                            presupuesto_cristal: presupuestoFamilias.cristal,
+                            presupuesto_aluminio: presupuestoFamilias.aluminio,
+                            presupuesto_miscelaneos: presupuestoFamilias.miscelaneos,
+                            total_pedidos: totalPedidos,
                           },
                         })
                       }
@@ -498,10 +542,14 @@ export function MainPage() {
                         <span className="nombre">{p.nombre}</span>
                         <span className="fecha">{p.fecha_proyecto}</span>
                         <div className="presupuesto-resumen">
-                          <span>Presupuesto: {formatCurrency(p.presupuesto)}</span>
-                          <span className={claseDisponible}>
-                            Disponible: {formatCurrency(presupuestoDisponible)}
-                          </span>
+                          <span>Asignado: {formatCurrency(presupuestoAsignado)}</span>
+                          <span>Gastado: {formatCurrency(totalPedidos)}</span>
+                          <span className={claseDisponible}>Disponible: {formatCurrency(presupuestoRestante)}</span>
+                        </div>
+                        <div className="presupuesto-familias">
+                          <span className="presupuesto-chip">CR: <strong>{formatCurrency(presupuestoFamilias.cristal)}</strong></span>
+                          <span className="presupuesto-chip">AL: <strong>{formatCurrency(presupuestoFamilias.aluminio)}</strong></span>
+                          <span className="presupuesto-chip">MI: <strong>{formatCurrency(presupuestoFamilias.miscelaneos)}</strong></span>
                         </div>
                       </div>
                       {isAdmin && (
@@ -616,16 +664,39 @@ export function MainPage() {
                 onChange={(e) => setFecha(e.target.value)}
                 required
               />
-              <label>Presupuesto</label>
+              <label>Presupuesto cristal</label>
               <input
                 type="number"
                 min="0"
                 step="0.01"
-                value={presupuesto}
-                onChange={(e) => setPresupuesto(e.target.value)}
-                placeholder="Presupuesto asignado"
+                value={presupuestoCristal}
+                onChange={(e) => setPresupuestoCristal(e.target.value)}
+                placeholder="Presupuesto para cristal"
                 required
               />
+              <label>Presupuesto aluminio</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={presupuestoAluminio}
+                onChange={(e) => setPresupuestoAluminio(e.target.value)}
+                placeholder="Presupuesto para aluminio"
+                required
+              />
+              <label>Presupuesto misceláneos</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={presupuestoMiscelaneos}
+                onChange={(e) => setPresupuestoMiscelaneos(e.target.value)}
+                placeholder="Presupuesto para misceláneos"
+                required
+              />
+              <div className="presupuesto-total-preview">
+                Total capturado: <strong>{formatCurrency(presupuestoTotalPreview)}</strong>
+              </div>
               <div className="modal-actions">
                 <button type="button" className="cancel-button" onClick={cerrarModal}>
                   Cancelar

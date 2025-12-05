@@ -19,8 +19,48 @@ CREATE TABLE IF NOT EXISTS proyectos (
   id_proyecto INT AUTO_INCREMENT PRIMARY KEY,
   nombre VARCHAR(50),
   fecha_proyecto DATE,
-  presupuesto DECIMAL (15,2) NOT NULL
+  presupuesto DECIMAL (15,2) NOT NULL,
+  presupuesto_cristal DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+  presupuesto_aluminio DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+  presupuesto_miscelaneos DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+  presupuesto_total DECIMAL(15,2) NOT NULL DEFAULT 0.00
 );
+
+------------------------------------------------------------
+-- Historial de presupuestos por proyecto
+------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS proyectos_presupuestos_historial (
+  id_historial INT AUTO_INCREMENT PRIMARY KEY,
+  id_proyecto INT NOT NULL,
+  fecha_presupuesto DATE NOT NULL,
+  presupuesto_cristal DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+  presupuesto_aluminio DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+  presupuesto_miscelaneos DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+  presupuesto_total DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+  FOREIGN KEY (id_proyecto) REFERENCES proyectos(id_proyecto)
+    ON DELETE CASCADE
+    ON UPDATE CASCADE
+);
+
+-- Para bases ya existentes, agregar columnas de presupuesto por familia:
+-- ALTER TABLE proyectos ADD COLUMN presupuesto_cristal DECIMAL(15,2) NOT NULL DEFAULT 0.00;
+-- ALTER TABLE proyectos ADD COLUMN presupuesto_aluminio DECIMAL(15,2) NOT NULL DEFAULT 0.00;
+-- ALTER TABLE proyectos ADD COLUMN presupuesto_miscelaneos DECIMAL(15,2) NOT NULL DEFAULT 0.00;
+-- ALTER TABLE proyectos ADD COLUMN presupuesto_total DECIMAL(15,2) NOT NULL DEFAULT 0.00;
+-- UPDATE proyectos SET presupuesto_total = presupuesto_cristal + presupuesto_aluminio + presupuesto_miscelaneos WHERE presupuesto_total = 0;
+-- Historial (si ya existe la tabla, saltará; si no, crearla):
+-- CREATE TABLE proyectos_presupuestos_historial (
+--   id_historial INT AUTO_INCREMENT PRIMARY KEY,
+--   id_proyecto INT NOT NULL,
+--   fecha_presupuesto DATE NOT NULL,
+--   presupuesto_cristal DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+--   presupuesto_aluminio DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+--   presupuesto_miscelaneos DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+--   presupuesto_total DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+--   FOREIGN KEY (id_proyecto) REFERENCES proyectos(id_proyecto)
+--     ON DELETE CASCADE
+--     ON UPDATE CASCADE
+-- );
 
 ------------------------------------------------------------
 -- Tabla de pedidos
