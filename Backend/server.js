@@ -477,7 +477,7 @@ app.get("/proyectos/:id/pedidos", authenticateToken, requireRole("administrador"
   const { id } = req.params;
   const { familia } = req.query;
   let query =
-    "SELECT id, id_proyecto, nombre_proyecto, pedido, clan, familia, proveedor, DATE_FORMAT(fecha_aprobacion, '%Y-%m-%d') AS fecha_aprobacion, concepto, situaciones_especiales, porcentaje_descuento, importe_total AS importe FROM pedidos WHERE id_proyecto = ?";
+    "SELECT id, id_proyecto, nombre_proyecto, pedido, clan, familia, proveedor, nombre_usuario, DATE_FORMAT(fecha_aprobacion, '%Y-%m-%d') AS fecha_aprobacion, concepto, situaciones_especiales, porcentaje_descuento, importe_total AS importe FROM pedidos WHERE id_proyecto = ?";
   const params = [id];
   const toList = (v) => Array.isArray(v) ? v : (typeof v === 'string' ? v.split(',').map(s=>s.trim()).filter(Boolean) : []);
   const addMulti = (field, values) => {
@@ -918,6 +918,170 @@ app.get("/proyectos/:id/pedidos/export", authenticateToken, requireRole("adminis
     });
   });
 });
+
+// Pedidos - explosión de insumos (asignaciones por clan/familia)
+app.get("/proyectos/:id/explosion-insumos", authenticateToken, requireRole("administrador"), async (req, res) => {
+  try {
+    const proyectoId = Number(req.params.id);
+    if (!Number.isInteger(proyectoId) || proyectoId <= 0) {
+      return res.status(400).json({ success: false, message: "Proyecto inválido" });
+    }
+    const ctx = await obtenerContextoExplosion(proyectoId);
+    const rows = await queryAsync(
+      "SELECT id, clan, familia, presupuesto_asignado FROM explosion_insumos WHERE id_proyecto = ? ORDER BY id ASC",
+      [proyectoId]
+    );
+    const data = (rows || []).map((row) => {
+      const key = claveExplosion(row?.clan, row?.familia);
+      const gastado = redondearMoneda(ctx.gastoPorClave.get(key) || 0);
+      const presupuestoAsignado = redondearMoneda(row?.presupuesto_asignado);
+      const restante = redondearMoneda(presupuestoAsignado - gastado);
+      return {
+        id: row.id,
+        clan: normalizeTextValue(row?.clan),
+        familia: normalizeTextValue(row?.familia),
+        presupuesto_asignado: presupuestoAsignado,
+        gastado,
+        presupuesto_restante: restante,
+        presupuesto_usado: restante, // compatibilidad con clientes anteriores
+      };
+    });
+    res.json({
+      success: true,
+      data,
+      total_asignado: ctx.totalAsignado,
+      presupuesto_miscelaneos_base: ctx.baseMiscelaneos,
+      presupuesto_miscelaneos_disponible: redondearMoneda(ctx.baseMiscelaneos - ctx.totalAsignado),
+    });
+  } catch (err) {
+    if ((err?.message || "").includes("Proyecto no encontrado")) {
+      return res.status(404).json({ success: false, message: "Proyecto no encontrado" });
+    }
+    console.error("Error consultando explosión de insumos:", err);
+    res.status(500).json({ success: false, message: "Error interno al cargar explosión" });
+  }
+});
+
+app.post("/proyectos/:id/explosion-insumos", authenticateToken, requireRole("administrador"), async (req, res) => {
+  try {
+    const proyectoId = Number(req.params.id);
+    if (!Number.isInteger(proyectoId) || proyectoId <= 0) {
+      return res.status(400).json({ success: false, message: "Proyecto inválido" });
+    }
+    const { clan, familia, presupuesto_asignado } = req.body || {};
+    const familiaVal = normalizeTextValue(familia);
+    const clanVal = normalizeTextValue(clan);
+    const familiaDb = familiaVal.toUpperCase();
+    const clanDb = clanVal ? clanVal.toUpperCase() : "";
+    const presupuestoNum = parseBudgetValue(presupuesto_asignado, { allowNull: false });
+    if (!familiaDb) {
+      return res.status(400).json({ success: false, message: "Familia requerida" });
+    }
+    if (!Number.isFinite(presupuestoNum) || presupuestoNum < 0) {
+      return res.status(400).json({ success: false, message: "Presupuesto inválido" });
+    }
+    const ctx = await obtenerContextoExplosion(proyectoId);
+    const nuevoTotal = redondearMoneda(ctx.totalAsignado + presupuestoNum);
+    if (nuevoTotal - ctx.baseMiscelaneos > 0.01) {
+      return res.status(400).json({
+        success: false,
+        message: "El presupuesto asignado supera el presupuesto total de misceláneos del proyecto",
+      });
+    }
+    const existente = await queryAsync(
+      "SELECT id FROM explosion_insumos WHERE id_proyecto = ? AND clan = ? AND familia = ? LIMIT 1",
+      [proyectoId, clanDb, familiaDb]
+    );
+    if (Array.isArray(existente) && existente.length) {
+      return res.status(409).json({ success: false, message: "Ya existe una asignación para ese clan y familia" });
+    }
+    await queryAsync(
+      "INSERT INTO explosion_insumos (id_proyecto, clan, familia, presupuesto_asignado) VALUES (?, ?, ?, ?)",
+      [proyectoId, clanDb, familiaDb, presupuestoNum]
+    );
+    res.status(201).json({ success: true, message: "Presupuesto asignado guardado" });
+  } catch (err) {
+    if ((err?.message || "").includes("Proyecto no encontrado")) {
+      return res.status(404).json({ success: false, message: "Proyecto no encontrado" });
+    }
+    console.error("Error creando explosión de insumos:", err);
+    res.status(500).json({ success: false, message: "Error interno al guardar asignación" });
+  }
+});
+
+app.put("/proyectos/:id/explosion-insumos/:explosionId", authenticateToken, requireRole("administrador"), async (req, res) => {
+  try {
+    const proyectoId = Number(req.params.id);
+    const explosionId = Number(req.params.explosionId);
+    if (!Number.isInteger(proyectoId) || proyectoId <= 0 || !Number.isInteger(explosionId) || explosionId <= 0) {
+      return res.status(400).json({ success: false, message: "Identificadores inválidos" });
+    }
+    const { clan, familia, presupuesto_asignado } = req.body || {};
+    const familiaVal = normalizeTextValue(familia);
+    const clanVal = normalizeTextValue(clan);
+    const familiaDb = familiaVal.toUpperCase();
+    const clanDb = clanVal ? clanVal.toUpperCase() : "";
+    const presupuestoNum = parseBudgetValue(presupuesto_asignado, { allowNull: false });
+    if (!familiaDb) {
+      return res.status(400).json({ success: false, message: "Familia requerida" });
+    }
+    if (!Number.isFinite(presupuestoNum) || presupuestoNum < 0) {
+      return res.status(400).json({ success: false, message: "Presupuesto inválido" });
+    }
+    const actualRows = await queryAsync(
+      "SELECT id, presupuesto_asignado FROM explosion_insumos WHERE id = ? AND id_proyecto = ? LIMIT 1",
+      [explosionId, proyectoId]
+    );
+    if (!Array.isArray(actualRows) || actualRows.length === 0) {
+      return res.status(404).json({ success: false, message: "Asignación no encontrada" });
+    }
+    const actual = actualRows[0];
+    const ctx = await obtenerContextoExplosion(proyectoId);
+    const nuevoTotal = redondearMoneda(ctx.totalAsignado - redondearMoneda(actual.presupuesto_asignado) + presupuestoNum);
+    if (nuevoTotal - ctx.baseMiscelaneos > 0.01) {
+      return res.status(400).json({
+        success: false,
+        message: "El presupuesto asignado supera el presupuesto total de misceláneos del proyecto",
+      });
+    }
+    const duplicado = await queryAsync(
+      "SELECT id FROM explosion_insumos WHERE id_proyecto = ? AND clan = ? AND familia = ? AND id <> ? LIMIT 1",
+      [proyectoId, clanDb, familiaDb, explosionId]
+    );
+    if (Array.isArray(duplicado) && duplicado.length) {
+      return res.status(409).json({ success: false, message: "Ya existe otra asignación con ese clan y familia" });
+    }
+    await queryAsync(
+      "UPDATE explosion_insumos SET clan = ?, familia = ?, presupuesto_asignado = ? WHERE id = ? AND id_proyecto = ?",
+      [clanDb, familiaDb, presupuestoNum, explosionId, proyectoId]
+    );
+    res.json({ success: true, message: "Asignación actualizada" });
+  } catch (err) {
+    if ((err?.message || "").includes("Proyecto no encontrado")) {
+      return res.status(404).json({ success: false, message: "Proyecto no encontrado" });
+    }
+    console.error("Error actualizando explosión de insumos:", err);
+    res.status(500).json({ success: false, message: "Error interno al actualizar asignación" });
+  }
+});
+
+app.delete("/proyectos/:id/explosion-insumos/:explosionId", authenticateToken, requireRole("administrador"), async (req, res) => {
+  try {
+    const proyectoId = Number(req.params.id);
+    const explosionId = Number(req.params.explosionId);
+    if (!Number.isInteger(proyectoId) || proyectoId <= 0 || !Number.isInteger(explosionId) || explosionId <= 0) {
+      return res.status(400).json({ success: false, message: "Identificadores inválidos" });
+    }
+    const result = await queryAsync("DELETE FROM explosion_insumos WHERE id = ? AND id_proyecto = ?", [explosionId, proyectoId]);
+    if (result?.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: "Asignación no encontrada" });
+    }
+    res.json({ success: true, message: "Asignación eliminada" });
+  } catch (err) {
+    console.error("Error eliminando explosión de insumos:", err);
+    res.status(500).json({ success: false, message: "Error interno al eliminar asignación" });
+  }
+});
 // Utilidad: normaliza fechas a YYYY-MM-DD admitiendo varios formatos
 function parseDateToISO(value) {
   if (!value) return null;
@@ -1050,6 +1214,62 @@ function normalizarFamiliaPresupuesto(familia) {
   if (fam.startsWith("CR")) return "cristal";
   if (fam === "MQAL" || fam.startsWith("AL") || fam.includes("ALUM")) return "aluminio";
   return "miscelaneos";
+}
+
+function redondearMoneda(value) {
+  const num = Number(value || 0);
+  if (!Number.isFinite(num)) return 0;
+  return Number(num.toFixed(2));
+}
+
+function claveExplosion(clan, familia) {
+  const familiaVal = normalizeTextValue(familia).toUpperCase();
+  if (familiaVal) return familiaVal; // agrupar por familia para que reste correctamente sin depender del clan
+  const clanVal = normalizeTextValue(clan).toUpperCase();
+  return clanVal || "";
+}
+
+function acumularGastoPorFamilia(rows = []) {
+  const gastoPorClave = new Map();
+  let gastoMiscelaneos = 0;
+  for (const row of rows) {
+    const importe = redondearMoneda(row?.importe_total);
+    const key = claveExplosion(row?.clan, row?.familia);
+    gastoPorClave.set(key, (gastoPorClave.get(key) || 0) + importe);
+    if (normalizarFamiliaPresupuesto(row?.familia) === "miscelaneos") {
+      gastoMiscelaneos += importe;
+    }
+  }
+  return { gastoPorClave, gastoMiscelaneos: redondearMoneda(gastoMiscelaneos) };
+}
+
+async function obtenerContextoExplosion(proyectoId) {
+  const proyectoRows = await queryAsync(
+    "SELECT presupuesto_miscelaneos FROM proyectos WHERE id_proyecto = ? LIMIT 1",
+    [proyectoId]
+  );
+  if (!Array.isArray(proyectoRows) || proyectoRows.length === 0) {
+    throw new Error("Proyecto no encontrado");
+  }
+  const disponibleMiscelaneos = redondearMoneda(proyectoRows[0].presupuesto_miscelaneos);
+  const pedidosRows = await queryAsync(
+    "SELECT clan, familia, importe_total FROM pedidos WHERE id_proyecto = ?",
+    [proyectoId]
+  );
+  const { gastoPorClave, gastoMiscelaneos } = acumularGastoPorFamilia(pedidosRows || []);
+  const baseMiscelaneos = redondearMoneda(disponibleMiscelaneos + gastoMiscelaneos);
+  const totRows = await queryAsync(
+    "SELECT SUM(presupuesto_asignado) AS total FROM explosion_insumos WHERE id_proyecto = ?",
+    [proyectoId]
+  );
+  const totalAsignado = redondearMoneda(totRows?.[0]?.total || 0);
+  return {
+    gastoPorClave,
+    gastoMiscelaneos,
+    baseMiscelaneos,
+    totalAsignado,
+    disponibleMiscelaneos,
+  };
 }
 
 async function ajustarPresupuestoProyecto(idProyecto, familia, importe, { revert = false } = {}) {

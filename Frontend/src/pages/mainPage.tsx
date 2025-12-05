@@ -504,6 +504,20 @@ export function MainPage() {
           <h1 className="titulo">{moduloActivo ? moduloActivo.titulo : "Pagina Principal"}</h1>
         </div>
         <div className="actions">
+          {mostrarBuscador && (
+            <div className="search-bar search-bar-inline">
+              <label htmlFor="busqueda-proyecto" className="visually-hidden">
+                Buscar proyecto
+              </label>
+              <input
+                id="busqueda-proyecto"
+                type="text"
+                placeholder="Buscar proyecto"
+                value={busquedaProyecto}
+                onChange={(e) => setBusquedaProyecto(e.target.value)}
+              />
+            </div>
+          )}
           {moduloSeleccionado && (
             <button className="action-button secondary-button" onClick={volverAModulos}>
               Cambiar módulo
@@ -543,21 +557,6 @@ export function MainPage() {
         </div>
       </div>
 
-      {mostrarBuscador && (
-        <div className="search-bar">
-          <label htmlFor="busqueda-proyecto" className="visually-hidden">
-            Buscar proyecto
-          </label>
-          <input
-            id="busqueda-proyecto"
-            type="text"
-            placeholder="Buscar proyecto"
-            value={busquedaProyecto}
-            onChange={(e) => setBusquedaProyecto(e.target.value)}
-          />
-        </div>
-      )}
-
       <div className="contenido">
         <div className="mensajes-globales">
           {loading && <p>Cargando proyectos...</p>}
@@ -593,9 +592,6 @@ export function MainPage() {
 
             {mostrarProyectos && (
               <div className="proyectos-wrapper">
-                <div className="module-meta">
-                  <span className="module-chip activo">{moduloActivo?.titulo}</span>  
-                </div>
                 {!loading && !error && (
                   <ul className="lista-proyectos">
                     {proyectosFiltrados.map((p) => {

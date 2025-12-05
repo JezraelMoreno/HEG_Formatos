@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import { LoginPage } from "./pages/loginPage";
 import { MainPage } from "./pages/mainPage";
 import { ProyectoDetalle } from "./pages/proyectoDetalle";
+import { PedidoPreview } from "./pages/pedidoPreview";
 import { PrivateRoute } from "./components/PrivateRoute";
 
 function App() {
@@ -21,6 +22,14 @@ function App() {
         element={
           <PrivateRoute>
             <ProyectoDetalle />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/proyecto/:id/pedido/:pedidoId/vista-previa"
+        element={
+          <PrivateRoute>
+            <PedidoPreview />
           </PrivateRoute>
         }
       />

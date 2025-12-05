@@ -14,6 +14,7 @@ type Pedido = {
   clan: string;
   familia: string;
   proveedor: string;
+  nombre_usuario?: string | null;
   fecha_aprobacion: string; // YYYY-MM-DD
   concepto: string;
   situaciones_especiales?: string | null;
@@ -118,6 +119,7 @@ type ProyectoLocationState = {
   presupuesto_miscelaneos?: number;
   total_pedidos?: number;
   presupuesto_disponible?: number;
+  modulo?: string | null;
 };
 
 type PresupuestoHistorial = {
@@ -127,6 +129,15 @@ type PresupuestoHistorial = {
   presupuesto_aluminio: number;
   presupuesto_miscelaneos: number;
   presupuesto_total: number;
+};
+
+type ExplosionRow = {
+  id: number;
+  clan: string;
+  familia: string;
+  presupuesto_asignado: number;
+  presupuesto_restante: number;
+  gastado: number;
 };
 
 const getTodayISO = () => {
@@ -141,6 +152,12 @@ const formatCurrency = (value: number | null | undefined) => {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
+};
+
+const parseMontoPositivo = (value: string) => {
+  const num = Number(value);
+  if (!Number.isFinite(num) || num < 0) return NaN;
+  return Number(num.toFixed(2));
 };
 
 function MultiSelectFilter({
@@ -363,6 +380,27 @@ export function ProyectoDetalle() {
   const [conceptos, setConceptos] = useState<string[]>([]);
   const [fecha, setFecha] = useState<string>("");
 
+  const [explosionInsumos, setExplosionInsumos] = useState<ExplosionRow[]>([]);
+  const [cargandoExplosion, setCargandoExplosion] = useState(false);
+  const [guardandoExplosion, setGuardandoExplosion] = useState(false);
+  const [errorExplosion, setErrorExplosion] = useState<string>("");
+  const [formExplosion, setFormExplosion] = useState({ clan: "", familia: "", presupuesto: "" });
+  const [editandoExplosionId, setEditandoExplosionId] = useState<number | null>(null);
+  const [presupuestoMiscelBase, setPresupuestoMiscelBase] = useState<number>(0);
+  const [presupuestoMiscelDisponible, setPresupuestoMiscelDisponible] = useState<number>(0);
+
+  const moduloOrigen = useMemo(() => {
+    const fromState = (state as ProyectoLocationState | null)?.modulo;
+    if (fromState) return fromState.toLowerCase();
+    if (typeof window !== "undefined") {
+      const stored = sessionStorage.getItem("moduloActual");
+      return stored ? stored.toLowerCase() : "";
+    }
+    return "";
+  }, [state]);
+  const mostrarHistorialPresupuesto = moduloOrigen === "contabilidad";
+  const mostrarPedidosModulo = moduloOrigen === "pedidos";
+  const mostrarCobranza = moduloOrigen === "contabilidad";
   const nombreProyecto = proyectoInfo?.nombre || state?.nombre || "Proyecto";
   const role = (getRole() || '').toLowerCase();
   const isAdmin = role === 'administrador';
@@ -429,6 +467,7 @@ export function ProyectoDetalle() {
         setMensaje(data?.message || "Pedidos cargados correctamente");
         await cargarPedidos();
         await cargarProyecto();
+        await cargarExplosion();
       }
     } catch (_) {
       setError("No se pudo procesar los archivos CSV");
@@ -543,19 +582,152 @@ export function ProyectoDetalle() {
     }
   }, [id]);
 
+  const limpiarFormularioExplosion = () => {
+    setFormExplosion({ clan: "", familia: "", presupuesto: "" });
+    setEditandoExplosionId(null);
+  };
+
+  const seleccionarExplosion = (row: ExplosionRow) => {
+    setEditandoExplosionId(row.id);
+    setFormExplosion({
+      clan: row.clan || "",
+      familia: row.familia || "",
+      presupuesto: String(row.presupuesto_asignado ?? 0),
+    });
+  };
+
+  const guardarExplosion = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!id) return;
+    const monto = parseMontoPositivo(formExplosion.presupuesto);
+    if (Number.isNaN(monto)) {
+      setErrorExplosion("Ingresa un monto válido (0 o mayor)");
+      return;
+    }
+    if (!formExplosion.familia.trim()) {
+      setErrorExplosion("La familia es obligatoria");
+      return;
+    }
+    setGuardandoExplosion(true);
+    setErrorExplosion("");
+    try {
+      const payload = {
+        clan: formExplosion.clan.trim().toUpperCase(),
+        familia: formExplosion.familia.trim().toUpperCase(),
+        presupuesto_asignado: monto,
+      };
+      const url = editandoExplosionId
+        ? `http://localhost:3000/proyectos/${id}/explosion-insumos/${editandoExplosionId}`
+        : `http://localhost:3000/proyectos/${id}/explosion-insumos`;
+      const method = editandoExplosionId ? "PUT" : "POST";
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json", ...authHeader() },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        setErrorExplosion(data?.message || "No se pudo guardar la asignación");
+        return;
+      }
+      setMensaje(editandoExplosionId ? "Asignación actualizada" : "Asignación agregada");
+      limpiarFormularioExplosion();
+      await cargarExplosion();
+    } catch {
+      setErrorExplosion("Error de conexión al guardar la asignación");
+    } finally {
+      setGuardandoExplosion(false);
+    }
+  };
+
+  const eliminarExplosion = async (registroId: number) => {
+    if (!id || !registroId) return;
+    const confirmar = window.confirm("¿Eliminar esta asignación?");
+    if (!confirmar) return;
+    setGuardandoExplosion(true);
+    setErrorExplosion("");
+    try {
+      const res = await fetch(`http://localhost:3000/proyectos/${id}/explosion-insumos/${registroId}`, {
+        method: "DELETE",
+        headers: { ...authHeader() },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        setErrorExplosion(data?.message || "No se pudo eliminar la asignación");
+        return;
+      }
+      setMensaje("Asignación eliminada");
+      limpiarFormularioExplosion();
+      await cargarExplosion();
+    } catch {
+      setErrorExplosion("Error de conexión al eliminar la asignación");
+    } finally {
+      setGuardandoExplosion(false);
+    }
+  };
+
+  const cargarExplosion = useCallback(async () => {
+    if (!id || !isAdmin || !mostrarPedidosModulo) return;
+    setCargandoExplosion(true);
+    setErrorExplosion("");
+    try {
+      const res = await fetch(`http://localhost:3000/proyectos/${id}/explosion-insumos`, { headers: { ...authHeader() } });
+      const data = await res.json().catch(() => ({}));
+        if (res.ok && data?.success) {
+          const filas: ExplosionRow[] = Array.isArray(data.data)
+            ? data.data.map((row: any) => ({
+                id: Number(row?.id ?? 0),
+                clan: row?.clan ?? "",
+                familia: row?.familia ?? "",
+                presupuesto_asignado: Number(row?.presupuesto_asignado ?? 0),
+                presupuesto_restante: Number(row?.presupuesto_restante ?? row?.presupuesto_usado ?? 0),
+                gastado: Number(row?.gastado ?? 0),
+              }))
+            : [];
+        setExplosionInsumos(filas);
+        setPresupuestoMiscelBase(Number(data.presupuesto_miscelaneos_base ?? 0));
+        setPresupuestoMiscelDisponible(Number(data.presupuesto_miscelaneos_disponible ?? 0));
+      } else {
+        setErrorExplosion(data?.message || "No se pudo cargar la explosión de insumos");
+        setExplosionInsumos([]);
+        setPresupuestoMiscelBase(0);
+        setPresupuestoMiscelDisponible(0);
+      }
+    } catch {
+      setErrorExplosion("Error de conexión al cargar la explosión de insumos");
+      setExplosionInsumos([]);
+      setPresupuestoMiscelBase(0);
+      setPresupuestoMiscelDisponible(0);
+    } finally {
+      setCargandoExplosion(false);
+    }
+  }, [id, isAdmin, mostrarPedidosModulo]);
+
   useEffect(() => {
     if (!isTokenValid(getToken())) { navigate("/"); return; }
     cargarProyecto();
     if (isAdmin) {
       cargarPedidos();
+      if (mostrarPedidosModulo) {
+        cargarExplosion();
+      } else {
+        setExplosionInsumos([]);
+        setPresupuestoMiscelBase(0);
+        setPresupuestoMiscelDisponible(0);
+        setErrorExplosion("");
+      }
     } else {
       setPedidos([]);
       setMensaje("");
       setError("");
+      setErrorExplosion("");
+      setExplosionInsumos([]);
+      setPresupuestoMiscelBase(0);
+      setPresupuestoMiscelDisponible(0);
     }
     cargarCobranza();
     cargarHistorialPresupuesto();
-  }, [cargarPedidos, cargarProyecto, cargarCobranza, cargarHistorialPresupuesto, navigate, isAdmin]);
+  }, [cargarPedidos, cargarProyecto, cargarCobranza, cargarHistorialPresupuesto, navigate, isAdmin, mostrarPedidosModulo, cargarExplosion]);
 
   useEffect(() => {
     const combinar = (prev: string[], valores: (string | null | undefined)[], adicionales: string[] = []) => {
@@ -648,14 +820,9 @@ export function ProyectoDetalle() {
 
   const guardarPresupuesto = async (e: FormEvent) => {
     e.preventDefault();
-    const parseMonto = (value: string) => {
-      const num = Number(value);
-      if (!Number.isFinite(num) || num < 0) return NaN;
-      return Number(num.toFixed(2));
-    };
-    const cristalNum = parseMonto(formPresupuesto.cristal);
-    const aluminioNum = parseMonto(formPresupuesto.aluminio);
-    const miscelaneosNum = parseMonto(formPresupuesto.miscelaneos);
+    const cristalNum = parseMontoPositivo(formPresupuesto.cristal);
+    const aluminioNum = parseMontoPositivo(formPresupuesto.aluminio);
+    const miscelaneosNum = parseMontoPositivo(formPresupuesto.miscelaneos);
     if ([cristalNum, aluminioNum, miscelaneosNum].some((n) => Number.isNaN(n))) {
       setError("Ingresa montos válidos (0 o mayores) para cada familia");
       return;
@@ -694,6 +861,7 @@ export function ProyectoDetalle() {
       setMensaje("Presupuestos actualizados correctamente");
       setModalPresupuestoAbierto(false);
       await cargarHistorialPresupuesto();
+      await cargarExplosion();
     } catch {
       setError("Error de conexión al actualizar presupuesto");
     } finally {
@@ -845,6 +1013,23 @@ export function ProyectoDetalle() {
     cargar();
   };
 
+  const irAVistaPrevia = useCallback(() => {
+    if (!pedidoSeleccionado || !id) return;
+    const detalleActual = tipoDetallePedido === "cristal"
+      ? detallesCristal
+      : tipoDetallePedido === "aluminio"
+        ? detallesAluminio
+        : detallesPedido;
+    navigate(`/proyecto/${id}/pedido/${pedidoSeleccionado.id}/vista-previa`, {
+      state: {
+        pedido: { ...pedidoSeleccionado, nombre_proyecto: nombreProyecto },
+        detalles: detalleActual,
+        tipoDetalle: tipoDetallePedido,
+        proyectoNombre: nombreProyecto,
+      },
+    });
+  }, [detallesAluminio, detallesCristal, detallesPedido, id, navigate, nombreProyecto, pedidoSeleccionado, tipoDetallePedido]);
+
   useEffect(() => {
     if (!pedidoSeleccionado) return;
     const handleKey = (event: KeyboardEvent) => {
@@ -929,7 +1114,7 @@ export function ProyectoDetalle() {
         <button className="btn btn-secondary" onClick={volver}>&larr; Regresar</button>
         <h2 className="detalle-titulo">{nombreProyecto}</h2>
         <div className="detalle-actions">
-          {!isAdmin && (
+          {mostrarCobranza && !isAdmin && (
             <button className="btn btn-primary" onClick={() => setFormCobranzaAbierto(v => !v)}>
               Agregar cobranza
             </button>
@@ -1033,13 +1218,6 @@ export function ProyectoDetalle() {
       </header>
 
       <main className="detalle-contenido">
-        <div className="presupuesto-actions-bar">
-          {isAdmin && (
-            <button type="button" className="btn btn-primary" onClick={abrirModalPresupuesto}>
-              Editar presupuestos
-            </button>
-          )}
-        </div>
         <div className="presupuesto-summary">
           <div className="presupuesto-card">
             <span>Presupuesto total cargado</span>
@@ -1073,49 +1251,51 @@ export function ProyectoDetalle() {
           </div>
         </div>
 
-        <section className="historial-presupuesto">
-          <div className="historial-header">
-            <h3>Historial de presupuestos</h3>
-            {isAdmin && (
-              <button type="button" className="btn btn-secondary" onClick={abrirModalPresupuesto}>
-                Ajustar presupuesto
-              </button>
-            )}
-          </div>
-          {cargandoHistorial ? (
-            <p>Cargando historial...</p>
-          ) : historialPresupuesto.length === 0 ? (
-            <p>No hay cambios registrados.</p>
-          ) : (
-            <table className="tabla-historial">
-              <thead>
-                <tr>
-                  <th>Fecha</th>
-                  <th>Cristal</th>
-                  <th>Aluminio</th>
-                  <th>Misceláneos</th>
-                  <th>Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {historialPresupuesto.map((row) => (
-                  <tr key={row.id_historial}>
-                    <td>{row.fecha_presupuesto}</td>
-                    <td>{formatCurrency(row.presupuesto_cristal)}</td>
-                    <td>{formatCurrency(row.presupuesto_aluminio)}</td>
-                    <td>{formatCurrency(row.presupuesto_miscelaneos)}</td>
-                    <td>{formatCurrency(row.presupuesto_total)}</td>
+        {mostrarHistorialPresupuesto && (
+          <section className="historial-presupuesto">
+            <div className="historial-header">
+              <h3>Historial de presupuestos</h3>
+              {isAdmin && (
+                <button type="button" className="btn btn-secondary" onClick={abrirModalPresupuesto}>
+                  Ajustar presupuesto
+                </button>
+              )}
+            </div>
+            {cargandoHistorial ? (
+              <p>Cargando historial...</p>
+            ) : historialPresupuesto.length === 0 ? (
+              <p>No hay cambios registrados.</p>
+            ) : (
+              <table className="tabla-historial">
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Cristal</th>
+                    <th>Aluminio</th>
+                    <th>Misceláneos</th>
+                    <th>Total</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </section>
+                </thead>
+                <tbody>
+                  {historialPresupuesto.map((row) => (
+                    <tr key={row.id_historial}>
+                      <td>{row.fecha_presupuesto}</td>
+                      <td>{formatCurrency(row.presupuesto_cristal)}</td>
+                      <td>{formatCurrency(row.presupuesto_aluminio)}</td>
+                      <td>{formatCurrency(row.presupuesto_miscelaneos)}</td>
+                      <td>{formatCurrency(row.presupuesto_total)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </section>
+        )}
 
         {modalPresupuestoAbierto && (
           <div className="presupuesto-modal-backdrop" onClick={cerrarModalPresupuesto}>
             <div className="presupuesto-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-              <h3>Editar presupuestos</h3>
+              <h3>Ajustar presupuestos</h3>
               <p className="modal-subtitle">Actualiza el disponible por familia y guarda una fecha de referencia.</p>
               <form className="form-presupuesto" onSubmit={guardarPresupuesto}>
                 <label>
@@ -1175,78 +1355,183 @@ export function ProyectoDetalle() {
 
         {mensaje && <p className="alert success">{mensaje}</p>}
         {error && <p className="alert error">{error}</p>}
-        {!isAdmin ? null : (
+        {!isAdmin || !mostrarPedidosModulo ? null : (
           <>
-        <div className="placeholder-card">
-          <p>Selecciona uno o varios archivos CSV con el formato esperado para cargar pedidos.</p>
-        </div>
-        <div className="tabla-wrapper">
-          <div className="tabla-toolbar">
-            <div className="tabla-header">Pedidos del proyecto</div>
-            <div className="tabla-actions">
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={alternarOrdenPedidos}
-                disabled={pedidos.length === 0}
-              >
-                Ordenar por fecha ({ordenPedidos === "desc" ? "recientes primero" : "antiguos primero"})
-              </button>
-              <button className="btn btn-primary" onClick={exportarExplosion} disabled={pedidos.length === 0}>
-                Generar explosión de insumos
-              </button>
+            <div className="placeholder-card">
+              <p>Selecciona uno o varios archivos CSV con el formato esperado para cargar pedidos.</p>
             </div>
-          </div>
-          {cargandoPedidos ? (
-            <p>Cargando...</p>
-          ) : pedidos.length === 0 ? (
-            <p style={{ padding: 12 }}>No hay pedidos aun.</p>
-          ) : (
-            <table className="tabla-pedidos">
-              <thead>
-                <tr>
-                  <th>Pedido</th>
-                  <th>Clan</th>
-                  <th>Familia</th>
-                  <th>Proveedor</th>
-                  <th>Fecha Aprobacion</th>
-                  <th>Concepto</th>
-                  <th>Situaciones</th>
-                  <th style={{ textAlign: "right" }}>Importe</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pedidosOrdenados.map((p) => (
-                  <tr
-                    key={p.id}
-                    className="clickable-row"
-                    onClick={() => abrirDetallesPedido(p)}
-                    onKeyDown={(ev) => {
-                      if (ev.key === "Enter" || ev.key === " ") {
-                        ev.preventDefault();
-                        abrirDetallesPedido(p);
-                      }
-                    }}
-                    tabIndex={0}
-                    role="button"
-                    aria-label={`Ver detalles del pedido ${p.pedido}`}
+            <div className="tabla-wrapper">
+              <div className="tabla-toolbar">
+                <div className="tabla-header">Pedidos del proyecto</div>
+                <div className="tabla-actions">
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={alternarOrdenPedidos}
+                    disabled={pedidos.length === 0}
                   >
-                    <td>{p.pedido}</td>
-                    <td>{p.clan}</td>
-                    <td>{p.familia}</td>
-                    <td>{p.proveedor}</td>
-                    <td>{p.fecha_aprobacion}</td>
-                    <td>{p.concepto}</td>
-                    <td>{p.situaciones_especiales || "-"}</td>
-                    <td style={{ textAlign: "right" }}>
-                      {Number(p.importe).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+                    Ordenar por fecha ({ordenPedidos === "desc" ? "recientes primero" : "antiguos primero"})
+                  </button>
+                  <button className="btn btn-primary" onClick={exportarExplosion} disabled={pedidos.length === 0}>
+                    Generar explosión de insumos
+                  </button>
+                </div>
+              </div>
+              {cargandoPedidos ? (
+                <p>Cargando...</p>
+              ) : pedidos.length === 0 ? (
+                <p style={{ padding: 12 }}>No hay pedidos aun.</p>
+              ) : (
+                <table className="tabla-pedidos">
+                  <thead>
+                    <tr>
+                      <th>Pedido</th>
+                      <th>Clan</th>
+                      <th>Familia</th>
+                      <th>Proveedor</th>
+                      <th>Fecha Aprobacion</th>
+                      <th>Concepto</th>
+                      <th>Situaciones</th>
+                      <th style={{ textAlign: "right" }}>Importe</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pedidosOrdenados.map((p) => (
+                      <tr
+                        key={p.id}
+                        className="clickable-row"
+                        onClick={() => abrirDetallesPedido(p)}
+                        onKeyDown={(ev) => {
+                          if (ev.key === "Enter" || ev.key === " ") {
+                            ev.preventDefault();
+                            abrirDetallesPedido(p);
+                          }
+                        }}
+                        tabIndex={0}
+                        role="button"
+                        aria-label={`Ver detalles del pedido ${p.pedido}`}
+                      >
+                        <td>{p.pedido}</td>
+                        <td>{p.clan}</td>
+                        <td>{p.familia}</td>
+                        <td>{p.proveedor}</td>
+                        <td>{p.fecha_aprobacion}</td>
+                        <td>{p.concepto}</td>
+                        <td>{p.situaciones_especiales || "-"}</td>
+                        <td style={{ textAlign: "right" }}>
+                          {Number(p.importe).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+            <div className="tabla-wrapper explosion-wrapper">
+              <div className="tabla-toolbar">
+                <div className="tabla-header">Explosión de insumos</div>
+                <div className="tabla-actions explosion-actions-bar">
+                </div>
+              </div>
+              <form className="explosion-form" onSubmit={guardarExplosion}>
+                <div className="explosion-grid">
+                  <label>
+                    Clan
+                    <input
+                      type="text"
+                      value={formExplosion.clan}
+                      onChange={(e) => setFormExplosion((prev) => ({ ...prev, clan: e.target.value.toUpperCase() }))}
+                      placeholder="Ej. C1"
+                    />
+                  </label>
+                  <label>
+                    Familia*
+                    <input
+                      type="text"
+                      value={formExplosion.familia}
+                      onChange={(e) => setFormExplosion((prev) => ({ ...prev, familia: e.target.value.toUpperCase() }))}
+                      placeholder="Ej. MI"
+                      required
+                    />
+                  </label>
+                  <label>
+                    Presupuesto asignado*
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={formExplosion.presupuesto}
+                      onChange={(e) => setFormExplosion((prev) => ({ ...prev, presupuesto: e.target.value }))}
+                      placeholder="0.00"
+                      required
+                    />
+                  </label>
+                </div>
+                <div className="explosion-actions">
+                  <button type="submit" className="btn btn-primary" disabled={guardandoExplosion}>
+                    {guardandoExplosion ? "Guardando..." : editandoExplosionId ? "Actualizar" : "Asignar presupuesto"}
+                  </button>
+                  <button type="button" className="btn btn-secondary" onClick={limpiarFormularioExplosion} disabled={guardandoExplosion}>
+                    Limpiar
+                  </button>
+                  {editandoExplosionId && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => eliminarExplosion(editandoExplosionId)}
+                      disabled={guardandoExplosion}
+                    >
+                      Eliminar
+                    </button>
+                  )}
+                  <span className="explosion-hint">Haz clic en una fila para editarla.</span>
+                </div>
+              </form>
+              {errorExplosion && <p className="alert error">{errorExplosion}</p>}
+              {cargandoExplosion ? (
+                <p>Cargando explosión...</p>
+              ) : explosionInsumos.length === 0 ? (
+                <p style={{ padding: 12 }}>No hay asignaciones registradas.</p>
+              ) : (
+                <table className="tabla-explosion">
+                  <thead>
+                    <tr>
+                      <th>N</th>
+                      <th>Clan</th>
+                      <th>Familia</th>
+                      <th>Presupuesto asignado</th>
+                      <th>Presupuesto restante</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {explosionInsumos.map((row, idx) => (
+                      <tr
+                        key={row.id}
+                        className={`clickable-row ${editandoExplosionId === row.id ? "fila-activa" : ""}`}
+                        onClick={() => seleccionarExplosion(row)}
+                        onKeyDown={(ev) => {
+                          if (ev.key === "Enter" || ev.key === " ") {
+                            ev.preventDefault();
+                            seleccionarExplosion(row);
+                          }
+                        }}
+                        tabIndex={0}
+                        role="button"
+                        aria-label={`Editar asignación de ${row.familia || "familia"}`}
+                      >
+                        <td>{idx + 1}</td>
+                        <td>{row.clan || "-"}</td>
+                        <td>{row.familia || "-"}</td>
+                        <td className="text-right">{formatCurrency(row.presupuesto_asignado)}</td>
+                        <td className={`text-right ${row.presupuesto_restante < 0 ? "monto-negativo" : ""}`}>
+                          {formatCurrency(row.presupuesto_restante)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
           </>
         )}
 
@@ -1266,9 +1551,14 @@ export function ProyectoDetalle() {
                   </h3>
                   <p className="pedido-modal-subtitle">{pedidoSeleccionado.concepto || "-"}</p>
                 </div>
-                <button type="button" className="btn btn-secondary" onClick={cerrarModalDetalles}>
-                  Cerrar
-                </button>
+                <div className="pedido-modal-actions">
+                  <button type="button" className="btn btn-primary" onClick={irAVistaPrevia} disabled={!pedidoSeleccionado}>
+                    Ver vista previa
+                  </button>
+                  <button type="button" className="btn btn-secondary" onClick={cerrarModalDetalles}>
+                    Cerrar
+                  </button>
+                </div>
               </div>
               <div className="pedido-modal-meta">
                 <div>
@@ -1301,6 +1591,22 @@ export function ProyectoDetalle() {
                 <p className="pedido-modal-status">Este pedido no tiene detalles registrados.</p>
               ) : (
                 <>
+                  <div className="pedido-descripciones">
+                    <h4>Descripciones</h4>
+                    <ul>
+                      {(tipoDetallePedido === "cristal"
+                        ? detallesCristal
+                        : tipoDetallePedido === "aluminio"
+                          ? detallesAluminio
+                          : detallesPedido
+                      ).map((detalle, index) => (
+                        <li key={`${detalle.id_detalle}-${index}`}>
+                          <strong>{index + 1}.</strong>{" "}
+                          {((detalle as any).descripcion || "").trim() || "-"}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                   <div className="pedido-detalle-ledger">
                     <div className="pedido-detalle-table-wrapper">
                       {tipoDetallePedido === "cristal" ? (
@@ -1308,7 +1614,6 @@ export function ProyectoDetalle() {
                           <thead>
                             <tr>
                               <th>No #</th>
-                              <th>Descripción</th>
                               <th>Clave/Modelo</th>
                               <th>Ancho</th>
                               <th>Largo</th>
@@ -1323,7 +1628,6 @@ export function ProyectoDetalle() {
                             {detallesCristal.map((detalle, index) => (
                               <tr key={`${detalle.id_detalle}-${index}`}>
                                 <td>{index + 1}</td>
-                                <td>{detalle.descripcion || "-"}</td>
                                 <td>{detalle.clave_modelo || "-"}</td>
                                 <td>{detalle.ancho === null || detalle.ancho === undefined ? "-" : Number(detalle.ancho).toLocaleString(undefined, { maximumFractionDigits: 3 })}</td>
                                 <td>{detalle.largo === null || detalle.largo === undefined ? "-" : Number(detalle.largo).toLocaleString(undefined, { maximumFractionDigits: 3 })}</td>
@@ -1341,7 +1645,6 @@ export function ProyectoDetalle() {
                           <thead>
                             <tr>
                               <th>No #</th>
-                              <th>Descripción</th>
                               <th>N° Perfil</th>
                               <th>Medida (tramo)</th>
                               <th>Unidad</th>
@@ -1359,7 +1662,6 @@ export function ProyectoDetalle() {
                             {detallesAluminio.map((detalle, index) => (
                               <tr key={`${detalle.id_detalle}-${index}`}>
                                 <td>{index + 1}</td>
-                                <td>{detalle.descripcion || "-"}</td>
                                 <td>{detalle.numero_perfil || "-"}</td>
                                 <td>
                                   {detalle.medida_tramo === null || detalle.medida_tramo === undefined
@@ -1408,7 +1710,6 @@ export function ProyectoDetalle() {
                           <thead>
                             <tr>
                               <th>No #</th>
-                              <th>Descripción</th>
                               <th>Unidad</th>
                               <th>Medida</th>
                               <th>Cantidad</th>
@@ -1425,7 +1726,6 @@ export function ProyectoDetalle() {
                             {detallesPedido.map((detalle, index) => (
                               <tr key={`${detalle.id_detalle}-${index}`}>
                                 <td>{index + 1}</td>
-                                <td>{detalle.descripcion || "-"}</td>
                                 <td>{detalle.unidad || "-"}</td>
                                 <td>{detalle.medida || "-"}</td>
                                 <td>{Number(detalle.cantidad || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
@@ -1493,7 +1793,7 @@ export function ProyectoDetalle() {
           </div>
         )}
 
-        {(!isAdmin && formCobranzaAbierto) && (
+        {mostrarCobranza && (!isAdmin && formCobranzaAbierto) && (
           <div className="placeholder-card" style={{ marginTop: 16 }}>
             <h3 style={{ marginTop: 0 }}>Nueva cobranza</h3>
             <form onSubmit={submitCobranza} className="form-cobranza">
@@ -1649,61 +1949,63 @@ export function ProyectoDetalle() {
           </div>
         )}
 
-        <div className="tabla-wrapper" style={{ marginTop: 16 }}>
-          <div className="tabla-toolbar">
-            <div className="tabla-header">Cobranza del proyecto</div>
-          </div>
-          {cargandoCobranza ? (
-            <p style={{ padding: 12 }}>Cargando cobranza...</p>
-          ) : cobranzas.length === 0 ? (
-            <p style={{ padding: 12 }}>No hay registros de cobranza.</p>
-          ) : (
-            <table className="tabla-pedidos">
-              <thead>
-                <tr>
-                  <th>No.</th>
-                  <th>Concepto</th>
-                  <th>Periodo</th>
-                  <th>Fecha</th>
-                  <th>Fecha pago</th>
-                  <th>No. factura</th>
-                  <th style={{ textAlign: 'right' }}>Contratado a la fecha</th>
-                  <th style={{ textAlign: 'right' }}>Mano de obra</th>
-                  <th style={{ textAlign: 'right' }}>Cobrado total</th>
-                  <th style={{ textAlign: 'right' }}>Por cobrar total</th>
-                  <th style={{ textAlign: 'right' }}>Importe a cobrar</th>
-                  <th style={{ textAlign: 'right' }}>Importe cobrado</th>
-                  <th style={{ textAlign: 'right' }}>Saldo por cobrar</th>
-                  <th style={{ textAlign: 'right' }}>Fondo garantía</th>
-                  <th style={{ textAlign: 'right' }}>Líquido por cobrar</th>
-                  <th>Fecha reporte</th>
-                </tr>
-              </thead>
-              <tbody>
-                {cobranzas.map(c => (
-                  <tr key={c.id_cobranza}>
-                    <td>{c.numero}</td>
-                    <td>{c.concepto || '-'}</td>
-                    <td>{c.periodo || '-'}</td>
-                    <td>{c.fecha || '-'}</td>
-                    <td>{c.fecha_pago || '-'}</td>
-                    <td>{c.numero_factura || '-'}</td>
-                    <td style={{ textAlign: 'right' }}>{Number(c.contratado_a_fecha || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                    <td style={{ textAlign: 'right' }}>{Number(c.mano_obra || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                    <td style={{ textAlign: 'right' }}>{Number(c.cobrado_total || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                    <td style={{ textAlign: 'right' }}>{Number(c.por_cobrar_total || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                    <td style={{ textAlign: 'right' }}>{Number(c.importe_a_cobrar || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                    <td style={{ textAlign: 'right' }}>{Number(c.importe_cobrado || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                    <td style={{ textAlign: 'right' }}>{Number(c.saldo_por_cobrar || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                    <td style={{ textAlign: 'right' }}>{Number(c.fondo_garantia || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                    <td style={{ textAlign: 'right' }}>{Number(c.liquido_por_cobrar || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                    <td>{c.fecha_reporte || '-'}</td>
+        {mostrarCobranza && (
+          <div className="tabla-wrapper cobranza-wrapper">
+            <div className="tabla-toolbar">
+              <div className="tabla-header">Cobranza del proyecto</div>
+            </div>
+            {cargandoCobranza ? (
+              <p style={{ padding: 12 }}>Cargando cobranza...</p>
+            ) : cobranzas.length === 0 ? (
+              <p style={{ padding: 12 }}>No hay registros de cobranza.</p>
+            ) : (
+              <table className="tabla-pedidos">
+                <thead>
+                  <tr>
+                    <th>No.</th>
+                    <th>Concepto</th>
+                    <th>Periodo</th>
+                    <th>Fecha</th>
+                    <th>Fecha pago</th>
+                    <th>No. factura</th>
+                    <th style={{ textAlign: 'right' }}>Contratado a la fecha</th>
+                    <th style={{ textAlign: 'right' }}>Mano de obra</th>
+                    <th style={{ textAlign: 'right' }}>Cobrado total</th>
+                    <th style={{ textAlign: 'right' }}>Por cobrar total</th>
+                    <th style={{ textAlign: 'right' }}>Importe a cobrar</th>
+                    <th style={{ textAlign: 'right' }}>Importe cobrado</th>
+                    <th style={{ textAlign: 'right' }}>Saldo por cobrar</th>
+                    <th style={{ textAlign: 'right' }}>Fondo garantía</th>
+                    <th style={{ textAlign: 'right' }}>Líquido por cobrar</th>
+                    <th>Fecha reporte</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+                </thead>
+                <tbody>
+                  {cobranzas.map(c => (
+                    <tr key={c.id_cobranza}>
+                      <td>{c.numero}</td>
+                      <td>{c.concepto || '-'}</td>
+                      <td>{c.periodo || '-'}</td>
+                      <td>{c.fecha || '-'}</td>
+                      <td>{c.fecha_pago || '-'}</td>
+                      <td>{c.numero_factura || '-'}</td>
+                      <td style={{ textAlign: 'right' }}>{Number(c.contratado_a_fecha || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                      <td style={{ textAlign: 'right' }}>{Number(c.mano_obra || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                      <td style={{ textAlign: 'right' }}>{Number(c.cobrado_total || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                      <td style={{ textAlign: 'right' }}>{Number(c.por_cobrar_total || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                      <td style={{ textAlign: 'right' }}>{Number(c.importe_a_cobrar || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                      <td style={{ textAlign: 'right' }}>{Number(c.importe_cobrado || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                      <td style={{ textAlign: 'right' }}>{Number(c.saldo_por_cobrar || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                      <td style={{ textAlign: 'right' }}>{Number(c.fondo_garantia || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                      <td style={{ textAlign: 'right' }}>{Number(c.liquido_por_cobrar || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                      <td>{c.fecha_reporte || '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
       </main>
     </div>
   );

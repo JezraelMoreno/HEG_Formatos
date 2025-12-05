@@ -42,6 +42,22 @@ CREATE TABLE IF NOT EXISTS proyectos_presupuestos_historial (
     ON UPDATE CASCADE
 );
 
+------------------------------------------------------------
+-- Tabla de asignaciones para explosión de insumos
+------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS explosion_insumos (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  id_proyecto INT NOT NULL,
+  clan VARCHAR(10) NOT NULL DEFAULT "",
+  familia VARCHAR(10) NOT NULL,
+  presupuesto_asignado DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+  fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT uk_explosion_proyecto_familia UNIQUE (id_proyecto, clan, familia),
+  FOREIGN KEY (id_proyecto) REFERENCES proyectos(id_proyecto)
+    ON DELETE CASCADE
+    ON UPDATE CASCADE
+);
+
 -- Para bases ya existentes, agregar columnas de presupuesto por familia:
 -- ALTER TABLE proyectos ADD COLUMN presupuesto_cristal DECIMAL(15,2) NOT NULL DEFAULT 0.00;
 -- ALTER TABLE proyectos ADD COLUMN presupuesto_aluminio DECIMAL(15,2) NOT NULL DEFAULT 0.00;

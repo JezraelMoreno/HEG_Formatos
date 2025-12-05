@@ -9,10 +9,17 @@
 
 .encabezado {
   display: flex;
-  align-items: flex-start;
+  align-items: center;          /* alinea verticalmente */
   justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
+  gap: 16px;
+  flex-wrap: nowrap;            /* evita que se rompa en 2 líneas */
+}
+
+.encabezado-derecha {
+  display: flex;
+  align-items: center;
+  gap: 16px;                     /* separación entre searchbar y botones */
+  flex-shrink: 0;
 }
 
 .titulo-bloque {
@@ -32,11 +39,10 @@
   color: #4a5568;
   font-size: 14px;
 }
-
 .search-bar {
-  margin: 14px 0 0;
-  width: 100%;
-  max-width: 520px;
+  margin: 0;
+  width: 320px;                  /* tamaño fijo en escritorio */
+  max-width: 420px;
   display: flex;
   align-items: center;
   padding: 10px 16px;
@@ -44,6 +50,12 @@
   border: 1px solid #d1d5db;
   background: #fff;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+}
+
+
+.search-bar-inline {
+  max-width: 420px;
+  margin-right: 8px;
 }
 .search-bar input {
   flex: 1;
@@ -135,10 +147,12 @@
 
 .paneles {
   display: flex;
-  gap: 24px;
+  justify-content: space-between;   /* 🔥 uno a la izq y otro a la der */
   align-items: flex-start;
-  flex-wrap: wrap;
+  gap: 24px;
+  flex-wrap: nowrap;                /* evita que se amontonen */
 }
+
 
 .panel {
   flex: 1 1 340px;
@@ -146,8 +160,9 @@
 }
 
 .panel-proyectos {
-  flex: 1 1 560px;   
-  max-width: 720px;
+  flex: 1 1 600px;
+  max-width: 45%;
+  align-self: stretch;
 }
 
 .panel-resumen {
@@ -157,7 +172,7 @@
   padding: 18px;
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
   flex: 1 1 420px;   
-  max-width: 620px;
+  max-width: 550px;
   margin-left: 0;
   align-self: stretch;
 }
