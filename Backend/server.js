@@ -1936,6 +1936,193 @@ app.get("/cobranza/export", authenticateToken, (req, res) => {
     }
   });
 });
+
+//------------------------------------------------------------
+// VIÁTICOS ENDPOINTS
+//------------------------------------------------------------
+
+// Get presupuestos de viáticos para un proyecto
+app.get("/proyectos/:id/viaticos-presupuestos", authenticateToken, async (req, res) => {
+  try {
+    const proyectoId = Number(req.params.id);
+    if (!Number.isInteger(proyectoId) || proyectoId <= 0) {
+      return res.status(400).json({ success: false, message: "Proyecto inválido" });
+    }
+
+    const query = `
+      SELECT
+        id_presupuesto,
+        familia,
+        presupuesto_asignado,
+        gastado,
+        (presupuesto_asignado - gastado) AS restante
+      FROM viaticos_presupuestos
+      WHERE id_proyecto = ?
+      ORDER BY FIELD(familia, 'Mano de Obra', 'Viáticos', 'Fletes')
+    `;
+
+    const results = await queryAsync(query, [proyectoId]);
+    res.json({ success: true, data: results || [] });
+  } catch (err) {
+    console.error("Error consultando presupuestos de viáticos:", err);
+    res.status(500).json({ success: false, message: "Error interno del servidor" });
+  }
+});
+
+// Crear o actualizar presupuesto de viáticos
+app.post("/proyectos/:id/viaticos-presupuestos", authenticateToken, requireRole("administrador"), async (req, res) => {
+  try {
+    const proyectoId = Number(req.params.id);
+    const { familia, presupuesto_asignado } = req.body || {};
+    const username = req.user?.username || "unknown";
+
+    const validFamilias = ['Mano de Obra', 'Viáticos', 'Fletes'];
+    if (!validFamilias.includes(familia)) {
+      return res.status(400).json({ success: false, message: "Familia inválida" });
+    }
+
+    const presupuesto = Number(presupuesto_asignado);
+    if (!Number.isFinite(presupuesto) || presupuesto < 0) {
+      return res.status(400).json({ success: false, message: "Presupuesto inválido" });
+    }
+
+    const query = `
+      INSERT INTO viaticos_presupuestos (id_proyecto, familia, presupuesto_asignado, nombre_usuario)
+      VALUES (?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        presupuesto_asignado = VALUES(presupuesto_asignado),
+        nombre_usuario = VALUES(nombre_usuario)
+    `;
+
+    await queryAsync(query, [proyectoId, familia, presupuesto, username]);
+    res.status(201).json({ success: true, message: "Presupuesto actualizado correctamente" });
+  } catch (err) {
+    console.error("Error actualizando presupuesto de viáticos:", err);
+    res.status(500).json({ success: false, message: "Error interno del servidor" });
+  }
+});
+
+// Get movimientos de viáticos para un proyecto
+app.get("/proyectos/:id/viaticos-movimientos", authenticateToken, async (req, res) => {
+  try {
+    const proyectoId = Number(req.params.id);
+    const { familia, fecha_desde, fecha_hasta } = req.query;
+
+    let query = `
+      SELECT
+        id_movimiento,
+        familia,
+        persona,
+        concepto,
+        clave_referencia,
+        DATE_FORMAT(fecha, '%Y-%m-%d') AS fecha,
+        ingreso,
+        egreso,
+        saldo,
+        nombre_usuario
+      FROM viaticos_movimientos
+      WHERE id_proyecto = ?
+    `;
+    const params = [proyectoId];
+
+    if (familia) {
+      query += " AND familia = ?";
+      params.push(familia);
+    }
+    if (fecha_desde) {
+      query += " AND fecha >= ?";
+      params.push(fecha_desde);
+    }
+    if (fecha_hasta) {
+      query += " AND fecha <= ?";
+      params.push(fecha_hasta);
+    }
+
+    query += " ORDER BY fecha ASC, id_movimiento ASC";
+
+    const results = await queryAsync(query, params);
+    res.json({ success: true, data: results || [] });
+  } catch (err) {
+    console.error("Error consultando movimientos de viáticos:", err);
+    res.status(500).json({ success: false, message: "Error interno del servidor" });
+  }
+});
+
+// Crear movimiento de viáticos
+app.post("/proyectos/:id/viaticos-movimientos", authenticateToken, requireRole("administrador"), async (req, res) => {
+  try {
+    const proyectoId = Number(req.params.id);
+    const { familia, persona, concepto, clave_referencia, fecha, ingreso, egreso } = req.body || {};
+    const username = req.user?.username || "unknown";
+
+    const validFamilias = ['Mano de Obra', 'Viáticos', 'Fletes'];
+    if (!validFamilias.includes(familia)) {
+      return res.status(400).json({ success: false, message: "Familia inválida" });
+    }
+
+    if (!persona || !concepto || !fecha) {
+      return res.status(400).json({ success: false, message: "Faltan datos requeridos" });
+    }
+
+    const ingresoVal = Number(ingreso) || 0;
+    const egresoVal = Number(egreso) || 0;
+
+    if (ingresoVal < 0 || egresoVal < 0) {
+      return res.status(400).json({ success: false, message: "Los montos no pueden ser negativos" });
+    }
+
+    if (ingresoVal === 0 && egresoVal === 0) {
+      return res.status(400).json({ success: false, message: "Debe especificar un ingreso o egreso" });
+    }
+
+    if (ingresoVal > 0 && egresoVal > 0) {
+      return res.status(400).json({ success: false, message: "No puede haber ingreso y egreso simultáneamente" });
+    }
+
+    const query = `
+      INSERT INTO viaticos_movimientos
+        (id_proyecto, familia, persona, concepto, clave_referencia, fecha, ingreso, egreso, nombre_usuario)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    const result = await queryAsync(query, [
+      proyectoId, familia, persona, concepto,
+      clave_referencia || null, fecha, ingresoVal, egresoVal, username
+    ]);
+
+    res.status(201).json({
+      success: true,
+      message: "Movimiento registrado correctamente",
+      data: { id_movimiento: result.insertId }
+    });
+  } catch (err) {
+    console.error("Error creando movimiento de viáticos:", err);
+    res.status(500).json({ success: false, message: "Error interno del servidor" });
+  }
+});
+
+// Eliminar movimiento de viáticos
+app.delete("/proyectos/:id/viaticos-movimientos/:movimientoId", authenticateToken, requireRole("administrador"), async (req, res) => {
+  try {
+    const proyectoId = Number(req.params.id);
+    const movimientoId = Number(req.params.movimientoId);
+
+    const result = await queryAsync(
+      "DELETE FROM viaticos_movimientos WHERE id_movimiento = ? AND id_proyecto = ?",
+      [movimientoId, proyectoId]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: "Movimiento no encontrado" });
+    }
+
+    res.json({ success: true, message: "Movimiento eliminado correctamente" });
+  } catch (err) {
+    console.error("Error eliminando movimiento:", err);
+    res.status(500).json({ success: false, message: "Error interno del servidor" });
+  }
+});
+
 // Middleware de autorizacion por rol
 function requireRole(...roles) {
   const allowed = roles.map(r => String(r).toLowerCase());

@@ -140,6 +140,27 @@ type ExplosionRow = {
   gastado: number;
 };
 
+type PresupuestoViatico = {
+  id_presupuesto: number;
+  familia: string;
+  presupuesto_asignado: number;
+  gastado: number;
+  restante: number;
+};
+
+type MovimientoViatico = {
+  id_movimiento: number;
+  familia: string;
+  persona: string;
+  concepto: string;
+  clave_referencia?: string | null;
+  fecha: string;
+  ingreso: number;
+  egreso: number;
+  saldo: number;
+  nombre_usuario: string;
+};
+
 const getTodayISO = () => {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
@@ -404,6 +425,21 @@ export function ProyectoDetalle() {
   const nombreProyecto = proyectoInfo?.nombre || state?.nombre || "Proyecto";
   const role = (getRole() || '').toLowerCase();
   const isAdmin = role === 'administrador';
+  const mostrarViaticos = moduloOrigen === "viaticos";
+
+  // viáticos
+  const [presupuestosViaticos, setPresupuestosViaticos] = useState<PresupuestoViatico[]>([]);
+  const [movimientosViaticos, setMovimientosViaticos] = useState<MovimientoViatico[]>([]);
+  const [cargandoPresupuestos, setCargandoPresupuestos] = useState(false);
+  const [cargandoMovimientos, setCargandoMovimientos] = useState(false);
+  const [errorPresupuestos, setErrorPresupuestos] = useState("");
+  const [errorMovimientos, setErrorMovimientos] = useState("");
+  const [familiaFiltro, setFamiliaFiltro] = useState("");
+  const [fechaDesdeFiltro, setFechaDesdeFiltro] = useState("");
+  const [fechaHastaFiltro, setFechaHastaFiltro] = useState("");
+  const [vistaViaticosActiva, setVistaViaticosActiva] = useState<"movimientos" | "presupuestos">("movimientos");
+  const [modalMovimientoViatico, setModalMovimientoViatico] = useState(false);
+  const [modalPresupuestoViatico, setModalPresupuestoViatico] = useState(false);
 
   // cobranza
   const [cargandoCobranza, setCargandoCobranza] = useState(false);
@@ -702,6 +738,63 @@ export function ProyectoDetalle() {
       setCargandoExplosion(false);
     }
   }, [id, isAdmin, mostrarPedidosModulo]);
+
+  const cargarPresupuestosViaticos = useCallback(async () => {
+    if (!id) return;
+    try {
+      setCargandoPresupuestos(true);
+      setErrorPresupuestos("");
+      const res = await fetch(`http://localhost:3000/proyectos/${id}/viaticos-presupuestos`, {
+        headers: { ...authHeader() },
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setPresupuestosViaticos(data.data || []);
+      } else {
+        setErrorPresupuestos(data.message || "Error cargando presupuestos");
+      }
+    } catch {
+      setErrorPresupuestos("Error de conexión");
+    } finally {
+      setCargandoPresupuestos(false);
+    }
+  }, [id]);
+
+  const cargarMovimientosViaticos = useCallback(async () => {
+    if (!id) return;
+    try {
+      setCargandoMovimientos(true);
+      setErrorMovimientos("");
+
+      const params = new URLSearchParams();
+      if (familiaFiltro) params.append("familia", familiaFiltro);
+      if (fechaDesdeFiltro) params.append("fecha_desde", fechaDesdeFiltro);
+      if (fechaHastaFiltro) params.append("fecha_hasta", fechaHastaFiltro);
+
+      const query = params.toString();
+      const url = `http://localhost:3000/proyectos/${id}/viaticos-movimientos${query ? `?${query}` : ""}`;
+
+      const res = await fetch(url, { headers: { ...authHeader() } });
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        setMovimientosViaticos(data.data || []);
+      } else {
+        setErrorMovimientos(data.message || "Error cargando movimientos");
+      }
+    } catch {
+      setErrorMovimientos("Error de conexión");
+    } finally {
+      setCargandoMovimientos(false);
+    }
+  }, [id, familiaFiltro, fechaDesdeFiltro, fechaHastaFiltro]);
+
+  useEffect(() => {
+    if (mostrarViaticos && id) {
+      cargarPresupuestosViaticos();
+      cargarMovimientosViaticos();
+    }
+  }, [mostrarViaticos, id, cargarPresupuestosViaticos, cargarMovimientosViaticos]);
 
   useEffect(() => {
     if (!isTokenValid(getToken())) { navigate("/"); return; }
@@ -2003,6 +2096,374 @@ export function ProyectoDetalle() {
                   ))}
                 </tbody>
               </table>
+            )}
+          </div>
+        )}
+
+        {/* VIÁTICOS MODULE */}
+        {mostrarViaticos && (
+          <div className="viaticos-container">
+            {/* View Toggle */}
+            <div className="viaticos-toggle">
+              <button
+                className={vistaViaticosActiva === "movimientos" ? "active" : ""}
+                onClick={() => setVistaViaticosActiva("movimientos")}
+              >
+                Registrar Pagos en Efectivo
+              </button>
+              <button
+                className={vistaViaticosActiva === "presupuestos" ? "active" : ""}
+                onClick={() => setVistaViaticosActiva("presupuestos")}
+              >
+                Registrar Saldos
+              </button>
+            </div>
+
+            {/* Cash Movements View */}
+            {vistaViaticosActiva === "movimientos" && (
+              <div className="seccion-movimientos">
+                <div className="movimientos-header">
+                  <h3>Pagos en Efectivo</h3>
+                  {isAdmin && (
+                    <button className="action-button create-button" onClick={() => setModalMovimientoViatico(true)}>
+                      Agregar Movimiento
+                    </button>
+                  )}
+                </div>
+
+                {/* Filters */}
+                <div className="movimientos-filtros">
+                  <div className="filtro">
+                    <label htmlFor="familia-filtro">Familia</label>
+                    <select
+                      id="familia-filtro"
+                      value={familiaFiltro}
+                      onChange={(e) => setFamiliaFiltro(e.target.value)}
+                    >
+                      <option value="">Todas</option>
+                      <option value="Mano de Obra">Mano de Obra</option>
+                      <option value="Viáticos">Viáticos</option>
+                      <option value="Fletes">Fletes</option>
+                    </select>
+                  </div>
+                  <div className="filtro">
+                    <label htmlFor="fecha-desde">Desde</label>
+                    <input
+                      id="fecha-desde"
+                      type="date"
+                      value={fechaDesdeFiltro}
+                      onChange={(e) => setFechaDesdeFiltro(e.target.value)}
+                    />
+                  </div>
+                  <div className="filtro">
+                    <label htmlFor="fecha-hasta">Hasta</label>
+                    <input
+                      id="fecha-hasta"
+                      type="date"
+                      value={fechaHastaFiltro}
+                      onChange={(e) => setFechaHastaFiltro(e.target.value)}
+                    />
+                  </div>
+                  <button
+                    className="action-button secondary-button"
+                    onClick={() => {
+                      setFamiliaFiltro("");
+                      setFechaDesdeFiltro("");
+                      setFechaHastaFiltro("");
+                    }}
+                  >
+                    Limpiar filtros
+                  </button>
+                </div>
+
+                {errorMovimientos && <p className="error-text">{errorMovimientos}</p>}
+
+                {cargandoMovimientos ? (
+                  <p>Cargando movimientos...</p>
+                ) : movimientosViaticos.length === 0 ? (
+                  <p>No hay movimientos registrados</p>
+                ) : (
+                  <table className="tabla-movimientos">
+                    <thead>
+                      <tr>
+                        <th>Persona</th>
+                        <th>Concepto</th>
+                        <th>Familia</th>
+                        <th>Clave/Ref</th>
+                        <th>Fecha</th>
+                        <th className="columna-numero">Ingreso</th>
+                        <th className="columna-numero">Egreso</th>
+                        <th className="columna-numero">Saldo</th>
+                        {isAdmin && <th>Acciones</th>}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {movimientosViaticos.map((mov) => (
+                        <tr key={mov.id_movimiento}>
+                          <td>{mov.persona}</td>
+                          <td>{mov.concepto}</td>
+                          <td>{mov.familia}</td>
+                          <td>{mov.clave_referencia || "-"}</td>
+                          <td>{mov.fecha}</td>
+                          <td className="columna-numero">{formatCurrency(mov.ingreso)}</td>
+                          <td className="columna-numero">{formatCurrency(mov.egreso)}</td>
+                          <td className={`columna-numero ${mov.saldo < 0 ? "negativo" : ""}`}>
+                            {formatCurrency(mov.saldo)}
+                          </td>
+                          {isAdmin && (
+                            <td>
+                              <button
+                                className="icon-button trash-button"
+                                onClick={async () => {
+                                  if (!confirm("¿Eliminar este movimiento?")) return;
+                                  try {
+                                    const res = await fetch(
+                                      `http://localhost:3000/proyectos/${id}/viaticos-movimientos/${mov.id_movimiento}`,
+                                      { method: "DELETE", headers: { ...authHeader() } }
+                                    );
+                                    const data = await res.json();
+                                    if (res.ok && data.success) {
+                                      await cargarMovimientosViaticos();
+                                      await cargarPresupuestosViaticos();
+                                    } else {
+                                      setErrorMovimientos(data.message || "Error al eliminar");
+                                    }
+                                  } catch {
+                                    setErrorMovimientos("Error de conexión");
+                                  }
+                                }}
+                                aria-label="Eliminar"
+                              >
+                                🗑️
+                              </button>
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            )}
+
+            {/* Budget Balances View */}
+            {vistaViaticosActiva === "presupuestos" && (
+              <div className="seccion-presupuestos">
+                <div className="presupuestos-header">
+                  <h3>Saldos por Familia</h3>
+                  {isAdmin && (
+                    <button className="action-button create-button" onClick={() => setModalPresupuestoViatico(true)}>
+                      Editar Presupuestos
+                    </button>
+                  )}
+                </div>
+
+                {errorPresupuestos && <p className="error-text">{errorPresupuestos}</p>}
+
+                {cargandoPresupuestos ? (
+                  <p>Cargando presupuestos...</p>
+                ) : presupuestosViaticos.length === 0 ? (
+                  <p>No hay presupuestos configurados. Configure los presupuestos para comenzar.</p>
+                ) : (
+                  <div className="presupuestos-grid">
+                    {presupuestosViaticos.map((pres) => (
+                      <div key={pres.id_presupuesto} className="presupuesto-card">
+                        <h4>{pres.familia}</h4>
+                        <div className="presupuesto-detalle">
+                          <div className="presupuesto-fila">
+                            <span>Presupuesto:</span>
+                            <strong>{formatCurrency(pres.presupuesto_asignado)}</strong>
+                          </div>
+                          <div className="presupuesto-fila">
+                            <span>Gastado:</span>
+                            <strong>{formatCurrency(pres.gastado)}</strong>
+                          </div>
+                          <div className={`presupuesto-fila ${pres.restante < 0 ? "negativo" : "positivo"}`}>
+                            <span>Restante:</span>
+                            <strong>{formatCurrency(pres.restante)}</strong>
+                          </div>
+                        </div>
+                        <div className="presupuesto-barra">
+                          <div
+                            className="presupuesto-progreso"
+                            style={{
+                              width: `${Math.min((pres.gastado / pres.presupuesto_asignado) * 100, 100)}%`,
+                              backgroundColor: pres.restante < 0 ? "#dc3545" : "#28a745"
+                            }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Movement Modal */}
+            {modalMovimientoViatico && (
+              <div className="modal-overlay" onClick={() => setModalMovimientoViatico(false)}>
+                <div className="modal" onClick={(e) => e.stopPropagation()}>
+                  <h3>Agregar Movimiento</h3>
+                  <form
+                    onSubmit={async (e) => {
+                      e.preventDefault();
+                      const form = e.currentTarget;
+                      const formData = new FormData(form);
+
+                      const familia = formData.get("familia") as string;
+                      const persona = formData.get("persona") as string;
+                      const concepto = formData.get("concepto") as string;
+                      const clave_referencia = formData.get("clave_referencia") as string;
+                      const fecha = formData.get("fecha") as string;
+                      const tipo = formData.get("tipo_movimiento") as string;
+                      const monto = Number(formData.get("monto"));
+
+                      if (isNaN(monto) || monto <= 0) {
+                        setErrorMovimientos("Monto inválido");
+                        return;
+                      }
+
+                      try {
+                        const res = await fetch(`http://localhost:3000/proyectos/${id}/viaticos-movimientos`, {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json", ...authHeader() },
+                          body: JSON.stringify({
+                            familia,
+                            persona,
+                            concepto,
+                            clave_referencia: clave_referencia || null,
+                            fecha,
+                            ingreso: tipo === "ingreso" ? monto : 0,
+                            egreso: tipo === "egreso" ? monto : 0,
+                          }),
+                        });
+
+                        const data = await res.json();
+                        if (res.ok && data.success) {
+                          setModalMovimientoViatico(false);
+                          await cargarMovimientosViaticos();
+                          await cargarPresupuestosViaticos();
+                        } else {
+                          setErrorMovimientos(data.message || "Error al guardar");
+                        }
+                      } catch {
+                        setErrorMovimientos("Error de conexión");
+                      }
+                    }}
+                  >
+                    <label>Familia</label>
+                    <select name="familia" required>
+                      <option value="">Seleccionar...</option>
+                      <option value="Mano de Obra">Mano de Obra</option>
+                      <option value="Viáticos">Viáticos</option>
+                      <option value="Fletes">Fletes</option>
+                    </select>
+
+                    <label>Persona</label>
+                    <input type="text" name="persona" required placeholder="Nombre" />
+
+                    <label>Concepto</label>
+                    <textarea name="concepto" required placeholder="Descripción" rows={3} />
+
+                    <label>Clave/Referencia</label>
+                    <input type="text" name="clave_referencia" placeholder="Opcional" />
+
+                    <label>Fecha</label>
+                    <input type="date" name="fecha" required defaultValue={getTodayISO()} />
+
+                    <label>Tipo de Movimiento</label>
+                    <div className="radio-group">
+                      <label>
+                        <input type="radio" name="tipo_movimiento" value="egreso" defaultChecked />
+                        Egreso (Gasto)
+                      </label>
+                      <label>
+                        <input type="radio" name="tipo_movimiento" value="ingreso" />
+                        Ingreso (Reembolso)
+                      </label>
+                    </div>
+
+                    <label>Monto</label>
+                    <input type="number" name="monto" required min="0" step="0.01" placeholder="0.00" />
+
+                    <div className="modal-actions">
+                      <button type="button" className="cancel-button" onClick={() => setModalMovimientoViatico(false)}>
+                        Cancelar
+                      </button>
+                      <button type="submit" className="action-button create-button">Guardar</button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {/* Budget Modal */}
+            {modalPresupuestoViatico && (
+              <div className="modal-overlay" onClick={() => setModalPresupuestoViatico(false)}>
+                <div className="modal" onClick={(e) => e.stopPropagation()}>
+                  <h3>Editar Presupuestos de Viáticos</h3>
+                  <form
+                    onSubmit={async (e) => {
+                      e.preventDefault();
+                      const form = e.currentTarget;
+                      const formData = new FormData(form);
+
+                      const familias = ["Mano de Obra", "Viáticos", "Fletes"];
+
+                      try {
+                        for (const familia of familias) {
+                          const presupuesto = Number(formData.get(familia));
+                          if (isNaN(presupuesto) || presupuesto < 0) {
+                            setErrorPresupuestos(`Presupuesto inválido para ${familia}`);
+                            return;
+                          }
+
+                          const res = await fetch(`http://localhost:3000/proyectos/${id}/viaticos-presupuestos`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json", ...authHeader() },
+                            body: JSON.stringify({ familia, presupuesto_asignado: presupuesto }),
+                          });
+
+                          const data = await res.json();
+                          if (!res.ok || !data.success) {
+                            setErrorPresupuestos(data.message || `Error guardando ${familia}`);
+                            return;
+                          }
+                        }
+
+                        setModalPresupuestoViatico(false);
+                        await cargarPresupuestosViaticos();
+                      } catch {
+                        setErrorPresupuestos("Error de conexión");
+                      }
+                    }}
+                  >
+                    {["Mano de Obra", "Viáticos", "Fletes"].map((familia) => {
+                      const actual = presupuestosViaticos.find((p) => p.familia === familia);
+                      return (
+                        <div key={familia} className="presupuesto-input-group">
+                          <label>{familia}</label>
+                          <input
+                            type="number"
+                            name={familia}
+                            min="0"
+                            step="0.01"
+                            defaultValue={actual?.presupuesto_asignado || 0}
+                            required
+                          />
+                        </div>
+                      );
+                    })}
+
+                    <div className="modal-actions">
+                      <button type="button" className="cancel-button" onClick={() => setModalPresupuestoViatico(false)}>
+                        Cancelar
+                      </button>
+                      <button type="submit" className="action-button create-button">Guardar</button>
+                    </div>
+                  </form>
+                </div>
+              </div>
             )}
           </div>
         )}

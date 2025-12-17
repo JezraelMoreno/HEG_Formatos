@@ -222,6 +222,50 @@ CREATE TABLE IF NOT EXISTS cobranza (
 );
 
 ------------------------------------------------------------
+-- Tabla viaticos_presupuestos
+------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS viaticos_presupuestos (
+  id_presupuesto INT AUTO_INCREMENT PRIMARY KEY,
+  id_proyecto INT NOT NULL,
+  familia ENUM('Mano de Obra', 'Viáticos', 'Fletes') NOT NULL,
+  presupuesto_asignado DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+  gastado DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+  fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP,
+  nombre_usuario VARCHAR(50) NOT NULL,
+
+  CONSTRAINT uk_viaticos_proyecto_familia UNIQUE (id_proyecto, familia),
+  FOREIGN KEY (id_proyecto) REFERENCES proyectos(id_proyecto)
+    ON DELETE CASCADE ON UPDATE CASCADE,
+  FOREIGN KEY (nombre_usuario) REFERENCES usuarios(nombre_usuario)
+    ON UPDATE CASCADE ON DELETE RESTRICT
+);
+
+------------------------------------------------------------
+-- Tabla viaticos_movimientos
+------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS viaticos_movimientos (
+  id_movimiento INT AUTO_INCREMENT PRIMARY KEY,
+  id_proyecto INT NOT NULL,
+  familia ENUM('Mano de Obra', 'Viáticos', 'Fletes') NOT NULL,
+  persona VARCHAR(255) NOT NULL,
+  concepto TEXT NOT NULL,
+  clave_referencia VARCHAR(100),
+  fecha DATE NOT NULL,
+  ingreso DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+  egreso DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+  saldo DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+  fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP,
+  nombre_usuario VARCHAR(50) NOT NULL,
+
+  INDEX idx_proyecto_familia (id_proyecto, familia),
+  INDEX idx_fecha (fecha),
+  FOREIGN KEY (id_proyecto) REFERENCES proyectos(id_proyecto)
+    ON DELETE CASCADE ON UPDATE CASCADE,
+  FOREIGN KEY (nombre_usuario) REFERENCES usuarios(nombre_usuario)
+    ON UPDATE CASCADE ON DELETE RESTRICT
+);
+
+------------------------------------------------------------
 -- TRIGGERS PARA MISCEÁNEOS
 ------------------------------------------------------------
 DELIMITER //
@@ -330,6 +374,76 @@ BEGIN
       IFNULL((SELECT SUM(importe) FROM pedidos_detalles_miscelaneos WHERE id_pedido = OLD.id_pedido),0)
     + IFNULL((SELECT SUM(importe) FROM pedidos_detalles_cristal WHERE id_pedido = OLD.id_pedido),0)
   WHERE id = OLD.id_pedido;
+END;
+//
+
+------------------------------------------------------------
+-- TRIGGERS PARA VIÁTICOS
+------------------------------------------------------------
+
+CREATE TRIGGER trg_viaticos_mov_after_insert
+AFTER INSERT ON viaticos_movimientos
+FOR EACH ROW
+BEGIN
+  -- Recalculate saldo for all movements in this project/familia
+  SET @running := 0;
+  UPDATE viaticos_movimientos m
+  SET m.saldo = (@running := @running + m.ingreso - m.egreso)
+  WHERE m.id_proyecto = NEW.id_proyecto
+    AND m.familia = NEW.familia
+  ORDER BY m.fecha ASC, m.id_movimiento ASC;
+
+  -- Update gastado in presupuestos
+  INSERT INTO viaticos_presupuestos (id_proyecto, familia, gastado, nombre_usuario, presupuesto_asignado)
+  VALUES (
+    NEW.id_proyecto,
+    NEW.familia,
+    (SELECT IFNULL(SUM(egreso) - SUM(ingreso), 0) FROM viaticos_movimientos
+     WHERE id_proyecto = NEW.id_proyecto AND familia = NEW.familia),
+    NEW.nombre_usuario,
+    0.00
+  )
+  ON DUPLICATE KEY UPDATE gastado = VALUES(gastado);
+END;
+//
+
+CREATE TRIGGER trg_viaticos_mov_after_update
+AFTER UPDATE ON viaticos_movimientos
+FOR EACH ROW
+BEGIN
+  SET @running := 0;
+  UPDATE viaticos_movimientos m
+  SET m.saldo = (@running := @running + m.ingreso - m.egreso)
+  WHERE m.id_proyecto = NEW.id_proyecto
+    AND m.familia = NEW.familia
+  ORDER BY m.fecha ASC, m.id_movimiento ASC;
+
+  UPDATE viaticos_presupuestos
+  SET gastado = (
+    SELECT IFNULL(SUM(egreso) - SUM(ingreso), 0) FROM viaticos_movimientos
+    WHERE id_proyecto = NEW.id_proyecto AND familia = NEW.familia
+  )
+  WHERE id_proyecto = NEW.id_proyecto AND familia = NEW.familia;
+END;
+//
+
+CREATE TRIGGER trg_viaticos_mov_after_delete
+AFTER DELETE ON viaticos_movimientos
+FOR EACH ROW
+BEGIN
+  SET @running := 0;
+  UPDATE viaticos_movimientos m
+  SET m.saldo = (@running := @running + m.ingreso - m.egreso)
+  WHERE m.id_proyecto = OLD.id_proyecto
+    AND m.familia = OLD.familia
+  ORDER BY m.fecha ASC, m.id_movimiento ASC;
+
+  UPDATE viaticos_presupuestos
+  SET gastado = (
+    SELECT IFNULL(SUM(egreso) - SUM(ingreso), 0) FROM viaticos_movimientos
+    WHERE id_proyecto = OLD.id_proyecto AND familia = OLD.familia
+  )
+  WHERE id_proyecto = OLD.id_proyecto AND familia = OLD.familia;
 END;
 //
 
