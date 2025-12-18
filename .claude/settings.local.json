@@ -1,7 +1,16 @@
 {
   "permissions": {
     "allow": [
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(npm start)",
+      "Bash(node analizar_excel.js:*)",
+      "Bash(npm install:*)",
+      "Bash(node analizar_excel2.js:*)",
+      "Bash(dir:*)",
+      "Bash(python analizar_excel.py:*)",
+      "Bash(node leer_pagos.js:*)",
+      "Bash(mysql:*)",
+      "Bash(where:*)"
     ]
   }
 }

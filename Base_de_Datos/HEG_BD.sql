@@ -380,19 +380,13 @@ END;
 ------------------------------------------------------------
 -- TRIGGERS PARA VIÁTICOS
 ------------------------------------------------------------
+-- FIXED: These triggers now only update viaticos_presupuestos, not viaticos_movimientos
+-- The saldo calculation is handled by the stored procedure sp_recalcular_saldos_viaticos
 
 CREATE TRIGGER trg_viaticos_mov_after_insert
 AFTER INSERT ON viaticos_movimientos
 FOR EACH ROW
 BEGIN
-  -- Recalculate saldo for all movements in this project/familia
-  SET @running := 0;
-  UPDATE viaticos_movimientos m
-  SET m.saldo = (@running := @running + m.ingreso - m.egreso)
-  WHERE m.id_proyecto = NEW.id_proyecto
-    AND m.familia = NEW.familia
-  ORDER BY m.fecha ASC, m.id_movimiento ASC;
-
   -- Update gastado in presupuestos
   INSERT INTO viaticos_presupuestos (id_proyecto, familia, gastado, nombre_usuario, presupuesto_asignado)
   VALUES (
@@ -411,13 +405,6 @@ CREATE TRIGGER trg_viaticos_mov_after_update
 AFTER UPDATE ON viaticos_movimientos
 FOR EACH ROW
 BEGIN
-  SET @running := 0;
-  UPDATE viaticos_movimientos m
-  SET m.saldo = (@running := @running + m.ingreso - m.egreso)
-  WHERE m.id_proyecto = NEW.id_proyecto
-    AND m.familia = NEW.familia
-  ORDER BY m.fecha ASC, m.id_movimiento ASC;
-
   UPDATE viaticos_presupuestos
   SET gastado = (
     SELECT IFNULL(SUM(egreso) - SUM(ingreso), 0) FROM viaticos_movimientos
@@ -431,19 +418,70 @@ CREATE TRIGGER trg_viaticos_mov_after_delete
 AFTER DELETE ON viaticos_movimientos
 FOR EACH ROW
 BEGIN
-  SET @running := 0;
-  UPDATE viaticos_movimientos m
-  SET m.saldo = (@running := @running + m.ingreso - m.egreso)
-  WHERE m.id_proyecto = OLD.id_proyecto
-    AND m.familia = OLD.familia
-  ORDER BY m.fecha ASC, m.id_movimiento ASC;
-
   UPDATE viaticos_presupuestos
   SET gastado = (
     SELECT IFNULL(SUM(egreso) - SUM(ingreso), 0) FROM viaticos_movimientos
     WHERE id_proyecto = OLD.id_proyecto AND familia = OLD.familia
   )
   WHERE id_proyecto = OLD.id_proyecto AND familia = OLD.familia;
+END;
+//
+
+------------------------------------------------------------
+-- STORED PROCEDURE FOR RECALCULATING SALDOS
+------------------------------------------------------------
+-- This procedure recalculates saldos for a specific project/familia
+-- It's called from the application after inserting/updating/deleting movements
+
+DROP PROCEDURE IF EXISTS sp_recalcular_saldos_viaticos;
+//
+
+CREATE PROCEDURE sp_recalcular_saldos_viaticos(
+  IN p_id_proyecto INT,
+  IN p_familia VARCHAR(50)
+)
+BEGIN
+  DECLARE v_saldo DECIMAL(15,2);
+  DECLARE v_id INT;
+  DECLARE v_ingreso DECIMAL(15,2);
+  DECLARE v_egreso DECIMAL(15,2);
+  DECLARE done INT DEFAULT FALSE;
+
+  -- Cursor to iterate through all movements ordered by date and id
+  DECLARE cur CURSOR FOR
+    SELECT id_movimiento, ingreso, egreso
+    FROM viaticos_movimientos
+    WHERE id_proyecto = p_id_proyecto AND familia = p_familia
+    ORDER BY fecha ASC, id_movimiento ASC;
+
+  -- Handler for when cursor reaches end
+  DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
+
+  -- Initialize running balance
+  SET v_saldo = 0;
+
+  -- Open cursor
+  OPEN cur;
+
+  -- Loop through all movements
+  read_loop: LOOP
+    FETCH cur INTO v_id, v_ingreso, v_egreso;
+
+    IF done THEN
+      LEAVE read_loop;
+    END IF;
+
+    -- Calculate new balance
+    SET v_saldo = v_saldo + v_ingreso - v_egreso;
+
+    -- Update the saldo for this specific movement
+    UPDATE viaticos_movimientos
+    SET saldo = v_saldo
+    WHERE id_movimiento = v_id;
+  END LOOP;
+
+  -- Close cursor
+  CLOSE cur;
 END;
 //
 

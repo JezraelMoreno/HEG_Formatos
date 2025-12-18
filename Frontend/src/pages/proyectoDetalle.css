@@ -967,18 +967,99 @@
   transition: width 0.3s ease;
 }
 
-/* Modal Form Styles */
-.radio-group {
-  display: flex;
-  gap: 1rem;
-  margin: 0.5rem 0;
+/* Modal Form Styles - Specific to Viaticos Movement Modal */
+.modal-viaticos-movimiento {
+  max-width: 600px;
+  max-height: 90vh;
+  overflow-y: auto;
 }
 
-.radio-group label {
+.modal-viaticos-movimiento h3 {
+  margin-bottom: 1.5rem;
+  color: #2c3e50;
+  font-size: 1.5rem;
+  border-bottom: 2px solid #e9ecef;
+  padding-bottom: 0.75rem;
+}
+
+.modal-viaticos-movimiento form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.modal-viaticos-movimiento label {
+  font-weight: 600;
+  color: #495057;
+  font-size: 0.95rem;
+  margin-bottom: 0.5rem;
+  display: block;
+}
+
+.modal-viaticos-movimiento input[type="text"],
+.modal-viaticos-movimiento input[type="number"],
+.modal-viaticos-movimiento input[type="date"],
+.modal-viaticos-movimiento select,
+.modal-viaticos-movimiento textarea {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid #ced4da;
+  border-radius: 6px;
+  font-size: 1rem;
+  transition: all 0.2s;
+  box-sizing: border-box;
+}
+
+.modal-viaticos-movimiento input:focus,
+.modal-viaticos-movimiento select:focus,
+.modal-viaticos-movimiento textarea:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.modal-viaticos-movimiento textarea {
+  resize: vertical;
+  min-height: 80px;
+  font-family: inherit;
+}
+
+.modal-viaticos-movimiento .radio-group {
+  display: flex;
+  gap: 1.5rem;
+  margin-top: 0.5rem;
+}
+
+.modal-viaticos-movimiento .radio-group label {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   cursor: pointer;
+  font-weight: 500;
+  padding: 0.5rem 1rem;
+  border: 2px solid #e9ecef;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.modal-viaticos-movimiento .radio-group label:hover {
+  background: #f8f9fa;
+  border-color: #667eea;
+}
+
+.modal-viaticos-movimiento .radio-group input[type="radio"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.modal-viaticos-movimiento .modal-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: flex-end;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e9ecef;
 }
 
 .presupuesto-input-group {
@@ -986,6 +1067,64 @@
   flex-direction: column;
   gap: 0.25rem;
   margin-bottom: 1rem;
+}
+
+/* Budget Breakdown Table */
+.desglose-presupuestos-tabla {
+  margin-top: 2rem;
+}
+
+.desglose-presupuestos-tabla h3 {
+  margin-bottom: 1rem;
+  color: #0f172a;
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.tabla-desglose-presupuestos {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  margin-top: 10px;
+}
+
+.tabla-desglose-presupuestos th,
+.tabla-desglose-presupuestos td {
+  border: 1px solid #e2e6ed;
+  padding: 10px 8px;
+}
+
+.tabla-desglose-presupuestos thead th {
+  background: #f1f4f9;
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.85rem;
+  letter-spacing: 0.5px;
+  text-align: center;
+}
+
+.tabla-desglose-presupuestos tbody td {
+  text-align: left;
+  font-size: 0.9rem;
+}
+
+.tabla-desglose-presupuestos tbody tr:hover {
+  background: #f9fbff;
+}
+
+.tabla-desglose-presupuestos .columna-numero {
+  text-align: right;
+}
+
+.tabla-desglose-presupuestos .total-column {
+  font-weight: 700;
+  background: #f1f4f9;
+  font-size: 1rem;
+}
+
+.tabla-desglose-presupuestos .negativo {
+  color: #b42318;
+  font-weight: 600;
 }
 
 .presupuesto-input-group label {

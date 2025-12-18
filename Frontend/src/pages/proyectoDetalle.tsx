@@ -2174,6 +2174,38 @@ export function ProyectoDetalle() {
                   >
                     Limpiar filtros
                   </button>
+                  <button
+                    className="action-button primary-button"
+                    onClick={async () => {
+                      try {
+                        const params = new URLSearchParams();
+                        if (familiaFiltro) params.append("familia", familiaFiltro);
+                        if (fechaDesdeFiltro) params.append("fecha_desde", fechaDesdeFiltro);
+                        if (fechaHastaFiltro) params.append("fecha_hasta", fechaHastaFiltro);
+
+                        const res = await fetch(
+                          `http://localhost:3000/proyectos/${id}/viaticos-movimientos/export?${params}`,
+                          { headers: { ...authHeader() } }
+                        );
+                        if (!res.ok) throw new Error("Error al exportar");
+
+                        const blob = await res.blob();
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement("a");
+                        a.href = url;
+                        a.download = `Pagos_Efectivo_${nombreProyecto}_${new Date().toISOString().split("T")[0]}.xlsx`;
+                        document.body.appendChild(a);
+                        a.click();
+                        window.URL.revokeObjectURL(url);
+                        document.body.removeChild(a);
+                      } catch (err) {
+                        console.error("Error exportando:", err);
+                        alert("Error al exportar a Excel");
+                      }
+                    }}
+                  >
+                    📊 Exportar a Excel
+                  </button>
                 </div>
 
                 {errorMovimientos && <p className="error-text">{errorMovimientos}</p>}
@@ -2186,30 +2218,36 @@ export function ProyectoDetalle() {
                   <table className="tabla-movimientos">
                     <thead>
                       <tr>
-                        <th>Persona</th>
+                        <th>N°</th>
+                        <th>Nombre</th>
                         <th>Concepto</th>
                         <th>Familia</th>
-                        <th>Clave/Ref</th>
+                        <th>Clave</th>
+                        <th>Proyecto</th>
                         <th>Fecha</th>
                         <th className="columna-numero">Ingreso</th>
                         <th className="columna-numero">Egreso</th>
                         <th className="columna-numero">Saldo</th>
+                        <th>Observaciones</th>
                         {isAdmin && <th>Acciones</th>}
                       </tr>
                     </thead>
                     <tbody>
-                      {movimientosViaticos.map((mov) => (
+                      {movimientosViaticos.map((mov, idx) => (
                         <tr key={mov.id_movimiento}>
+                          <td>{idx + 1}</td>
                           <td>{mov.persona}</td>
                           <td>{mov.concepto}</td>
                           <td>{mov.familia}</td>
                           <td>{mov.clave_referencia || "-"}</td>
+                          <td>{nombreProyecto}</td>
                           <td>{mov.fecha}</td>
                           <td className="columna-numero">{formatCurrency(mov.ingreso)}</td>
                           <td className="columna-numero">{formatCurrency(mov.egreso)}</td>
                           <td className={`columna-numero ${mov.saldo < 0 ? "negativo" : ""}`}>
                             {formatCurrency(mov.saldo)}
                           </td>
+                          <td></td>
                           {isAdmin && (
                             <td>
                               <button
@@ -2265,36 +2303,101 @@ export function ProyectoDetalle() {
                 ) : presupuestosViaticos.length === 0 ? (
                   <p>No hay presupuestos configurados. Configure los presupuestos para comenzar.</p>
                 ) : (
-                  <div className="presupuestos-grid">
-                    {presupuestosViaticos.map((pres) => (
-                      <div key={pres.id_presupuesto} className="presupuesto-card">
-                        <h4>{pres.familia}</h4>
-                        <div className="presupuesto-detalle">
-                          <div className="presupuesto-fila">
-                            <span>Presupuesto:</span>
-                            <strong>{formatCurrency(pres.presupuesto_asignado)}</strong>
+                  <>
+                    <div className="presupuestos-grid">
+                      {presupuestosViaticos.map((pres) => (
+                        <div key={pres.id_presupuesto} className="presupuesto-card">
+                          <h4>{pres.familia}</h4>
+                          <div className="presupuesto-detalle">
+                            <div className="presupuesto-fila">
+                              <span>Presupuesto:</span>
+                              <strong>{formatCurrency(pres.presupuesto_asignado)}</strong>
+                            </div>
+                            <div className="presupuesto-fila">
+                              <span>Gastado:</span>
+                              <strong>{formatCurrency(pres.gastado)}</strong>
+                            </div>
+                            <div className={`presupuesto-fila ${pres.restante < 0 ? "negativo" : "positivo"}`}>
+                              <span>Restante:</span>
+                              <strong>{formatCurrency(pres.restante)}</strong>
+                            </div>
                           </div>
-                          <div className="presupuesto-fila">
-                            <span>Gastado:</span>
-                            <strong>{formatCurrency(pres.gastado)}</strong>
-                          </div>
-                          <div className={`presupuesto-fila ${pres.restante < 0 ? "negativo" : "positivo"}`}>
-                            <span>Restante:</span>
-                            <strong>{formatCurrency(pres.restante)}</strong>
+                          <div className="presupuesto-barra">
+                            <div
+                              className="presupuesto-progreso"
+                              style={{
+                                width: `${Math.min((pres.gastado / pres.presupuesto_asignado) * 100, 100)}%`,
+                                backgroundColor: pres.restante < 0 ? "#dc3545" : "#28a745"
+                              }}
+                            />
                           </div>
                         </div>
-                        <div className="presupuesto-barra">
-                          <div
-                            className="presupuesto-progreso"
-                            style={{
-                              width: `${Math.min((pres.gastado / pres.presupuesto_asignado) * 100, 100)}%`,
-                              backgroundColor: pres.restante < 0 ? "#dc3545" : "#28a745"
-                            }}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+
+                    {/* Budget Breakdown Table */}
+                    <div className="desglose-presupuestos-tabla">
+                      <h3>Desglose de Presupuestos por Proyecto</h3>
+                      <table className="tabla-desglose-presupuestos">
+                        <thead>
+                          <tr>
+                            <th rowSpan={2}>N°</th>
+                            <th rowSpan={2}>PROYECTO</th>
+                            <th colSpan={3}>MANO DE OBRA</th>
+                            <th colSpan={3}>VIÁTICOS</th>
+                            <th colSpan={3}>FLETES</th>
+                            <th rowSpan={2}>TOTAL POR EROGAR</th>
+                          </tr>
+                          <tr>
+                            <th>PRESUPUESTO</th>
+                            <th>EROGADO</th>
+                            <th>POR EROGAR</th>
+                            <th>PRESUPUESTO</th>
+                            <th>EROGADO</th>
+                            <th>POR EROGAR</th>
+                            <th>PRESUPUESTO</th>
+                            <th>EROGADO</th>
+                            <th>POR EROGAR</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr>
+                            <td>1</td>
+                            <td>{nombreProyecto}</td>
+                            {(() => {
+                              const manoDeObra = presupuestosViaticos.find(p => p.familia === "Mano de Obra");
+                              const viaticos = presupuestosViaticos.find(p => p.familia === "Viáticos");
+                              const fletes = presupuestosViaticos.find(p => p.familia === "Fletes");
+                              const totalPorErogar = (manoDeObra?.restante || 0) + (viaticos?.restante || 0) + (fletes?.restante || 0);
+
+                              return (
+                                <>
+                                  <td className="columna-numero">{formatCurrency(manoDeObra?.presupuesto_asignado || 0)}</td>
+                                  <td className="columna-numero">{formatCurrency(manoDeObra?.gastado || 0)}</td>
+                                  <td className={`columna-numero ${(manoDeObra?.restante || 0) < 0 ? "negativo" : ""}`}>
+                                    {formatCurrency(manoDeObra?.restante || 0)}
+                                  </td>
+                                  <td className="columna-numero">{formatCurrency(viaticos?.presupuesto_asignado || 0)}</td>
+                                  <td className="columna-numero">{formatCurrency(viaticos?.gastado || 0)}</td>
+                                  <td className={`columna-numero ${(viaticos?.restante || 0) < 0 ? "negativo" : ""}`}>
+                                    {formatCurrency(viaticos?.restante || 0)}
+                                  </td>
+                                  <td className="columna-numero">{formatCurrency(fletes?.presupuesto_asignado || 0)}</td>
+                                  <td className="columna-numero">{formatCurrency(fletes?.gastado || 0)}</td>
+                                  <td className={`columna-numero ${(fletes?.restante || 0) < 0 ? "negativo" : ""}`}>
+                                    {formatCurrency(fletes?.restante || 0)}
+                                  </td>
+                                  <td className={`columna-numero total-column ${totalPorErogar < 0 ? "negativo" : ""}`}>
+                                    {formatCurrency(totalPorErogar)}
+                                  </td>
+                                </>
+                              );
+                            })()}
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
                 )}
               </div>
             )}
@@ -2302,7 +2405,7 @@ export function ProyectoDetalle() {
             {/* Movement Modal */}
             {modalMovimientoViatico && (
               <div className="modal-overlay" onClick={() => setModalMovimientoViatico(false)}>
-                <div className="modal" onClick={(e) => e.stopPropagation()}>
+                <div className="modal modal-viaticos-movimiento" onClick={(e) => e.stopPropagation()}>
                   <h3>Agregar Movimiento</h3>
                   <form
                     onSubmit={async (e) => {
