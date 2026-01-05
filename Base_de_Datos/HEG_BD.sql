@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS proyectos (
   id_proyecto INT AUTO_INCREMENT PRIMARY KEY,
   nombre VARCHAR(50),
   fecha_proyecto DATE,
+  estado ENUM('en_progreso', 'completado') NOT NULL DEFAULT 'en_progreso',
   presupuesto DECIMAL (15,2) NOT NULL,
   presupuesto_cristal DECIMAL(15,2) NOT NULL DEFAULT 0.00,
   presupuesto_aluminio DECIMAL(15,2) NOT NULL DEFAULT 0.00,

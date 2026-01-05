@@ -3,6 +3,10 @@ import { LoginPage } from "./pages/loginPage";
 import { MainPage } from "./pages/mainPage";
 import { ProyectoDetalle } from "./pages/proyectoDetalle";
 import { PedidoPreview } from "./pages/pedidoPreview";
+import { DashboardEjecutivo } from "./pages/dashboards/DashboardEjecutivo";
+import { DashboardPresupuestos } from "./pages/dashboards/DashboardPresupuestos";
+import { DashboardProyectos } from "./pages/dashboards/DashboardProyectos";
+import { DashboardMateriales } from "./pages/dashboards/DashboardMateriales";
 import { PrivateRoute } from "./components/PrivateRoute";
 
 function App() {
@@ -30,6 +34,38 @@ function App() {
         element={
           <PrivateRoute>
             <PedidoPreview />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/dashboards/ejecutivo"
+        element={
+          <PrivateRoute>
+            <DashboardEjecutivo />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/dashboards/presupuestos"
+        element={
+          <PrivateRoute>
+            <DashboardPresupuestos />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/dashboards/proyectos"
+        element={
+          <PrivateRoute>
+            <DashboardProyectos />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/dashboards/materiales"
+        element={
+          <PrivateRoute>
+            <DashboardMateriales />
           </PrivateRoute>
         }
       />

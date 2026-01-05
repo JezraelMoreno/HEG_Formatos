@@ -10,7 +10,11 @@
       "Bash(python analizar_excel.py:*)",
       "Bash(node leer_pagos.js:*)",
       "Bash(mysql:*)",
-      "Bash(where:*)"
+      "Bash(where:*)",
+      "Bash(node server.js:*)",
+      "Bash(node -e:*)",
+      "Bash(npm run build:*)",
+      "Bash(npm run dev:*)"
     ]
   }
 }

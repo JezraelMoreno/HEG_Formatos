@@ -1684,22 +1684,22 @@ export function ProyectoDetalle() {
                 <p className="pedido-modal-status">Este pedido no tiene detalles registrados.</p>
               ) : (
                 <>
-                  <div className="pedido-descripciones">
-                    <h4>Descripciones</h4>
-                    <ul>
-                      {(tipoDetallePedido === "cristal"
-                        ? detallesCristal
-                        : tipoDetallePedido === "aluminio"
-                          ? detallesAluminio
+                  {tipoDetallePedido !== "aluminio" && (
+                    <div className="pedido-descripciones">
+                      <h4>Descripciones</h4>
+                      <ul>
+                        {(tipoDetallePedido === "cristal"
+                          ? detallesCristal
                           : detallesPedido
-                      ).map((detalle, index) => (
-                        <li key={`${detalle.id_detalle}-${index}`}>
-                          <strong>{index + 1}.</strong>{" "}
-                          {((detalle as any).descripcion || "").trim() || "-"}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
+                        ).map((detalle, index) => (
+                          <li key={`${detalle.id_detalle}-${index}`}>
+                            <strong>{index + 1}.</strong>{" "}
+                            {((detalle as any).descripcion || "").trim() || "-"}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                   <div className="pedido-detalle-ledger">
                     <div className="pedido-detalle-table-wrapper">
                       {tipoDetallePedido === "cristal" ? (
@@ -1737,7 +1737,7 @@ export function ProyectoDetalle() {
                         <table className="pedido-detalle-table">
                           <thead>
                             <tr>
-                              <th>No #</th>
+                              <th>Descripción</th>
                               <th>N° Perfil</th>
                               <th>Medida (tramo)</th>
                               <th>Unidad</th>
@@ -1754,7 +1754,9 @@ export function ProyectoDetalle() {
                           <tbody>
                             {detallesAluminio.map((detalle, index) => (
                               <tr key={`${detalle.id_detalle}-${index}`}>
-                                <td>{index + 1}</td>
+                                <td className="descripcion-cell">
+                                  {((detalle as any).descripcion || "").trim() || "-"}
+                                </td>
                                 <td>{detalle.numero_perfil || "-"}</td>
                                 <td>
                                   {detalle.medida_tramo === null || detalle.medida_tramo === undefined

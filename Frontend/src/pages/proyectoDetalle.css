@@ -633,122 +633,92 @@
   background: #fbfbfb;
 }
 
+/* Misceláneos table - descripción in first column */
 .pedido-detalle-table th:first-child,
 .pedido-detalle-table td:first-child {
-  width: 20px;
-  text-align: center;
-}
-
-.pedido-detalle-table tbody td:nth-child(2) {
+  min-width: 250px;
   text-align: left;
 }
 
+.pedido-detalle-table td.descripcion-cell {
+  min-width: 250px;
+  max-width: 400px;
+  text-align: left;
+  font-weight: 500;
+  word-wrap: break-word;
+}
+
+/* Numeric columns - align right */
+.pedido-detalle-table tbody td:nth-child(3),
+.pedido-detalle-table tbody td:nth-child(4),
 .pedido-detalle-table tbody td:nth-child(5),
 .pedido-detalle-table tbody td:nth-child(9),
-.pedido-detalle-table tbody td:nth-child(10),
-.pedido-detalle-table tbody td:nth-child(11) {
+.pedido-detalle-table tbody td:nth-child(10) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Center aligned columns (Medida, Clave, M.L., Acabado, KG) */
+.pedido-detalle-table tbody td:nth-child(2),
+.pedido-detalle-table tbody td:nth-child(6),
+.pedido-detalle-table tbody td:nth-child(7),
+.pedido-detalle-table tbody td:nth-child(8) {
   text-align: center;
 }
 
-.pedido-detalle-table tbody td:nth-child(6),
-.pedido-detalle-table tbody td:nth-child(7),
-.pedido-detalle-table tbody td:nth-child(12) {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-.pedido-detalle-table tbody td:nth-child(3),
-.pedido-detalle-table tbody td:nth-child(4),
-.pedido-detalle-table tbody td:nth-child(8),
-.pedido-detalle-table tbody td:nth-child(9),
-.pedido-detalle-table tbody td:nth-child(10),
-.pedido-detalle-table tbody td:nth-child(11) {
-  white-space: nowrap;
-}
-
-.pedido-detalle-table th:nth-child(2),
-.pedido-detalle-table td:nth-child(2) {
-  min-width: 220px;
-}
-
-.pedido-detalle-table th:nth-child(3),
-.pedido-detalle-table td:nth-child(3) {
-  min-width: 150px;
-}
-
-.pedido-detalle-table th:nth-child(4),
-.pedido-detalle-table td:nth-child(4) {
-  min-width: 120px;
-}
-
-.pedido-detalle-table th:nth-child(5),
-.pedido-detalle-table td:nth-child(5) {
-  min-width: 80px;
-}
-
-.pedido-detalle-table th:nth-child(6),
-.pedido-detalle-table td:nth-child(6),
-.pedido-detalle-table th:nth-child(7),
-.pedido-detalle-table td:nth-child(7),
-.pedido-detalle-table th:nth-child(12),
-.pedido-detalle-table td:nth-child(12) {
-  min-width: 120px;
-}
-
-.pedido-detalle-table th:nth-child(8),
-.pedido-detalle-table td:nth-child(8) {
-  min-width: 140px;
-}
-
-.pedido-detalle-table th:nth-child(9),
-.pedido-detalle-table td:nth-child(9),
-.pedido-detalle-table th:nth-child(10),
-.pedido-detalle-table td:nth-child(10),
-.pedido-detalle-table th:nth-child(11),
-.pedido-detalle-table td:nth-child(11) {
-  min-width: 90px;
-}
-
-.pedido-detalle-summary {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+.pedido-detalle-footer {
+  margin-top: 16px;
   border-top: 2px solid #1f2937;
   background: #f7f9fc;
 }
 
-.pedido-detalle-summary-cell {
-  padding: 10px 12px;
+.pedido-detalle-summary {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  border-bottom: 1px solid #1f2937;
+}
+
+.pedido-detalle-summary-row {
+  padding: 10px 16px;
   border-right: 1px solid #1f2937;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   text-align: center;
 }
 
-.pedido-detalle-summary-cell:last-child {
+.pedido-detalle-summary-row:last-child {
   border-right: none;
 }
 
-.pedido-detalle-summary-cell span {
+.pedido-detalle-summary-row span {
   display: block;
-  font-size: 0.65rem;
+  font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: #111827;
+  font-weight: 600;
 }
 
-.pedido-detalle-summary-cell strong {
+.pedido-detalle-summary-row strong {
   display: block;
   margin-top: 4px;
   font-size: 0.95rem;
   color: #111827;
 }
 
-.pedido-detalle-summary-cell.total {
+.pedido-detalle-summary-row.total {
   background: #fff;
   font-weight: 700;
 }
 
+.pedido-detalle-summary-row.total strong {
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
 .pedido-detalle-situaciones {
-  border-top: 2px solid #1f2937;
   padding: 12px 16px;
   background: #fdfdfd;
 }

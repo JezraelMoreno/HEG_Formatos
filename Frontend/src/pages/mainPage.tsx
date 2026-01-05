@@ -13,6 +13,7 @@ type Proyecto = {
   id_proyecto: number;
   nombre: string;
   fecha_proyecto: string; // formato YYYY-MM-DD
+  estado?: 'en_progreso' | 'completado';
   presupuesto?: number;
   presupuesto_total?: number;
   presupuesto_cristal?: number;
@@ -32,7 +33,7 @@ type PedidoResumen = {
 
 type DateInputWithPicker = HTMLInputElement & { showPicker?: () => void };
 
-type ModuleKey = "pedidos" | "contabilidad" | "viaticos";
+type ModuleKey = "pedidos" | "contabilidad" | "viaticos" | "dashboards";
 
 const getTodayISO = () => {
   const now = new Date();
@@ -140,11 +141,17 @@ export function MainPage() {
       descripcion: "Visualiza los proyectos para gestionar viáticos y gastos.",
       imagen: viaticosImg,
     },
+    {
+      key: "dashboards",
+      titulo: "Módulo de Dashboards",
+      descripcion: "Visualiza métricas y análisis de proyectos, presupuestos y materiales.",
+      imagen: contabilidadImg,
+    },
   ];
   const moduloActivo = moduloSeleccionado ? modulos.find((m) => m.key === moduloSeleccionado) : null;
   const esModuloContabilidad = moduloSeleccionado === "contabilidad";
-  const mostrarBuscador = Boolean(moduloSeleccionado);
-  const mostrarProyectos = Boolean(moduloSeleccionado);
+  const mostrarBuscador = Boolean(moduloSeleccionado) && moduloSeleccionado !== "dashboards";
+  const mostrarProyectos = Boolean(moduloSeleccionado) && moduloSeleccionado !== "dashboards";
 
   const handleLogout = () => {
     clearToken();
@@ -152,6 +159,10 @@ export function MainPage() {
   };
 
   const seleccionarModulo = (key: ModuleKey) => {
+    if (key === "dashboards") {
+      navigate("/dashboards/ejecutivo");
+      return;
+    }
     setModuloSeleccionado(key);
     setBusquedaProyecto("");
     if (typeof window !== "undefined") {
@@ -308,6 +319,29 @@ export function MainPage() {
       setError("Error de conexión al eliminar proyecto");
     } finally {
       setEliminandoProyecto(false);
+    }
+  };
+
+  const cambiarEstadoProyecto = async (idProyecto: number, nuevoEstado: 'en_progreso' | 'completado', event: MouseEvent<HTMLSelectElement>) => {
+    event.stopPropagation();
+    try {
+      const res = await fetch(`http://localhost:3000/proyectos/${idProyecto}/estado`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeader(),
+        },
+        body: JSON.stringify({ estado: nuevoEstado }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        setError(data?.message || "No se pudo actualizar el estado del proyecto");
+        return;
+      }
+      setMensajeGeneral(`Estado del proyecto actualizado a: ${nuevoEstado === 'en_progreso' ? 'En Progreso' : 'Completado'}`);
+      await cargarProyectos();
+    } catch {
+      setError("Error de conexión al cambiar estado del proyecto");
     }
   };
 
@@ -568,7 +602,7 @@ export function MainPage() {
 
         <div className="paneles">
           <section className="panel panel-proyectos">
-            {!mostrarProyectos && (
+            {!mostrarProyectos && moduloSeleccionado !== "dashboards" && (
               <div className="module-selector">
                 {modulos.map((modulo) => (
                   <button
@@ -587,6 +621,55 @@ export function MainPage() {
                     </div>
                   </button>
                 ))}
+              </div>
+            )}
+
+            {moduloSeleccionado === "dashboards" && (
+              <div className="module-selector">
+                <button
+                  className="module-card"
+                  type="button"
+                  onClick={() => navigate("/dashboards/ejecutivo")}
+                >
+                  <div className="module-content">
+                    <span className="module-chip">Ver</span>
+                    <h3>Dashboard Ejecutivo</h3>
+                    <p>Vista general del sistema de proyectos</p>
+                  </div>
+                </button>
+                <button
+                  className="module-card"
+                  type="button"
+                  onClick={() => navigate("/dashboards/presupuestos")}
+                >
+                  <div className="module-content">
+                    <span className="module-chip">Ver</span>
+                    <h3>Dashboard de Presupuestos</h3>
+                    <p>Análisis financiero y control presupuestal</p>
+                  </div>
+                </button>
+                <button
+                  className="module-card"
+                  type="button"
+                  onClick={() => navigate("/dashboards/proyectos")}
+                >
+                  <div className="module-content">
+                    <span className="module-chip">Ver</span>
+                    <h3>Dashboard de Proyectos</h3>
+                    <p>Seguimiento y control de proyectos</p>
+                  </div>
+                </button>
+                <button
+                  className="module-card"
+                  type="button"
+                  onClick={() => navigate("/dashboards/materiales")}
+                >
+                  <div className="module-content">
+                    <span className="module-chip">Ver</span>
+                    <h3>Dashboard de Materiales</h3>
+                    <p>Gestión de inventario y proyección de compras</p>
+                  </div>
+                </button>
               </div>
             )}
 
@@ -639,6 +722,21 @@ export function MainPage() {
                               <span className="presupuesto-chip">AL: <strong>{formatCurrency(presupuestoFamilias.aluminio)}</strong></span>
                               <span className="presupuesto-chip">MI: <strong>{formatCurrency(presupuestoFamilias.miscelaneos)}</strong></span>
                             </div>
+                            {esModuloContabilidad && (
+                              <div className="estado-selector">
+                                <label htmlFor={`estado-${p.id_proyecto}`}>Estado:</label>
+                                <select
+                                  id={`estado-${p.id_proyecto}`}
+                                  value={p.estado || 'en_progreso'}
+                                  onChange={(e) => cambiarEstadoProyecto(p.id_proyecto, e.target.value as 'en_progreso' | 'completado', e as any)}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className={`estado-select ${p.estado === 'completado' ? 'completado' : 'en-progreso'}`}
+                                >
+                                  <option value="en_progreso">En Progreso</option>
+                                  <option value="completado">Completado</option>
+                                </select>
+                              </div>
+                            )}
                           </div>
                           {isAdmin && (
                             <button

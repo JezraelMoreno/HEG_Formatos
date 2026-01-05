@@ -152,6 +152,7 @@ app.get("/proyectos", authenticateToken, async (req, res) => {
         p.id_proyecto,
         p.nombre,
         p.fecha_proyecto,
+        p.estado,
         COALESCE(p.presupuesto_cristal, 0) AS presupuesto_cristal,
         COALESCE(p.presupuesto_aluminio, 0) AS presupuesto_aluminio,
         COALESCE(p.presupuesto_miscelaneos, 0) AS presupuesto_miscelaneos,
@@ -176,7 +177,7 @@ app.get("/proyectos", authenticateToken, async (req, res) => {
         ) AS presupuesto_disponible
       FROM proyectos p
       LEFT JOIN pedidos pe ON pe.id_proyecto = p.id_proyecto
-      GROUP BY p.id_proyecto, p.nombre, p.fecha_proyecto, p.presupuesto, p.presupuesto_cristal, p.presupuesto_aluminio, p.presupuesto_miscelaneos, p.presupuesto_total
+      GROUP BY p.id_proyecto, p.nombre, p.fecha_proyecto, p.estado, p.presupuesto, p.presupuesto_cristal, p.presupuesto_aluminio, p.presupuesto_miscelaneos, p.presupuesto_total
       ORDER BY p.id_proyecto DESC
     `;
     const results = await queryAsync(query);
@@ -271,6 +272,37 @@ app.post("/proyectos", authenticateToken, async (req, res) => {
   }
 });
 
+// Proyectos - actualizar estado
+app.patch("/proyectos/:id/estado", authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { estado } = req.body;
+
+    if (!estado || !['en_progreso', 'completado'].includes(estado)) {
+      return res.status(400).json({
+        success: false,
+        message: "Estado inválido. Debe ser 'en_progreso' o 'completado'"
+      });
+    }
+
+    const query = "UPDATE proyectos SET estado = ? WHERE id_proyecto = ?";
+    const result = await queryAsync(query, [estado, id]);
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: "Proyecto no encontrado" });
+    }
+
+    res.json({
+      success: true,
+      message: `Estado actualizado a '${estado}'`,
+      estado
+    });
+  } catch (err) {
+    console.error("Error actualizando estado del proyecto:", err);
+    res.status(500).json({ success: false, message: "Error interno del servidor" });
+  }
+});
+
 app.delete("/proyectos/:id", authenticateToken, requireRole("administrador"), (req, res) => {
   const { id } = req.params;
   if (!id) {
@@ -309,6 +341,7 @@ app.get("/proyectos/:id", authenticateToken, async (req, res) => {
         p.id_proyecto,
         p.nombre,
         p.fecha_proyecto,
+        p.estado,
         COALESCE(p.presupuesto_cristal, 0) AS presupuesto_cristal,
         COALESCE(p.presupuesto_aluminio, 0) AS presupuesto_aluminio,
         COALESCE(p.presupuesto_miscelaneos, 0) AS presupuesto_miscelaneos,
@@ -2460,6 +2493,450 @@ function requireRole(...roles) {
     next();
   };
 }
+
+// ==================== ENDPOINTS DE DASHBOARDS ====================
+
+// Dashboard Ejecutivo
+app.get("/api/dashboard/ejecutivo", authenticateToken, async (req, res) => {
+  try {
+    // KPIs principales
+    const kpisQuery = `
+      SELECT
+        COUNT(*) as totalProyectos,
+        SUM(CASE WHEN estado = 'en_progreso' THEN 1 ELSE 0 END) as proyectosActivos,
+        COALESCE(SUM(COALESCE(p.presupuesto_total, p.presupuesto, 0)), 0) as presupuestoTotal,
+        COALESCE(SUM(COALESCE(pe.total_pedidos, 0)), 0) as presupuestoEjecutado
+      FROM proyectos p
+      LEFT JOIN (
+        SELECT id_proyecto, SUM(importe_total) as total_pedidos
+        FROM pedidos
+        GROUP BY id_proyecto
+      ) pe ON p.id_proyecto = pe.id_proyecto
+    `;
+    const kpisResult = await queryAsync(kpisQuery);
+    const kpis = kpisResult[0] || {};
+
+    // Proyectos por estado
+    const estadosQuery = `
+      SELECT
+        CASE
+          WHEN estado = 'en_progreso' THEN 'En Progreso'
+          WHEN estado = 'completado' THEN 'Completado'
+          ELSE 'Desconocido'
+        END as estado,
+        COUNT(*) as cantidad
+      FROM proyectos
+      GROUP BY estado
+    `;
+    const proyectosPorEstado = await queryAsync(estadosQuery);
+
+    // Tendencia de presupuesto mensual (últimos 6 meses)
+    const tendenciaQuery = `
+      SELECT
+        DATE_FORMAT(fecha_proyecto, '%Y-%m') as mes,
+        SUM(COALESCE(presupuesto_total, presupuesto, 0)) as presupuesto
+      FROM proyectos
+      WHERE fecha_proyecto >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
+      GROUP BY DATE_FORMAT(fecha_proyecto, '%Y-%m')
+      ORDER BY mes ASC
+    `;
+    const tendenciaPresupuesto = await queryAsync(tendenciaQuery);
+
+    // Proyectos creados por mes
+    const completadosQuery = `
+      SELECT
+        DATE_FORMAT(fecha_proyecto, '%Y-%m') as mes,
+        COUNT(*) as cantidad
+      FROM proyectos
+      WHERE fecha_proyecto >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
+      GROUP BY DATE_FORMAT(fecha_proyecto, '%Y-%m')
+      ORDER BY mes ASC
+    `;
+    const proyectosCompletados = await queryAsync(completadosQuery);
+
+    res.json({
+      kpis: {
+        totalProyectos: kpis.totalProyectos || 0,
+        proyectosActivos: kpis.proyectosActivos || 0,
+        presupuestoTotal: parseFloat(kpis.presupuestoTotal) || 0,
+        presupuestoEjecutado: parseFloat(kpis.presupuestoEjecutado) || 0
+      },
+      proyectosPorEstado: proyectosPorEstado.map(item => ({
+        estado: item.estado,
+        cantidad: item.cantidad
+      })),
+      tendenciaPresupuesto: tendenciaPresupuesto.map(item => ({
+        mes: item.mes,
+        presupuesto: parseFloat(item.presupuesto) || 0
+      })),
+      proyectosCompletados: proyectosCompletados.map(item => ({
+        mes: item.mes,
+        cantidad: item.cantidad
+      }))
+    });
+  } catch (err) {
+    console.error("Error en dashboard ejecutivo:", err);
+    res.status(500).json({ success: false, message: "Error al obtener datos del dashboard" });
+  }
+});
+
+// Dashboard de Presupuestos
+app.get("/api/dashboard/presupuestos", authenticateToken, async (req, res) => {
+  try {
+    // KPIs de presupuestos
+    // Calculamos el presupuesto total planeado desde el historial o reconstruyéndolo
+    const kpisQuery = `
+      SELECT
+        COALESCE(SUM(
+          COALESCE(
+            (SELECT presupuesto_total
+             FROM proyectos_presupuestos_historial h
+             WHERE h.id_proyecto = p.id_proyecto
+             ORDER BY fecha_presupuesto ASC
+             LIMIT 1),
+            COALESCE(p.presupuesto_total, p.presupuesto, 0) + COALESCE(pe.total_pedidos, 0)
+          )
+        ), 0) as presupuestoTotal,
+        COALESCE(SUM(COALESCE(pe.total_pedidos, 0)), 0) as presupuestoEjecutado
+      FROM proyectos p
+      LEFT JOIN (
+        SELECT id_proyecto, SUM(importe_total) as total_pedidos
+        FROM pedidos
+        GROUP BY id_proyecto
+      ) pe ON p.id_proyecto = pe.id_proyecto
+    `;
+    const kpisResult = await queryAsync(kpisQuery);
+    const kpis = kpisResult[0] || {};
+
+    // Calculamos el disponible después de obtener los valores
+    kpis.presupuestoDisponible = (kpis.presupuestoTotal || 0) - (kpis.presupuestoEjecutado || 0);
+
+    const eficienciaGasto = kpis.presupuestoTotal > 0
+      ? (kpis.presupuestoEjecutado / kpis.presupuestoTotal) * 100
+      : 0;
+
+    // Distribución por categoría
+    const categoriaQuery = `
+      SELECT
+        'Cristal' as categoria,
+        SUM(COALESCE(presupuesto_cristal, 0)) as monto
+      FROM proyectos
+      UNION ALL
+      SELECT
+        'Aluminio' as categoria,
+        SUM(COALESCE(presupuesto_aluminio, 0)) as monto
+      FROM proyectos
+      UNION ALL
+      SELECT
+        'Misceláneos' as categoria,
+        SUM(COALESCE(presupuesto_miscelaneos, 0)) as monto
+      FROM proyectos
+    `;
+    const distribucionPorCategoria = await queryAsync(categoriaQuery);
+
+    // Top proyectos por inversión
+    const topProyectosQuery = `
+      SELECT
+        nombre,
+        COALESCE(presupuesto_total, presupuesto, 0) as presupuesto
+      FROM proyectos
+      ORDER BY presupuesto DESC
+      LIMIT 10
+    `;
+    const topProyectos = await queryAsync(topProyectosQuery);
+
+    // Variación presupuestal
+    // Obtenemos el presupuesto planeado inicial desde el historial (primera entrada)
+    // o sumamos las categorías actuales + el total ejecutado para reconstruir el presupuesto original
+    const variacionQuery = `
+      SELECT
+        p.nombre as proyecto,
+        COALESCE(
+          (SELECT presupuesto_total
+           FROM proyectos_presupuestos_historial h
+           WHERE h.id_proyecto = p.id_proyecto
+           ORDER BY fecha_presupuesto ASC
+           LIMIT 1),
+          COALESCE(p.presupuesto_total, p.presupuesto, 0) + COALESCE(total_ejecutado.ejecutado, 0)
+        ) as planeado,
+        COALESCE(total_ejecutado.ejecutado, 0) as ejecutado
+      FROM proyectos p
+      LEFT JOIN (
+        SELECT id_proyecto, SUM(importe_total) as ejecutado
+        FROM pedidos
+        GROUP BY id_proyecto
+      ) total_ejecutado ON p.id_proyecto = total_ejecutado.id_proyecto
+      GROUP BY p.id_proyecto, p.nombre, p.presupuesto_total, p.presupuesto
+      ORDER BY planeado DESC
+      LIMIT 10
+    `;
+    const variacionPresupuestal = await queryAsync(variacionQuery);
+
+    res.json({
+      kpis: {
+        presupuestoTotal: parseFloat(kpis.presupuestoTotal) || 0,
+        presupuestoEjecutado: parseFloat(kpis.presupuestoEjecutado) || 0,
+        presupuestoDisponible: parseFloat(kpis.presupuestoDisponible) || 0,
+        eficienciaGasto: parseFloat(eficienciaGasto) || 0
+      },
+      distribucionPorCategoria: distribucionPorCategoria.map(item => ({
+        categoria: item.categoria,
+        monto: parseFloat(item.monto) || 0
+      })).filter(item => item.monto > 0),
+      topProyectos: topProyectos.map(item => ({
+        nombre: item.nombre,
+        presupuesto: parseFloat(item.presupuesto) || 0
+      })),
+      variacionPresupuestal: variacionPresupuestal.map(item => ({
+        proyecto: item.proyecto,
+        planeado: parseFloat(item.planeado) || 0,
+        ejecutado: parseFloat(item.ejecutado) || 0
+      }))
+    });
+  } catch (err) {
+    console.error("Error en dashboard presupuestos:", err);
+    res.status(500).json({ success: false, message: "Error al obtener datos del dashboard" });
+  }
+});
+
+// Dashboard de Proyectos
+app.get("/api/dashboard/proyectos", authenticateToken, async (req, res) => {
+  try {
+    // KPIs de proyectos
+    const kpisQuery = `
+      SELECT
+        COUNT(*) as totalProyectos,
+        SUM(CASE WHEN estado = 'en_progreso' THEN 1 ELSE 0 END) as proyectosEnProgreso,
+        SUM(CASE WHEN estado = 'completado' THEN 1 ELSE 0 END) as proyectosCompletados,
+        SUM(CASE WHEN estado = 'en_progreso' AND fecha_proyecto >= DATE_SUB(NOW(), INTERVAL 30 DAY) THEN 1 ELSE 0 END) as proyectosPendientes
+      FROM proyectos
+    `;
+    const kpisResult = await queryAsync(kpisQuery);
+    const kpis = kpisResult[0] || {};
+
+    const tasaCompletacion = kpis.totalProyectos > 0
+      ? (kpis.proyectosCompletados / kpis.totalProyectos) * 100
+      : 0;
+
+    // Proyectos por estado
+    const estadosQuery = `
+      SELECT
+        CASE
+          WHEN estado = 'en_progreso' THEN 'En Progreso'
+          WHEN estado = 'completado' THEN 'Completado'
+          ELSE 'Desconocido'
+        END as estado,
+        COUNT(*) as cantidad
+      FROM proyectos
+      GROUP BY estado
+    `;
+    const proyectosPorEstado = await queryAsync(estadosQuery);
+
+    // Proyectos críticos (con presupuesto > 60% utilizado)
+    const criticosQuery = `
+      SELECT
+        p.id_proyecto as id,
+        p.nombre,
+        CASE
+          WHEN p.estado = 'en_progreso' THEN 'En Progreso'
+          WHEN p.estado = 'completado' THEN 'Completado'
+          ELSE 'Desconocido'
+        END as estado,
+        CASE
+          WHEN COALESCE(p.presupuesto_total, p.presupuesto, 0) > 0
+          THEN (COALESCE(SUM(pe.importe_total), 0) / COALESCE(p.presupuesto_total, p.presupuesto, 1)) * 100
+          ELSE 0
+        END as presupuestoUtilizado,
+        GREATEST(0, DATEDIFF(DATE_ADD(p.fecha_proyecto, INTERVAL 90 DAY), NOW())) as diasRestantes
+      FROM proyectos p
+      LEFT JOIN pedidos pe ON p.id_proyecto = pe.id_proyecto
+      GROUP BY p.id_proyecto, p.nombre, p.presupuesto_total, p.presupuesto, p.fecha_proyecto
+      HAVING presupuestoUtilizado > 60 OR diasRestantes < 30
+      ORDER BY presupuestoUtilizado DESC, diasRestantes ASC
+      LIMIT 10
+    `;
+    const proyectosCriticos = await queryAsync(criticosQuery);
+
+    // Timeline de proyectos (últimos 6 meses)
+    const timelineQuery = `
+      SELECT
+        DATE_FORMAT(fecha_proyecto, '%Y-%m') as mes,
+        COUNT(*) as iniciados,
+        SUM(CASE WHEN fecha_proyecto < DATE_SUB(NOW(), INTERVAL 90 DAY) THEN 1 ELSE 0 END) as completados
+      FROM proyectos
+      WHERE fecha_proyecto >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
+      GROUP BY DATE_FORMAT(fecha_proyecto, '%Y-%m')
+      ORDER BY mes ASC
+    `;
+    const timelineProyectos = await queryAsync(timelineQuery);
+
+    res.json({
+      kpis: {
+        totalProyectos: kpis.totalProyectos || 0,
+        proyectosEnProgreso: kpis.proyectosEnProgreso || 0,
+        proyectosCompletados: kpis.proyectosCompletados || 0,
+        proyectosPendientes: kpis.proyectosPendientes || 0,
+        tasaCompletacion: parseFloat(tasaCompletacion) || 0
+      },
+      proyectosPorEstado: proyectosPorEstado.map(item => ({
+        estado: item.estado,
+        cantidad: item.cantidad
+      })),
+      proyectosCriticos: proyectosCriticos.map(item => ({
+        id: item.id,
+        nombre: item.nombre,
+        estado: item.estado,
+        presupuestoUtilizado: parseFloat(item.presupuestoUtilizado) || 0,
+        diasRestantes: item.diasRestantes || 0
+      })),
+      timelineProyectos: timelineProyectos.map(item => ({
+        mes: item.mes,
+        iniciados: item.iniciados || 0,
+        completados: item.completados || 0
+      }))
+    });
+  } catch (err) {
+    console.error("Error en dashboard proyectos:", err);
+    res.status(500).json({ success: false, message: "Error al obtener datos del dashboard" });
+  }
+});
+
+// Dashboard de Materiales
+app.get("/api/dashboard/materiales", authenticateToken, async (req, res) => {
+  try {
+    // KPIs de materiales
+    const kpisQuery = `
+      SELECT
+        COUNT(DISTINCT concepto) as totalMateriales,
+        COALESCE(SUM(importe_total), 0) as valorTotalInventario
+      FROM pedidos
+    `;
+    const kpisResult = await queryAsync(kpisQuery);
+    const kpis = kpisResult[0] || {};
+
+    // Materiales más usados
+    const materialesQuery = `
+      SELECT
+        concepto as material,
+        SUM(cantidad) as cantidad,
+        COALESCE(unidad, 'unidad') as unidad
+      FROM pedidos
+      GROUP BY concepto, unidad
+      ORDER BY cantidad DESC
+      LIMIT 15
+    `;
+    const materialesMasUsados = await queryAsync(materialesQuery);
+
+    // Costo por categoría (usando los tipos de presupuesto)
+    const costoCategoriaQuery = `
+      SELECT
+        'Mano de Obra' as categoria,
+        COALESCE(SUM(importe_total), 0) as costo
+      FROM pedidos
+      WHERE LOWER(concepto) LIKE '%mano%' OR LOWER(concepto) LIKE '%trabajo%'
+      UNION ALL
+      SELECT
+        'Materiales' as categoria,
+        COALESCE(SUM(importe_total), 0) as costo
+      FROM pedidos
+      WHERE LOWER(concepto) LIKE '%material%' OR LOWER(concepto) LIKE '%aluminio%' OR LOWER(concepto) LIKE '%cristal%'
+      UNION ALL
+      SELECT
+        'Otros' as categoria,
+        COALESCE(SUM(importe_total), 0) as costo
+      FROM pedidos
+      WHERE NOT (
+        LOWER(concepto) LIKE '%mano%' OR
+        LOWER(concepto) LIKE '%trabajo%' OR
+        LOWER(concepto) LIKE '%material%' OR
+        LOWER(concepto) LIKE '%aluminio%' OR
+        LOWER(concepto) LIKE '%cristal%'
+      )
+    `;
+    const costoPorCategoria = await queryAsync(costoCategoriaQuery);
+
+    // Proveedores principales
+    const proveedoresQuery = `
+      SELECT
+        proveedor,
+        COUNT(*) as volumen
+      FROM pedidos
+      WHERE proveedor IS NOT NULL AND proveedor != ''
+      GROUP BY proveedor
+      ORDER BY volumen DESC
+      LIMIT 10
+    `;
+    const proveedoresPrincipales = await queryAsync(proveedoresQuery);
+
+    // Proyección de compras (materiales requeridos vs disponibles)
+    const proyeccionQuery = `
+      SELECT
+        concepto as material,
+        SUM(cantidad) as cantidadRequerida,
+        0 as cantidadDisponible,
+        SUM(cantidad) as deficit,
+        SUM(importe_total) as costoEstimado
+      FROM pedidos
+      WHERE id_proyecto IN (
+        SELECT id_proyecto
+        FROM proyectos
+        WHERE estado = 'en_progreso'
+      )
+      GROUP BY concepto
+      ORDER BY deficit DESC
+      LIMIT 15
+    `;
+    const proyeccionCompras = await queryAsync(proyeccionQuery);
+
+    // Tendencia de costos mensual
+    const tendenciaCostosQuery = `
+      SELECT
+        DATE_FORMAT(fecha_pedido, '%Y-%m') as mes,
+        SUM(importe_total) as costo
+      FROM pedidos
+      WHERE fecha_pedido >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
+      GROUP BY DATE_FORMAT(fecha_pedido, '%Y-%m')
+      ORDER BY mes ASC
+    `;
+    const tendenciaCostos = await queryAsync(tendenciaCostosQuery);
+
+    res.json({
+      kpis: {
+        totalMateriales: kpis.totalMateriales || 0,
+        valorTotalInventario: parseFloat(kpis.valorTotalInventario) || 0,
+        materialesCriticos: proyeccionCompras.filter(item => item.deficit > 0).length,
+        proveedoresActivos: proveedoresPrincipales.length
+      },
+      materialesMasUsados: materialesMasUsados.map(item => ({
+        material: item.material,
+        cantidad: parseFloat(item.cantidad) || 0,
+        unidad: item.unidad
+      })),
+      costoPorCategoria: costoPorCategoria.map(item => ({
+        categoria: item.categoria,
+        costo: parseFloat(item.costo) || 0
+      })).filter(item => item.costo > 0),
+      proveedoresPrincipales: proveedoresPrincipales.map(item => ({
+        proveedor: item.proveedor,
+        volumen: item.volumen
+      })),
+      proyeccionCompras: proyeccionCompras.map(item => ({
+        material: item.material,
+        cantidadRequerida: parseFloat(item.cantidadRequerida) || 0,
+        cantidadDisponible: parseFloat(item.cantidadDisponible) || 0,
+        deficit: parseFloat(item.deficit) || 0,
+        costoEstimado: parseFloat(item.costoEstimado) || 0
+      })),
+      tendenciaCostos: tendenciaCostos.map(item => ({
+        mes: item.mes,
+        costo: parseFloat(item.costo) || 0
+      }))
+    });
+  } catch (err) {
+    console.error("Error en dashboard materiales:", err);
+    res.status(500).json({ success: false, message: "Error al obtener datos del dashboard" });
+  }
+});
 
 app.listen(PORT, () => {
   console.log(` Servidor corriendo en http://localhost:${PORT}`);
