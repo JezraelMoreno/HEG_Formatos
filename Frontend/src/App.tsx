@@ -7,6 +7,7 @@ import { DashboardEjecutivo } from "./pages/dashboards/DashboardEjecutivo";
 import { DashboardPresupuestos } from "./pages/dashboards/DashboardPresupuestos";
 import { DashboardProyectos } from "./pages/dashboards/DashboardProyectos";
 import { DashboardMateriales } from "./pages/dashboards/DashboardMateriales";
+import { DashboardCobranza } from "./pages/dashboards/DashboardCobranza";
 import { PrivateRoute } from "./components/PrivateRoute";
 
 function App() {
@@ -66,6 +67,14 @@ function App() {
         element={
           <PrivateRoute>
             <DashboardMateriales />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/dashboards/cobranza"
+        element={
+          <PrivateRoute>
+            <DashboardCobranza />
           </PrivateRoute>
         }
       />

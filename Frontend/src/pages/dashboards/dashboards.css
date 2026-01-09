@@ -394,6 +394,253 @@ tr:hover {
   line-height: 1.5;
 }
 
+/* Cobranza Table Styles */
+.cobranza-section {
+  background: white;
+  border-radius: 8px;
+  padding: 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24);
+  margin-bottom: 32px;
+}
+
+.cobranza-filtros {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.cobranza-filtros input,
+.cobranza-filtros select {
+  padding: 8px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  background: white;
+  min-width: 180px;
+}
+
+.cobranza-filtros input:focus,
+.cobranza-filtros select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+.cobranza-count {
+  font-size: 0.875rem;
+  color: #64748b;
+  margin-left: auto;
+}
+
+.cobranza-tabla-wrapper {
+  overflow-x: auto;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.tabla-cobranza {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+  min-width: 1200px;
+}
+
+.tabla-cobranza thead {
+  background-color: #1F4E79;
+}
+
+.tabla-cobranza th {
+  padding: 12px 10px;
+  text-align: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: white;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  border-bottom: none;
+  white-space: nowrap;
+}
+
+.tabla-cobranza th.text-left {
+  text-align: left;
+}
+
+.tabla-cobranza th.text-right {
+  text-align: right;
+}
+
+.tabla-cobranza td {
+  padding: 10px;
+  font-size: 0.8125rem;
+  color: #1e293b;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.tabla-cobranza td.text-center {
+  text-align: center;
+}
+
+.tabla-cobranza td.text-right {
+  text-align: right;
+}
+
+.tabla-cobranza td.proyecto-nombre {
+  font-weight: 500;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tabla-cobranza tbody tr {
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.tabla-cobranza tbody tr:nth-child(even) {
+  background-color: #f9fafb;
+}
+
+.tabla-cobranza tbody tr:hover {
+  background-color: #e0f2fe !important;
+}
+
+.tabla-cobranza tbody tr.en-rojo {
+  background-color: #fef2f2;
+}
+
+.tabla-cobranza tbody tr.en-rojo:hover {
+  background-color: #fee2e2 !important;
+}
+
+.tabla-cobranza .valor-negativo {
+  color: #dc2626;
+  font-weight: 600;
+}
+
+.tabla-cobranza .valor-positivo {
+  color: #16a34a;
+}
+
+.tabla-cobranza tfoot {
+  background-color: #1F4E79;
+}
+
+.tabla-cobranza tfoot td {
+  padding: 12px 10px;
+  font-weight: 600;
+  color: white;
+  border-bottom: none;
+}
+
+.tabla-cobranza tfoot .valor-negativo {
+  color: #fca5a5;
+}
+
+.tabla-cobranza tfoot .valor-positivo {
+  color: #86efac;
+}
+
+.estado-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.estado-badge.en-progreso {
+  background-color: #dbeafe;
+  color: #1e40af;
+}
+
+.estado-badge.completado {
+  background-color: #dcfce7;
+  color: #166534;
+}
+
+/* Alerta proyectos en rojo */
+.alerta-proyectos-rojo {
+  margin-top: 24px;
+  padding: 20px;
+  background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+}
+
+.alerta-proyectos-rojo h3 {
+  color: #991b1b;
+  margin: 0 0 12px 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.alerta-proyectos-rojo p {
+  color: #7f1d1d;
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.proyectos-rojo-lista {
+  margin-top: 12px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.proyecto-rojo-btn {
+  padding: 6px 12px;
+  background: #dc2626;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 500;
+  transition: background-color 0.15s ease;
+}
+
+.proyecto-rojo-btn:hover {
+  background: #b91c1c;
+}
+
+/* Dashboard header with button */
+.dashboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 32px;
+}
+
+.dashboard-header .btn {
+  padding: 10px 20px;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.dashboard-header .btn-primary {
+  background: #3b82f6;
+  color: white;
+  border: none;
+}
+
+.dashboard-header .btn-primary:hover {
+  background: #2563eb;
+}
+
+.dashboard-header .btn-primary:disabled {
+  background: #93c5fd;
+  cursor: not-allowed;
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
   .dashboard-container {

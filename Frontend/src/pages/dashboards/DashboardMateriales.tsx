@@ -231,14 +231,6 @@ export const DashboardMateriales: React.FC = () => {
         <h3>Análisis y Recomendaciones</h3>
         <div className="insights-grid">
           <div className="insight-card">
-            <h4>Inventario</h4>
-            <p>
-              {data.kpis.materialesCriticos > 0
-                ? `Hay ${data.kpis.materialesCriticos} materiales con stock bajo. Se recomienda planificar compras.`
-                : 'El inventario se encuentra en niveles óptimos.'}
-            </p>
-          </div>
-          <div className="insight-card">
             <h4>Optimización</h4>
             <p>
               {data.materialesMasUsados.length > 0

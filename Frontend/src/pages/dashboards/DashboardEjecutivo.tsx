@@ -92,12 +92,6 @@ export const DashboardEjecutivo: React.FC = () => {
           value={`$${data.kpis.presupuestoTotal.toLocaleString()}`}
           color="#f59e0b"
         />
-        <KPICard
-          title="Presupuesto Ejecutado"
-          value={`$${data.kpis.presupuestoEjecutado.toLocaleString()}`}
-          subtitle={`${porcentajeEjecutado}% del total`}
-          color="#8b5cf6"
-        />
       </div>
 
       <div className="charts-grid">

@@ -762,7 +762,7 @@ export function MainPage() {
           {isAdmin && (
             <section className="panel panel-resumen">
               <div className="panel-resumen-header">
-                <h2>Pedidos subidos</h2>
+                <h2>Pedidos ingresados</h2>
                 <div className="resumen-filtros">
                   <div className="filtro campo-fecha">
                     <label htmlFor="filtro-fecha">Fecha</label>

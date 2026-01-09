@@ -66,15 +66,8 @@ type PedidoDetalleAluminioItem = {
   importe: number;
 };
 
-type Cobranza = {
-  id_cobranza: number;
-  id_proyecto: number;
-  contratado_a_fecha: number;
-  mano_obra: number;
-  cobrado_total: number;
-  por_cobrar_total: number;
-  fondo_garantia: number;
-  liquido_por_cobrar: number;
+type CobranzaFactura = {
+  id_factura: number;
   numero: number;
   fecha?: string | null;
   numero_factura?: string | null;
@@ -84,7 +77,24 @@ type Cobranza = {
   saldo_por_cobrar: number;
   fecha_pago?: string | null;
   periodo?: string | null;
-  fecha_reporte: string;
+  nombre_usuario?: string | null;
+};
+
+type CobranzaResumen = {
+  id_proyecto: number;
+  proyecto: string;
+  codigo_control: string;
+  importe_contratado: number;
+  importe_cobrado: number;
+  importe_a_cobrar: number;
+  fondo_garantia: number;
+  liquido_por_cobrar: number;
+  facturas_por_cobrar: number;
+  total_pedidos: number;
+  total_viaticos: number;
+  aplicado: number;
+  cobrado_vs_aplicado: number;
+  estado: string;
 };
 
 type MultiSelectFilterProps = {
@@ -443,26 +453,20 @@ export function ProyectoDetalle() {
 
   // cobranza
   const [cargandoCobranza, setCargandoCobranza] = useState(false);
-  const [cobranzas, setCobranzas] = useState<Cobranza[]>([]);
+  const [cobranzaResumen, setCobranzaResumen] = useState<CobranzaResumen | null>(null);
+  const [cobranzaFacturas, setCobranzaFacturas] = useState<CobranzaFactura[]>([]);
   const [formCobranzaAbierto, setFormCobranzaAbierto] = useState(false);
-  const hoyISO = new Date();
-  const hoyStr = `${hoyISO.getFullYear()}-${String(hoyISO.getMonth()+1).padStart(2,'0')}-${String(hoyISO.getDate()).padStart(2,'0')}`;
-  const [contratadoFecha, setContratadoFecha] = useState<string>("");
-  const [manoObra, setManoObra] = useState<string>("");
-  const [cobradoTotal, setCobradoTotal] = useState<string>("");
-  const [porCobrarTotal, setPorCobrarTotal] = useState<string>("");
-  const [fondoGarantia, setFondoGarantia] = useState<string>("");
-  const [liquidoPorCobrar, setLiquidoPorCobrar] = useState<string>("");
   const [numeroRegistro, setNumeroRegistro] = useState<string>("");
   const [fechaDetalle, setFechaDetalle] = useState<string>("");
   const [numeroFactura, setNumeroFactura] = useState<string>("");
   const [conceptoCobranza, setConceptoCobranza] = useState<string>("");
   const [importeACobrar, setImporteACobrar] = useState<string>("");
   const [importeCobrado, setImporteCobrado] = useState<string>("");
-  const [saldoPorCobrar, setSaldoPorCobrar] = useState<string>("");
   const [fechaPago, setFechaPago] = useState<string>("");
   const [periodoRegistro, setPeriodoRegistro] = useState<string>("");
-  const [fechaReporte, setFechaReporte] = useState<string>(hoyStr);
+  const [editandoCobranzaConfig, setEditandoCobranzaConfig] = useState(false);
+  const [codigoControlEdit, setCodigoControlEdit] = useState<string>("");
+  const [fondoGarantiaEdit, setFondoGarantiaEdit] = useState<string>("");
 
   const abrirExplorador = useCallback(() => {
     fileInputRef.current?.click();
@@ -560,12 +564,17 @@ export function ProyectoDetalle() {
     if (!id) return;
     setCargandoCobranza(true);
     try {
-      const res = await fetch(`http://localhost:3000/proyectos/${id}/cobranza`, { headers: { ...authHeader() } });
-      const data = await res.json();
-      if (res.ok && data?.success) {
-        setCobranzas(data.data as Cobranza[]);
-      } else {
-        setError(data?.message || "Error cargando cobranza");
+      // Cargar resumen de cobranza
+      const resResumen = await fetch(`http://localhost:3000/proyectos/${id}/cobranza-resumen`, { headers: { ...authHeader() } });
+      const dataResumen = await resResumen.json();
+      if (resResumen.ok && dataResumen?.success) {
+        setCobranzaResumen(dataResumen.data as CobranzaResumen);
+      }
+      // Cargar facturas de cobranza
+      const resFacturas = await fetch(`http://localhost:3000/proyectos/${id}/cobranza-facturas`, { headers: { ...authHeader() } });
+      const dataFacturas = await resFacturas.json();
+      if (resFacturas.ok && dataFacturas?.success) {
+        setCobranzaFacturas(dataFacturas.data as CobranzaFactura[]);
       }
     } catch (_) {
       setError("Error de conexion al cargar cobranza");
@@ -1143,62 +1152,98 @@ export function ProyectoDetalle() {
     try {
       setError("");
       const toNumber = (value: string) => Number(value || 0);
-      const numeroValue = Number(numeroRegistro);
       const conceptoLimpio = conceptoCobranza.trim();
-      if (!numeroRegistro || Number.isNaN(numeroValue) || conceptoLimpio === "") {
-        setError("Captura un número consecutivo y un concepto válido");
+      if (conceptoLimpio === "") {
+        setError("Captura un concepto válido");
         return;
       }
       const body = {
-        contratado_a_fecha: toNumber(contratadoFecha),
-        mano_obra: toNumber(manoObra),
-        cobrado_total: toNumber(cobradoTotal),
-        por_cobrar_total: toNumber(porCobrarTotal),
-        fondo_garantia: toNumber(fondoGarantia),
-        liquido_por_cobrar: toNumber(liquidoPorCobrar),
-        numero: numeroValue,
+        numero: numeroRegistro ? Number(numeroRegistro) : null,
         fecha: fechaDetalle || null,
         numero_factura: numeroFactura || null,
         concepto: conceptoLimpio,
         importe_a_cobrar: toNumber(importeACobrar),
         importe_cobrado: toNumber(importeCobrado),
-        saldo_por_cobrar: toNumber(saldoPorCobrar),
         fecha_pago: fechaPago || null,
         periodo: periodoRegistro || null,
-        fecha_reporte: fechaReporte,
       };
-      const res = await fetch(`http://localhost:3000/proyectos/${id}/cobranza`, {
+      const res = await fetch(`http://localhost:3000/proyectos/${id}/cobranza-facturas`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeader() },
         body: JSON.stringify(body),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(data?.message || "No se pudo agregar cobranza");
+        setError(data?.message || "No se pudo agregar factura de cobranza");
         return;
       }
-      setMensaje("Cobranza agregada");
+      setMensaje("Factura de cobranza agregada");
       setFormCobranzaAbierto(false);
-      setContratadoFecha("");
-      setManoObra("");
-      setCobradoTotal("");
-      setPorCobrarTotal("");
-      setFondoGarantia("");
-      setLiquidoPorCobrar("");
       setNumeroRegistro("");
       setFechaDetalle("");
       setNumeroFactura("");
       setConceptoCobranza("");
       setImporteACobrar("");
       setImporteCobrado("");
-      setSaldoPorCobrar("");
       setFechaPago("");
       setPeriodoRegistro("");
-      setFechaReporte(hoyStr);
       cargarCobranza();
     } catch (_) {
-      setError("Error de conexion al guardar cobranza");
+      setError("Error de conexion al guardar factura");
     }
+  };
+
+  const guardarCobranzaConfig = async () => {
+    if (!id) return;
+    try {
+      setError("");
+      const body = {
+        codigo_control: codigoControlEdit || null,
+        fondo_garantia: fondoGarantiaEdit ? Number(fondoGarantiaEdit) : 0,
+      };
+      const res = await fetch(`http://localhost:3000/proyectos/${id}/cobranza-resumen`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...authHeader() },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data?.message || "No se pudo actualizar configuración de cobranza");
+        return;
+      }
+      setMensaje("Configuración de cobranza actualizada");
+      setEditandoCobranzaConfig(false);
+      cargarCobranza();
+    } catch (_) {
+      setError("Error de conexión al actualizar configuración");
+    }
+  };
+
+  const eliminarFactura = async (idFactura: number) => {
+    if (!id) return;
+    if (!window.confirm("¿Eliminar esta factura?")) return;
+    try {
+      setError("");
+      const res = await fetch(`http://localhost:3000/proyectos/${id}/cobranza-facturas/${idFactura}`, {
+        method: "DELETE",
+        headers: { ...authHeader() },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data?.message || "No se pudo eliminar la factura");
+        return;
+      }
+      setMensaje("Factura eliminada");
+      cargarCobranza();
+    } catch (_) {
+      setError("Error de conexión al eliminar factura");
+    }
+  };
+
+  const abrirEditarCobranzaConfig = () => {
+    setCodigoControlEdit(cobranzaResumen?.codigo_control || "");
+    setFondoGarantiaEdit(String(cobranzaResumen?.fondo_garantia || 0));
+    setEditandoCobranzaConfig(true);
   };
 
   return (
@@ -1209,7 +1254,7 @@ export function ProyectoDetalle() {
         <div className="detalle-actions">
           {mostrarCobranza && !isAdmin && (
             <button className="btn btn-primary" onClick={() => setFormCobranzaAbierto(v => !v)}>
-              Agregar cobranza
+              Agregar factura
             </button>
           )}
           {isAdmin && (
@@ -1888,217 +1933,284 @@ export function ProyectoDetalle() {
           </div>
         )}
 
-        {mostrarCobranza && (!isAdmin && formCobranzaAbierto) && (
-          <div className="placeholder-card" style={{ marginTop: 16 }}>
-            <h3 style={{ marginTop: 0 }}>Nueva cobranza</h3>
-            <form onSubmit={submitCobranza} className="form-cobranza">
-              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                <input
-                  className="filter-select"
-                  type="number"
-                  step="1"
-                  value={numeroRegistro}
-                  onChange={(e) => setNumeroRegistro(e.target.value)}
-                  placeholder="No. consecutivo"
-                  required
-                />
-                <input
-                  className="filter-select"
-                  type="text"
-                  value={conceptoCobranza}
-                  onChange={(e) => setConceptoCobranza(e.target.value)}
-                  placeholder="Concepto (ej. EST 22)"
-                  required
-                />
-                <input
-                  className="filter-select"
-                  type="text"
-                  value={periodoRegistro}
-                  onChange={(e) => setPeriodoRegistro(e.target.value)}
-                  placeholder="Periodo (ej. 29/03/2025 al 18/04/2025)"
-                />
-                <input
-                  className="filter-select"
-                  type="text"
-                  value={numeroFactura}
-                  onChange={(e) => setNumeroFactura(e.target.value)}
-                  placeholder="No. factura"
-                />
-                <div className="filter-select-wrapper">
-                  <label htmlFor="fechaDetalleInput">Fecha de factura</label>
-                  <input
-                    id="fechaDetalleInput"
-                    className="filter-select"
-                    type="date"
-                    value={fechaDetalle}
-                    onChange={(e) => setFechaDetalle(e.target.value)}
-                    aria-label="Fecha de factura o estimación"
-                    title="Fecha de factura o estimación"
-                    placeholder="Fecha de factura o estimación"
-                  />
-                </div>
-                <div className="filter-select-wrapper">
-                  <label htmlFor="fechaPagoInput">Fecha de pago recibido</label>
-                  <input
-                    id="fechaPagoInput"
-                    className="filter-select"
-                    type="date"
-                    value={fechaPago}
-                    onChange={(e) => setFechaPago(e.target.value)}
-                    aria-label="Fecha de pago recibido"
-                    title="Fecha de pago recibido"
-                    placeholder="Fecha en que se recibió el pago"
-                  />
-                </div>
-                <div className="filter-select-wrapper">
-                  <label htmlFor="fechaReporteInput">Fecha del reporte</label>
-                  <input
-                    id="fechaReporteInput"
-                    className="filter-select"
-                    type="date"
-                    value={fechaReporte}
-                    onChange={(e) => setFechaReporte(e.target.value)}
-                    aria-label="Fecha del reporte de cobranza"
-                    title="Fecha del reporte de cobranza"
-                    placeholder="Fecha del reporte de cobranza"
-                  />
-                </div>
-                <input
-                  className="filter-select"
-                  type="number"
-                  step="0.01"
-                  value={contratadoFecha}
-                  onChange={(e) => setContratadoFecha(e.target.value)}
-                  placeholder="Contratado a la fecha"
-                />
-                <input
-                  className="filter-select"
-                  type="number"
-                  step="0.01"
-                  value={manoObra}
-                  onChange={(e) => setManoObra(e.target.value)}
-                  placeholder="Mano de obra"
-                />
-                <input
-                  className="filter-select"
-                  type="number"
-                  step="0.01"
-                  value={cobradoTotal}
-                  onChange={(e) => setCobradoTotal(e.target.value)}
-                  placeholder="Cobrado total"
-                />
-                <input
-                  className="filter-select"
-                  type="number"
-                  step="0.01"
-                  value={porCobrarTotal}
-                  onChange={(e) => setPorCobrarTotal(e.target.value)}
-                  placeholder="Por cobrar total"
-                />
-                <input
-                  className="filter-select"
-                  type="number"
-                  step="0.01"
-                  value={fondoGarantia}
-                  onChange={(e) => setFondoGarantia(e.target.value)}
-                  placeholder="Fondo garantía"
-                />
-                <input
-                  className="filter-select"
-                  type="number"
-                  step="0.01"
-                  value={liquidoPorCobrar}
-                  onChange={(e) => setLiquidoPorCobrar(e.target.value)}
-                  placeholder="Líquido por cobrar"
-                />
-                <input
-                  className="filter-select"
-                  type="number"
-                  step="0.01"
-                  value={importeACobrar}
-                  onChange={(e) => setImporteACobrar(e.target.value)}
-                  placeholder="Importe a cobrar"
-                />
-                <input
-                  className="filter-select"
-                  type="number"
-                  step="0.01"
-                  value={importeCobrado}
-                  onChange={(e) => setImporteCobrado(e.target.value)}
-                  placeholder="Importe cobrado"
-                />
-                <input
-                  className="filter-select"
-                  type="number"
-                  step="0.01"
-                  value={saldoPorCobrar}
-                  onChange={(e) => setSaldoPorCobrar(e.target.value)}
-                  placeholder="Saldo por cobrar"
-                />
-              </div>
-              <div style={{ marginTop: 12, display: 'flex', gap: 10 }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setFormCobranzaAbierto(false)}>Cancelar</button>
-                <button type="submit" className="btn btn-primary">Guardar cobranza</button>
-              </div>
-            </form>
-          </div>
-        )}
-
         {mostrarCobranza && (
-          <div className="tabla-wrapper cobranza-wrapper">
-            <div className="tabla-toolbar">
-              <div className="tabla-header">Cobranza del proyecto</div>
-            </div>
-            {cargandoCobranza ? (
-              <p style={{ padding: 12 }}>Cargando cobranza...</p>
-            ) : cobranzas.length === 0 ? (
-              <p style={{ padding: 12 }}>No hay registros de cobranza.</p>
-            ) : (
-              <table className="tabla-pedidos">
-                <thead>
-                  <tr>
-                    <th>No.</th>
-                    <th>Concepto</th>
-                    <th>Periodo</th>
-                    <th>Fecha</th>
-                    <th>Fecha pago</th>
-                    <th>No. factura</th>
-                    <th style={{ textAlign: 'right' }}>Contratado a la fecha</th>
-                    <th style={{ textAlign: 'right' }}>Mano de obra</th>
-                    <th style={{ textAlign: 'right' }}>Cobrado total</th>
-                    <th style={{ textAlign: 'right' }}>Por cobrar total</th>
-                    <th style={{ textAlign: 'right' }}>Importe a cobrar</th>
-                    <th style={{ textAlign: 'right' }}>Importe cobrado</th>
-                    <th style={{ textAlign: 'right' }}>Saldo por cobrar</th>
-                    <th style={{ textAlign: 'right' }}>Fondo garantía</th>
-                    <th style={{ textAlign: 'right' }}>Líquido por cobrar</th>
-                    <th>Fecha reporte</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {cobranzas.map(c => (
-                    <tr key={c.id_cobranza}>
-                      <td>{c.numero}</td>
-                      <td>{c.concepto || '-'}</td>
-                      <td>{c.periodo || '-'}</td>
-                      <td>{c.fecha || '-'}</td>
-                      <td>{c.fecha_pago || '-'}</td>
-                      <td>{c.numero_factura || '-'}</td>
-                      <td style={{ textAlign: 'right' }}>{Number(c.contratado_a_fecha || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                      <td style={{ textAlign: 'right' }}>{Number(c.mano_obra || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                      <td style={{ textAlign: 'right' }}>{Number(c.cobrado_total || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                      <td style={{ textAlign: 'right' }}>{Number(c.por_cobrar_total || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                      <td style={{ textAlign: 'right' }}>{Number(c.importe_a_cobrar || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                      <td style={{ textAlign: 'right' }}>{Number(c.importe_cobrado || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                      <td style={{ textAlign: 'right' }}>{Number(c.saldo_por_cobrar || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                      <td style={{ textAlign: 'right' }}>{Number(c.fondo_garantia || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                      <td style={{ textAlign: 'right' }}>{Number(c.liquido_por_cobrar || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                      <td>{c.fecha_reporte || '-'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          <div className="cobranza-section">
+            {/* Configuración de cobranza (código control y fondo garantía) */}
+            {!isAdmin && (
+              <div className="placeholder-card" style={{ marginBottom: 16 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                  <h3 style={{ margin: 0 }}>Configuración de Cobranza</h3>
+                  {!editandoCobranzaConfig && (
+                    <button className="btn btn-secondary" onClick={abrirEditarCobranzaConfig}>Editar</button>
+                  )}
+                </div>
+                {editandoCobranzaConfig ? (
+                  <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 12, color: '#666', marginBottom: 4 }}>Código de Control</label>
+                      <input
+                        className="filter-select"
+                        type="text"
+                        value={codigoControlEdit}
+                        onChange={(e) => setCodigoControlEdit(e.target.value)}
+                        placeholder="Ej: 00431"
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 12, color: '#666', marginBottom: 4 }}>Fondo de Garantía</label>
+                      <input
+                        className="filter-select"
+                        type="number"
+                        step="0.01"
+                        value={fondoGarantiaEdit}
+                        onChange={(e) => setFondoGarantiaEdit(e.target.value)}
+                        placeholder="Monto fijo"
+                      />
+                    </div>
+                    <button className="btn btn-secondary" onClick={() => setEditandoCobranzaConfig(false)}>Cancelar</button>
+                    <button className="btn btn-primary" onClick={guardarCobranzaConfig}>Guardar</button>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', gap: 24 }}>
+                    <div>
+                      <small style={{ color: '#666' }}>Código de Control</small>
+                      <p style={{ margin: 0, fontSize: 16, fontWeight: 500 }}>{cobranzaResumen?.codigo_control || '-'}</p>
+                    </div>
+                    <div>
+                      <small style={{ color: '#666' }}>Fondo de Garantía</small>
+                      <p style={{ margin: 0, fontSize: 16, fontWeight: 500 }}>
+                        ${Number(cobranzaResumen?.fondo_garantia || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
+
+            {/* Resumen de cobranza */}
+            {cobranzaResumen && (
+              <div className="placeholder-card" style={{ marginBottom: 16 }}>
+                <h3 style={{ marginTop: 0 }}>Resumen de Cobranza</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16 }}>
+                  <div>
+                    <small style={{ color: '#666' }}>Importe Contratado</small>
+                    <p style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>
+                      ${Number(cobranzaResumen.importe_contratado || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                  <div>
+                    <small style={{ color: '#666' }}>Importe Cobrado</small>
+                    <p style={{ margin: 0, fontSize: 18, fontWeight: 600, color: '#16a34a' }}>
+                      ${Number(cobranzaResumen.importe_cobrado || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                  <div>
+                    <small style={{ color: '#666' }}>Importe a Cobrar</small>
+                    <p style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>
+                      ${Number(cobranzaResumen.importe_a_cobrar || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                  <div>
+                    <small style={{ color: '#666' }}>Fondo de Garantía</small>
+                    <p style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>
+                      ${Number(cobranzaResumen.fondo_garantia || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                  <div>
+                    <small style={{ color: '#666' }}>Líquido por Cobrar</small>
+                    <p style={{ margin: 0, fontSize: 18, fontWeight: 600, color: '#f59e0b' }}>
+                      ${Number(cobranzaResumen.liquido_por_cobrar || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                  <div>
+                    <small style={{ color: '#666' }}>Aplicado (Gastos)</small>
+                    <p style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>
+                      ${Number(cobranzaResumen.aplicado || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                  <div>
+                    <small style={{ color: '#666' }}>Cobrado vs Aplicado</small>
+                    <p style={{
+                      margin: 0,
+                      fontSize: 18,
+                      fontWeight: 700,
+                      color: (cobranzaResumen.cobrado_vs_aplicado || 0) < 0 ? '#dc2626' : '#16a34a'
+                    }}>
+                      ${Number(cobranzaResumen.cobrado_vs_aplicado || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      {(cobranzaResumen.cobrado_vs_aplicado || 0) < 0 && <span style={{ marginLeft: 8, fontSize: 12 }}>EN ROJO</span>}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Tabla de facturas */}
+            <div className="tabla-wrapper cobranza-wrapper">
+              <div className="tabla-toolbar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div className="tabla-header">Historial de Facturas</div>
+                {!isAdmin && (
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => setFormCobranzaAbierto(v => !v)}
+                    style={{ marginLeft: 'auto' }}
+                  >
+                    {formCobranzaAbierto ? 'Cancelar' : '+ Agregar Factura'}
+                  </button>
+                )}
+              </div>
+
+              {/* Formulario para agregar factura */}
+              {!isAdmin && formCobranzaAbierto && (
+                <div style={{ padding: 16, background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                  <h4 style={{ margin: '0 0 12px 0', fontSize: 14 }}>Nueva Factura de Cobranza</h4>
+                  <form onSubmit={submitCobranza}>
+                    <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                      <input
+                        className="filter-select"
+                        type="number"
+                        step="1"
+                        value={numeroRegistro}
+                        onChange={(e) => setNumeroRegistro(e.target.value)}
+                        placeholder="No. consecutivo"
+                        style={{ width: 120 }}
+                      />
+                      <input
+                        className="filter-select"
+                        type="text"
+                        value={conceptoCobranza}
+                        onChange={(e) => setConceptoCobranza(e.target.value)}
+                        placeholder="Concepto (ej. EST 22, ANTICIPO)"
+                        required
+                        style={{ minWidth: 200 }}
+                      />
+                      <input
+                        className="filter-select"
+                        type="text"
+                        value={periodoRegistro}
+                        onChange={(e) => setPeriodoRegistro(e.target.value)}
+                        placeholder="Periodo (ej. 29/03/2025 al 18/04/2025)"
+                        style={{ minWidth: 220 }}
+                      />
+                      <input
+                        className="filter-select"
+                        type="text"
+                        value={numeroFactura}
+                        onChange={(e) => setNumeroFactura(e.target.value)}
+                        placeholder="No. factura"
+                        style={{ width: 120 }}
+                      />
+                      <div className="filter-select-wrapper">
+                        <label style={{ fontSize: 11, color: '#666' }}>Fecha factura</label>
+                        <input
+                          className="filter-select"
+                          type="date"
+                          value={fechaDetalle}
+                          onChange={(e) => setFechaDetalle(e.target.value)}
+                        />
+                      </div>
+                      <div className="filter-select-wrapper">
+                        <label style={{ fontSize: 11, color: '#666' }}>Fecha pago</label>
+                        <input
+                          className="filter-select"
+                          type="date"
+                          value={fechaPago}
+                          onChange={(e) => setFechaPago(e.target.value)}
+                        />
+                      </div>
+                      <input
+                        className="filter-select"
+                        type="number"
+                        step="0.01"
+                        value={importeACobrar}
+                        onChange={(e) => setImporteACobrar(e.target.value)}
+                        placeholder="Importe a cobrar"
+                        style={{ width: 140 }}
+                      />
+                      <input
+                        className="filter-select"
+                        type="number"
+                        step="0.01"
+                        value={importeCobrado}
+                        onChange={(e) => setImporteCobrado(e.target.value)}
+                        placeholder="Importe cobrado"
+                        style={{ width: 140 }}
+                      />
+                    </div>
+                    <div style={{ marginTop: 12, display: 'flex', gap: 10 }}>
+                      <button type="button" className="btn btn-secondary" onClick={() => setFormCobranzaAbierto(false)}>Cancelar</button>
+                      <button type="submit" className="btn btn-primary">Guardar Factura</button>
+                    </div>
+                  </form>
+                </div>
+              )}
+
+              {cargandoCobranza ? (
+                <p style={{ padding: 12 }}>Cargando cobranza...</p>
+              ) : cobranzaFacturas.length === 0 ? (
+                <p style={{ padding: 12 }}>No hay facturas registradas. Haz clic en "+ Agregar Factura" para comenzar.</p>
+              ) : (
+                <table className="tabla-pedidos">
+                  <thead>
+                    <tr>
+                      <th>No.</th>
+                      <th>Concepto</th>
+                      <th>Periodo</th>
+                      <th>Fecha</th>
+                      <th>No. Factura</th>
+                      <th style={{ textAlign: 'right' }}>Importe a Cobrar</th>
+                      <th style={{ textAlign: 'right' }}>Importe Cobrado</th>
+                      <th style={{ textAlign: 'right' }}>Saldo por Cobrar</th>
+                      <th>Fecha Pago</th>
+                      {!isAdmin && <th>Acciones</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cobranzaFacturas.map(f => (
+                      <tr key={f.id_factura}>
+                        <td>{f.numero || '-'}</td>
+                        <td>{f.concepto || '-'}</td>
+                        <td>{f.periodo || '-'}</td>
+                        <td>{f.fecha || '-'}</td>
+                        <td>{f.numero_factura || '-'}</td>
+                        <td style={{ textAlign: 'right' }}>${Number(f.importe_a_cobrar || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                        <td style={{ textAlign: 'right' }}>${Number(f.importe_cobrado || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                        <td style={{ textAlign: 'right', color: (f.saldo_por_cobrar || 0) > 0 ? '#dc2626' : '#16a34a', fontWeight: 600 }}>
+                          ${Number(f.saldo_por_cobrar || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        </td>
+                        <td>{f.fecha_pago || '-'}</td>
+                        {!isAdmin && (
+                          <td>
+                            <button
+                              className="btn btn-danger"
+                              style={{ padding: '4px 8px', fontSize: 12 }}
+                              onClick={() => eliminarFactura(f.id_factura)}
+                            >
+                              Eliminar
+                            </button>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ fontWeight: 'bold', background: '#f3f4f6' }}>
+                      <td colSpan={5}>TOTALES</td>
+                      <td style={{ textAlign: 'right' }}>
+                        ${cobranzaFacturas.reduce((sum, f) => sum + Number(f.importe_a_cobrar || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        ${cobranzaFacturas.reduce((sum, f) => sum + Number(f.importe_cobrado || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        ${cobranzaFacturas.reduce((sum, f) => sum + Number(f.saldo_por_cobrar || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      </td>
+                      <td></td>
+                      {!isAdmin && <td></td>}
+                    </tr>
+                  </tfoot>
+                </table>
+              )}
+            </div>
           </div>
         )}
 

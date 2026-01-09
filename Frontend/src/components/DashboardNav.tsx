@@ -33,6 +33,13 @@ export const DashboardNav: React.FC = () => {
       icon: '📦',
       path: '/dashboards/materiales',
       color: '#8b5cf6'
+    },
+    {
+      title: 'Cobranza General',
+      description: 'Control de cobranza y números rojos',
+      icon: '💵',
+      path: '/dashboards/cobranza',
+      color: '#ef4444'
     }
   ];
 

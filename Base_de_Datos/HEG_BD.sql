@@ -194,32 +194,72 @@ CREATE TABLE IF NOT EXISTS pedidos_detalles_cristal (
 );
 
 ------------------------------------------------------------
--- Tabla cobranza (Carmen)
+-- Tabla cobranza_proyecto (resumen de cobranza por proyecto)
+-- Similar a la hoja "COBRANZA TOTAL" del Excel
 ------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS cobranza (
-  id_cobranza INT AUTO_INCREMENT PRIMARY KEY,
-  id_proyecto INT NOT NULL,
+CREATE TABLE IF NOT EXISTS cobranza_proyecto (
+  id_cobranza_proyecto INT AUTO_INCREMENT PRIMARY KEY,
+  id_proyecto INT NOT NULL UNIQUE,
 
-  contratado_a_fecha DECIMAL(15,2) DEFAULT 0.00,
-  mano_obra DECIMAL(15,2) DEFAULT 0.00,
-  cobrado_total DECIMAL(15,2) DEFAULT 0.00,
-  por_cobrar_total DECIMAL(15,2) DEFAULT 0.00,
-  fondo_garantia DECIMAL(15,2) DEFAULT 0.00,
-  liquido_por_cobrar DECIMAL(15,2) DEFAULT 0.00,
+  -- Datos principales
+  codigo_control VARCHAR(20),                           -- CONTROL (ej: 00431)
+  importe_cobrado DECIMAL(15,2) DEFAULT 0.00,          -- IMPORTE COBRADO
+  fondo_garantia DECIMAL(15,2) DEFAULT 0.00,           -- FONDO DE GARANTIA (monto fijo)
 
-  numero INT,
-  fecha DATE,
-  numero_factura VARCHAR(50),
-  concepto VARCHAR(100),
-  importe_a_cobrar DECIMAL(15,2) DEFAULT 0.00,
-  importe_cobrado DECIMAL(15,2) DEFAULT 0.00,
-  saldo_por_cobrar DECIMAL(15,2) DEFAULT 0.00,
-  fecha_pago DATE,
-  periodo VARCHAR(50),
+  -- INDIRECTOS (nuevo)
+  factor_indirectos DECIMAL(5,2) DEFAULT 0.20,         -- FACTOR (ej: 0.20 = 20%, 0.30 = 30%)
+  indirectos_aplicados DECIMAL(15,2) DEFAULT 0.00,     -- APLICADO de indirectos (captura manual)
 
-  fecha_reporte DATE DEFAULT (CURRENT_DATE()),
+  -- Campos calculados (se guardan para reportes pero se pueden recalcular):
+  -- importe_contratado = proyectos.presupuesto_total
+  -- importe_a_cobrar = importe_contratado - importe_cobrado
+  -- liquido_por_cobrar = importe_a_cobrar - fondo_garantia
+  -- facturas_por_cobrar = SUM de facturas pendientes
+  -- aplicado = SUM(pedidos) + SUM(viaticos gastado)
+  -- cobrado_vs_aplicado = importe_cobrado - aplicado (números rojos si es negativo)
+  -- INDIRECTOS:
+  -- indirectos_esperado = importe_contratado * factor_indirectos
+  -- indirectos_cobrado = importe_cobrado * factor_indirectos
+  -- indirectos_cobrado_vs_aplicado = indirectos_cobrado - indirectos_aplicados
+
+  fecha_actualizacion DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  nombre_usuario VARCHAR(50),
 
   FOREIGN KEY (id_proyecto) REFERENCES proyectos(id_proyecto)
+    ON DELETE CASCADE ON UPDATE CASCADE,
+  FOREIGN KEY (nombre_usuario) REFERENCES usuarios(nombre_usuario)
+    ON UPDATE CASCADE ON DELETE SET NULL
+);
+
+-- Para bases existentes, agregar columnas de indirectos:
+-- ALTER TABLE cobranza_proyecto ADD COLUMN factor_indirectos DECIMAL(5,2) DEFAULT 0.20;
+-- ALTER TABLE cobranza_proyecto ADD COLUMN indirectos_aplicados DECIMAL(15,2) DEFAULT 0.00;
+
+------------------------------------------------------------
+-- Tabla cobranza_facturas (detalle de facturas por proyecto)
+-- Similar a las hojas individuales por proyecto del Excel
+------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS cobranza_facturas (
+  id_factura INT AUTO_INCREMENT PRIMARY KEY,
+  id_proyecto INT NOT NULL,
+
+  numero INT,                                           -- N° consecutivo
+  fecha DATE,                                           -- FECHA de factura
+  numero_factura VARCHAR(50),                           -- N° FACTURA
+  concepto VARCHAR(100),                                -- CONCEPTO (ej: EST 01, ANTICIPO 70%)
+  importe_a_cobrar DECIMAL(15,2) DEFAULT 0.00,         -- IMPORTE A COBRAR
+  importe_cobrado DECIMAL(15,2) DEFAULT 0.00,          -- IMPORTE COBRADO
+  saldo_por_cobrar DECIMAL(15,2) DEFAULT 0.00,         -- SALDO POR COBRAR
+  fecha_pago DATE,                                      -- FECHA DE PAGO
+  periodo VARCHAR(100),                                 -- PERIODO (ej: 29/03/2025 AL 18/04/2025)
+
+  fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP,
+  nombre_usuario VARCHAR(50),
+
+  FOREIGN KEY (id_proyecto) REFERENCES proyectos(id_proyecto)
+    ON DELETE CASCADE ON UPDATE CASCADE,
+  FOREIGN KEY (nombre_usuario) REFERENCES usuarios(nombre_usuario)
+    ON UPDATE CASCADE ON DELETE SET NULL
 );
 
 ------------------------------------------------------------
