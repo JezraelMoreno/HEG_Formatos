@@ -19,6 +19,12 @@ interface CobranzaProyecto {
   aplicado: number;
   cobrado_vs_aplicado: number;
   estado: string;
+  // Indirectos
+  factor_indirectos: number;
+  indirectos_aplicados: number;
+  indirectos_esperado: number;
+  indirectos_cobrado: number;
+  indirectos_cobrado_vs_aplicado: number;
 }
 
 interface CobranzaTotales {
@@ -30,12 +36,18 @@ interface CobranzaTotales {
   facturas_por_cobrar: number;
   aplicado: number;
   cobrado_vs_aplicado: number;
+  // Indirectos
+  indirectos_esperado: number;
+  indirectos_cobrado: number;
+  indirectos_aplicados: number;
+  indirectos_cobrado_vs_aplicado: number;
 }
 
 interface CobranzaData {
   data: CobranzaProyecto[];
   totales: CobranzaTotales;
   proyectos_en_rojo: number;
+  proyectos_indirectos_rojo: number;
 }
 
 const formatCurrency = (value: number): string => {
@@ -162,7 +174,11 @@ export const DashboardCobranza: React.FC = () => {
     liquido_por_cobrar: 0,
     facturas_por_cobrar: 0,
     aplicado: 0,
-    cobrado_vs_aplicado: 0
+    cobrado_vs_aplicado: 0,
+    indirectos_esperado: 0,
+    indirectos_cobrado: 0,
+    indirectos_aplicados: 0,
+    indirectos_cobrado_vs_aplicado: 0
   };
 
   const porcentajeCobrado = totales.importe_contratado > 0
@@ -240,23 +256,32 @@ export const DashboardCobranza: React.FC = () => {
           <table className="tabla-cobranza">
             <thead>
               <tr>
-                <th>N</th>
-                <th className="text-left">Proyecto</th>
-                <th>Control</th>
-                <th className="text-right">Importe Contratado</th>
-                <th className="text-right">Importe Cobrado</th>
-                <th className="text-right">Importe a Cobrar</th>
-                <th className="text-right">Fondo Garantía</th>
-                <th className="text-right">Líquido por Cobrar</th>
-                <th className="text-right">Facturas por Cobrar</th>
-                <th className="text-right">Aplicado</th>
-                <th className="text-right">Cobrado vs Aplicado</th>
-                <th>Estado</th>
+                <th rowSpan={2}>N</th>
+                <th rowSpan={2} className="text-left">Proyecto</th>
+                <th rowSpan={2}>Control</th>
+                <th rowSpan={2} className="text-right">Importe Contratado</th>
+                <th rowSpan={2} className="text-right">Importe Cobrado</th>
+                <th rowSpan={2} className="text-right">Importe a Cobrar</th>
+                <th rowSpan={2} className="text-right">Fondo Garantía</th>
+                <th rowSpan={2} className="text-right">Líquido por Cobrar</th>
+                <th rowSpan={2} className="text-right">Facturas por Cobrar</th>
+                <th rowSpan={2} className="text-right">Aplicado</th>
+                <th rowSpan={2} className="text-right">Cobrado vs Aplicado</th>
+                <th colSpan={5} className="text-center indirectos-header">INDIRECTOS</th>
+                <th rowSpan={2}>Estado</th>
+              </tr>
+              <tr>
+                <th className="text-center indirectos-subheader">Factor</th>
+                <th className="text-right indirectos-subheader">Esperado</th>
+                <th className="text-right indirectos-subheader">Cobrado</th>
+                <th className="text-right indirectos-subheader">Aplicado</th>
+                <th className="text-right indirectos-subheader">Cob. vs Apl.</th>
               </tr>
             </thead>
             <tbody>
               {proyectosFiltrados.map((row, idx) => {
                 const enRojo = row.cobrado_vs_aplicado < 0;
+                const indirectosEnRojo = row.indirectos_cobrado_vs_aplicado < 0;
                 return (
                   <tr
                     key={row.id_proyecto}
@@ -275,6 +300,14 @@ export const DashboardCobranza: React.FC = () => {
                     <td className="text-right">{formatCurrency(row.aplicado)}</td>
                     <td className={`text-right ${enRojo ? 'valor-negativo' : 'valor-positivo'}`}>
                       {formatCurrency(row.cobrado_vs_aplicado)}
+                    </td>
+                    {/* Indirectos */}
+                    <td className="text-center indirectos-col">{(row.factor_indirectos * 100).toFixed(0)}%</td>
+                    <td className="text-right indirectos-col">{formatCurrency(row.indirectos_esperado)}</td>
+                    <td className="text-right indirectos-col">{formatCurrency(row.indirectos_cobrado)}</td>
+                    <td className="text-right indirectos-col">{formatCurrency(row.indirectos_aplicados)}</td>
+                    <td className={`text-right indirectos-col ${indirectosEnRojo ? 'valor-negativo' : 'valor-positivo'}`}>
+                      {formatCurrency(row.indirectos_cobrado_vs_aplicado)}
                     </td>
                     <td className="text-center">
                       <span className={`estado-badge ${row.estado === 'en_progreso' ? 'en-progreso' : 'completado'}`}>
@@ -297,6 +330,14 @@ export const DashboardCobranza: React.FC = () => {
                 <td className="text-right">{formatCurrency(totales.aplicado)}</td>
                 <td className={`text-right ${totales.cobrado_vs_aplicado < 0 ? 'valor-negativo' : 'valor-positivo'}`}>
                   {formatCurrency(totales.cobrado_vs_aplicado)}
+                </td>
+                {/* Indirectos totales */}
+                <td className="text-center indirectos-col">-</td>
+                <td className="text-right indirectos-col">{formatCurrency(totales.indirectos_esperado)}</td>
+                <td className="text-right indirectos-col">{formatCurrency(totales.indirectos_cobrado)}</td>
+                <td className="text-right indirectos-col">{formatCurrency(totales.indirectos_aplicados)}</td>
+                <td className={`text-right indirectos-col ${totales.indirectos_cobrado_vs_aplicado < 0 ? 'valor-negativo' : 'valor-positivo'}`}>
+                  {formatCurrency(totales.indirectos_cobrado_vs_aplicado)}
                 </td>
                 <td></td>
               </tr>

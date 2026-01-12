@@ -2700,7 +2700,9 @@ app.get("/cobranza/export", authenticateToken, async (req, res) => {
         COALESCE(facturas.saldo_pendiente, 0) AS facturas_por_cobrar,
         COALESCE(gastos_directos.total_pedidos, 0) AS total_pedidos,
         COALESCE(gastos_viaticos.total_viaticos, 0) AS total_viaticos,
-        p.estado
+        p.estado,
+        COALESCE(cp.factor_indirectos, 0.20) AS factor_indirectos,
+        COALESCE(cp.indirectos_aplicados, 0) AS indirectos_aplicados
       FROM proyectos p
       LEFT JOIN cobranza_proyecto cp ON cp.id_proyecto = p.id_proyecto
       LEFT JOIN (
@@ -2821,9 +2823,6 @@ app.get("/cobranza/export", authenticateToken, async (req, res) => {
       indirecto_cobrado_vs_aplicado: 0
     };
 
-    // Factor de indirectos (30% típico para costos indirectos)
-    const FACTOR_INDIRECTOS = 0.30;
-
     // Datos de proyectos
     rows.forEach((row, idx) => {
       const dataRow = ws.getRow(headerRowIndex + 1 + idx);
@@ -2839,10 +2838,11 @@ app.get("/cobranza/export", authenticateToken, async (req, res) => {
       const aplicado = totalPedidos + totalViaticos;
       const cobradoVsAplicado = importeCobrado - aplicado;
 
-      // Cálculos de indirectos
-      const indirectoEsperado = importeContratado * FACTOR_INDIRECTOS;
-      const indirectoCobrado = importeCobrado * FACTOR_INDIRECTOS;
-      const indirectoAplicado = totalViaticos; // Viáticos son gastos indirectos
+      // Cálculos de indirectos (usando factor de la BD)
+      const factorIndirectos = parseFloat(row.factor_indirectos) || 0.20;
+      const indirectoEsperado = importeContratado * factorIndirectos;
+      const indirectoCobrado = importeCobrado * factorIndirectos;
+      const indirectoAplicado = parseFloat(row.indirectos_aplicados) || 0;
       const indirectoCobradoVsAplicado = indirectoCobrado - indirectoAplicado;
 
       // Valores de fila
@@ -2858,7 +2858,7 @@ app.get("/cobranza/export", authenticateToken, async (req, res) => {
       dataRow.getCell(10).value = aplicado;
       dataRow.getCell(11).value = cobradoVsAplicado;
       // Indirectos
-      dataRow.getCell(12).value = FACTOR_INDIRECTOS;
+      dataRow.getCell(12).value = factorIndirectos;
       dataRow.getCell(13).value = indirectoEsperado;
       dataRow.getCell(14).value = indirectoCobrado;
       dataRow.getCell(15).value = indirectoAplicado;
@@ -3219,7 +3219,9 @@ app.get("/cobranza-general", authenticateToken, async (req, res) => {
         COALESCE(facturas.saldo_pendiente, 0) AS facturas_por_cobrar,
         COALESCE(gastos.total_aplicado, 0) AS aplicado,
         (COALESCE(facturas.total_cobrado, 0) - COALESCE(gastos.total_aplicado, 0)) AS cobrado_vs_aplicado,
-        p.estado
+        p.estado,
+        COALESCE(cp.factor_indirectos, 0.20) AS factor_indirectos,
+        COALESCE(cp.indirectos_aplicados, 0) AS indirectos_aplicados
       FROM proyectos p
       LEFT JOIN cobranza_proyecto cp ON cp.id_proyecto = p.id_proyecto
       LEFT JOIN (
@@ -3248,18 +3250,8 @@ app.get("/cobranza-general", authenticateToken, async (req, res) => {
 
     const results = await queryAsync(query);
 
-    // Calcular totales
-    const totales = results.reduce((acc, row) => {
-      acc.importe_contratado += parseFloat(row.importe_contratado) || 0;
-      acc.importe_cobrado += parseFloat(row.importe_cobrado) || 0;
-      acc.importe_a_cobrar += parseFloat(row.importe_a_cobrar) || 0;
-      acc.fondo_garantia += parseFloat(row.fondo_garantia) || 0;
-      acc.liquido_por_cobrar += parseFloat(row.liquido_por_cobrar) || 0;
-      acc.facturas_por_cobrar += parseFloat(row.facturas_por_cobrar) || 0;
-      acc.aplicado += parseFloat(row.aplicado) || 0;
-      acc.cobrado_vs_aplicado += parseFloat(row.cobrado_vs_aplicado) || 0;
-      return acc;
-    }, {
+    // Calcular campos de indirectos y totales
+    const totales = {
       importe_contratado: 0,
       importe_cobrado: 0,
       importe_a_cobrar: 0,
@@ -3267,14 +3259,45 @@ app.get("/cobranza-general", authenticateToken, async (req, res) => {
       liquido_por_cobrar: 0,
       facturas_por_cobrar: 0,
       aplicado: 0,
-      cobrado_vs_aplicado: 0
+      cobrado_vs_aplicado: 0,
+      indirectos_esperado: 0,
+      indirectos_cobrado: 0,
+      indirectos_aplicados: 0,
+      indirectos_cobrado_vs_aplicado: 0
+    };
+
+    results.forEach(row => {
+      const importeContratado = parseFloat(row.importe_contratado) || 0;
+      const importeCobrado = parseFloat(row.importe_cobrado) || 0;
+      const factorIndirectos = parseFloat(row.factor_indirectos) || 0.20;
+      const indirectosAplicados = parseFloat(row.indirectos_aplicados) || 0;
+
+      // Agregar campos calculados de indirectos
+      row.indirectos_esperado = importeContratado * factorIndirectos;
+      row.indirectos_cobrado = importeCobrado * factorIndirectos;
+      row.indirectos_cobrado_vs_aplicado = row.indirectos_cobrado - indirectosAplicados;
+
+      // Acumular totales
+      totales.importe_contratado += importeContratado;
+      totales.importe_cobrado += importeCobrado;
+      totales.importe_a_cobrar += parseFloat(row.importe_a_cobrar) || 0;
+      totales.fondo_garantia += parseFloat(row.fondo_garantia) || 0;
+      totales.liquido_por_cobrar += parseFloat(row.liquido_por_cobrar) || 0;
+      totales.facturas_por_cobrar += parseFloat(row.facturas_por_cobrar) || 0;
+      totales.aplicado += parseFloat(row.aplicado) || 0;
+      totales.cobrado_vs_aplicado += parseFloat(row.cobrado_vs_aplicado) || 0;
+      totales.indirectos_esperado += row.indirectos_esperado;
+      totales.indirectos_cobrado += row.indirectos_cobrado;
+      totales.indirectos_aplicados += indirectosAplicados;
+      totales.indirectos_cobrado_vs_aplicado += row.indirectos_cobrado_vs_aplicado;
     });
 
     res.json({
       success: true,
       data: results,
       totales,
-      proyectos_en_rojo: results.filter(r => parseFloat(r.cobrado_vs_aplicado) < 0).length
+      proyectos_en_rojo: results.filter(r => parseFloat(r.cobrado_vs_aplicado) < 0).length,
+      proyectos_indirectos_rojo: results.filter(r => r.indirectos_cobrado_vs_aplicado < 0).length
     });
   } catch (err) {
     console.error("Error consultando cobranza general:", err);

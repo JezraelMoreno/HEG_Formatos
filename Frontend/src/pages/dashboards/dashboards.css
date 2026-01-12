@@ -444,7 +444,7 @@ tr:hover {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.8125rem;
-  min-width: 1200px;
+  min-width: 1800px;
 }
 
 .tabla-cobranza thead {
@@ -639,6 +639,38 @@ tr:hover {
 .dashboard-header .btn-primary:disabled {
   background: #93c5fd;
   cursor: not-allowed;
+}
+
+/* Indirectos columns */
+.tabla-cobranza .indirectos-header {
+  background-color: #0f3460;
+  font-size: 0.8125rem;
+}
+
+.tabla-cobranza .indirectos-subheader {
+  background-color: #16537e;
+  font-size: 0.6875rem;
+}
+
+.tabla-cobranza td.indirectos-col {
+  background-color: rgba(15, 52, 96, 0.05);
+  border-left: 1px solid #e2e8f0;
+}
+
+.tabla-cobranza tbody tr:nth-child(even) td.indirectos-col {
+  background-color: rgba(15, 52, 96, 0.08);
+}
+
+.tabla-cobranza tbody tr:hover td.indirectos-col {
+  background-color: rgba(59, 130, 246, 0.15) !important;
+}
+
+.tabla-cobranza tbody tr.en-rojo td.indirectos-col {
+  background-color: rgba(220, 38, 38, 0.08);
+}
+
+.tabla-cobranza tfoot td.indirectos-col {
+  background-color: #0f3460;
 }
 
 /* Responsive Design */

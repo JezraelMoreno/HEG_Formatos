@@ -95,6 +95,12 @@ type CobranzaResumen = {
   aplicado: number;
   cobrado_vs_aplicado: number;
   estado: string;
+  // Indirectos
+  factor_indirectos: number;
+  indirectos_aplicados: number;
+  indirectos_esperado: number;
+  indirectos_cobrado: number;
+  indirectos_cobrado_vs_aplicado: number;
 };
 
 type MultiSelectFilterProps = {
@@ -467,6 +473,8 @@ export function ProyectoDetalle() {
   const [editandoCobranzaConfig, setEditandoCobranzaConfig] = useState(false);
   const [codigoControlEdit, setCodigoControlEdit] = useState<string>("");
   const [fondoGarantiaEdit, setFondoGarantiaEdit] = useState<string>("");
+  const [factorIndirectosEdit, setFactorIndirectosEdit] = useState<string>("");
+  const [indirectosAplicadosEdit, setIndirectosAplicadosEdit] = useState<string>("");
 
   const abrirExplorador = useCallback(() => {
     fileInputRef.current?.click();
@@ -1200,6 +1208,8 @@ export function ProyectoDetalle() {
       const body = {
         codigo_control: codigoControlEdit || null,
         fondo_garantia: fondoGarantiaEdit ? Number(fondoGarantiaEdit) : 0,
+        factor_indirectos: factorIndirectosEdit ? Number(factorIndirectosEdit) / 100 : 0.20,
+        indirectos_aplicados: indirectosAplicadosEdit ? Number(indirectosAplicadosEdit) : 0,
       };
       const res = await fetch(`http://localhost:3000/proyectos/${id}/cobranza-resumen`, {
         method: "PUT",
@@ -1243,6 +1253,8 @@ export function ProyectoDetalle() {
   const abrirEditarCobranzaConfig = () => {
     setCodigoControlEdit(cobranzaResumen?.codigo_control || "");
     setFondoGarantiaEdit(String(cobranzaResumen?.fondo_garantia || 0));
+    setFactorIndirectosEdit(String((cobranzaResumen?.factor_indirectos || 0.20) * 100));
+    setIndirectosAplicadosEdit(String(cobranzaResumen?.indirectos_aplicados || 0));
     setEditandoCobranzaConfig(true);
   };
 
@@ -1967,11 +1979,36 @@ export function ProyectoDetalle() {
                         placeholder="Monto fijo"
                       />
                     </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 12, color: '#666', marginBottom: 4 }}>Factor Indirectos (%)</label>
+                      <input
+                        className="filter-select"
+                        type="number"
+                        step="1"
+                        min="0"
+                        max="100"
+                        value={factorIndirectosEdit}
+                        onChange={(e) => setFactorIndirectosEdit(e.target.value)}
+                        placeholder="Ej: 20"
+                        style={{ width: 80 }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 12, color: '#666', marginBottom: 4 }}>Indirectos Aplicados</label>
+                      <input
+                        className="filter-select"
+                        type="number"
+                        step="0.01"
+                        value={indirectosAplicadosEdit}
+                        onChange={(e) => setIndirectosAplicadosEdit(e.target.value)}
+                        placeholder="Monto"
+                      />
+                    </div>
                     <button className="btn btn-secondary" onClick={() => setEditandoCobranzaConfig(false)}>Cancelar</button>
                     <button className="btn btn-primary" onClick={guardarCobranzaConfig}>Guardar</button>
                   </div>
                 ) : (
-                  <div style={{ display: 'flex', gap: 24 }}>
+                  <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
                     <div>
                       <small style={{ color: '#666' }}>Código de Control</small>
                       <p style={{ margin: 0, fontSize: 16, fontWeight: 500 }}>{cobranzaResumen?.codigo_control || '-'}</p>
@@ -1980,6 +2017,16 @@ export function ProyectoDetalle() {
                       <small style={{ color: '#666' }}>Fondo de Garantía</small>
                       <p style={{ margin: 0, fontSize: 16, fontWeight: 500 }}>
                         ${Number(cobranzaResumen?.fondo_garantia || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      </p>
+                    </div>
+                    <div>
+                      <small style={{ color: '#666' }}>Factor Indirectos</small>
+                      <p style={{ margin: 0, fontSize: 16, fontWeight: 500 }}>{((cobranzaResumen?.factor_indirectos || 0.20) * 100).toFixed(0)}%</p>
+                    </div>
+                    <div>
+                      <small style={{ color: '#666' }}>Indirectos Aplicados</small>
+                      <p style={{ margin: 0, fontSize: 16, fontWeight: 500 }}>
+                        ${Number(cobranzaResumen?.indirectos_aplicados || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                       </p>
                     </div>
                   </div>
