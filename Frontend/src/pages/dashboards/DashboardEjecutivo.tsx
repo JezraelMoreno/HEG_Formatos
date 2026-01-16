@@ -64,10 +64,6 @@ export const DashboardEjecutivo: React.FC = () => {
     );
   }
 
-  const porcentajeEjecutado = data.kpis.presupuestoTotal > 0
-    ? ((data.kpis.presupuestoEjecutado / data.kpis.presupuestoTotal) * 100).toFixed(1)
-    : '0';
-
   return (
     <DashboardLayout>
       <div className="dashboard-container">

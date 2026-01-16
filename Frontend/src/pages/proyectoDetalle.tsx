@@ -423,8 +423,8 @@ export function ProyectoDetalle() {
   const [errorExplosion, setErrorExplosion] = useState<string>("");
   const [formExplosion, setFormExplosion] = useState({ clan: "", familia: "", presupuesto: "" });
   const [editandoExplosionId, setEditandoExplosionId] = useState<number | null>(null);
-  const [presupuestoMiscelBase, setPresupuestoMiscelBase] = useState<number>(0);
-  const [presupuestoMiscelDisponible, setPresupuestoMiscelDisponible] = useState<number>(0);
+  const [, setPresupuestoMiscelBase] = useState<number>(0);
+  const [, setPresupuestoMiscelDisponible] = useState<number>(0);
 
   const moduloOrigen = useMemo(() => {
     const fromState = (state as ProyectoLocationState | null)?.modulo;

@@ -32,3 +32,11 @@ node_modules/
 dist/
 build/
 
+# Electron
+dist-electron/
+*.exe
+*.dmg
+*.AppImage
+*.deb
+*.snap
+
