@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find:*)",
+      "Bash(npm start)",
+      "Bash(node analizar_excel.js:*)",
+      "Bash(npm install:*)",
+      "Bash(node analizar_excel2.js:*)",
+      "Bash(dir:*)",
+      "Bash(python analizar_excel.py:*)",
+      "Bash(node leer_pagos.js:*)",
+      "Bash(mysql:*)",
+      "Bash(where:*)",
+      "Bash(node server.js:*)",
+      "Bash(node -e:*)",
+      "Bash(npm run build:*)",
+      "Bash(npm run dev:*)",
+      "Bash(git push:*)",
+      "Bash(taskkill:*)",
+      "Bash(del \"c:\\\\Users\\\\cantj\\\\HEG_Formatos\\\\Base_de_Datos\\\\migracion_cobranza.sql\")",
+      "Bash(npx tsc:*)",
+      "Bash(node --check:*)",
+      "Bash(tasklist:*)",
+      "Bash(findstr:*)"
+    ]
+  }
+}

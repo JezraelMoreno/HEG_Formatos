@@ -14,6 +14,7 @@ type Pedido = {
   clan: string;
   familia: string;
   proveedor: string;
+  nombre_usuario?: string | null;
   fecha_aprobacion: string; // YYYY-MM-DD
   concepto: string;
   situaciones_especiales?: string | null;
@@ -65,15 +66,8 @@ type PedidoDetalleAluminioItem = {
   importe: number;
 };
 
-type Cobranza = {
-  id_cobranza: number;
-  id_proyecto: number;
-  contratado_a_fecha: number;
-  mano_obra: number;
-  cobrado_total: number;
-  por_cobrar_total: number;
-  fondo_garantia: number;
-  liquido_por_cobrar: number;
+type CobranzaFactura = {
+  id_factura: number;
   numero: number;
   fecha?: string | null;
   numero_factura?: string | null;
@@ -83,7 +77,30 @@ type Cobranza = {
   saldo_por_cobrar: number;
   fecha_pago?: string | null;
   periodo?: string | null;
-  fecha_reporte: string;
+  nombre_usuario?: string | null;
+};
+
+type CobranzaResumen = {
+  id_proyecto: number;
+  proyecto: string;
+  codigo_control: string;
+  importe_contratado: number;
+  importe_cobrado: number;
+  importe_a_cobrar: number;
+  fondo_garantia: number;
+  liquido_por_cobrar: number;
+  facturas_por_cobrar: number;
+  total_pedidos: number;
+  total_viaticos: number;
+  aplicado: number;
+  cobrado_vs_aplicado: number;
+  estado: string;
+  // Indirectos
+  factor_indirectos: number;
+  indirectos_aplicados: number;
+  indirectos_esperado: number;
+  indirectos_cobrado: number;
+  indirectos_cobrado_vs_aplicado: number;
 };
 
 type MultiSelectFilterProps = {
@@ -118,6 +135,7 @@ type ProyectoLocationState = {
   presupuesto_miscelaneos?: number;
   total_pedidos?: number;
   presupuesto_disponible?: number;
+  modulo?: string | null;
 };
 
 type PresupuestoHistorial = {
@@ -127,6 +145,36 @@ type PresupuestoHistorial = {
   presupuesto_aluminio: number;
   presupuesto_miscelaneos: number;
   presupuesto_total: number;
+};
+
+type ExplosionRow = {
+  id: number;
+  clan: string;
+  familia: string;
+  presupuesto_asignado: number;
+  presupuesto_restante: number;
+  gastado: number;
+};
+
+type PresupuestoViatico = {
+  id_presupuesto: number;
+  familia: string;
+  presupuesto_asignado: number;
+  gastado: number;
+  restante: number;
+};
+
+type MovimientoViatico = {
+  id_movimiento: number;
+  familia: string;
+  persona: string;
+  concepto: string;
+  clave_referencia?: string | null;
+  fecha: string;
+  ingreso: number;
+  egreso: number;
+  saldo: number;
+  nombre_usuario: string;
 };
 
 const getTodayISO = () => {
@@ -141,6 +189,12 @@ const formatCurrency = (value: number | null | undefined) => {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
+};
+
+const parseMontoPositivo = (value: string) => {
+  const num = Number(value);
+  if (!Number.isFinite(num) || num < 0) return NaN;
+  return Number(num.toFixed(2));
 };
 
 function MultiSelectFilter({
@@ -363,32 +417,64 @@ export function ProyectoDetalle() {
   const [conceptos, setConceptos] = useState<string[]>([]);
   const [fecha, setFecha] = useState<string>("");
 
+  const [explosionInsumos, setExplosionInsumos] = useState<ExplosionRow[]>([]);
+  const [cargandoExplosion, setCargandoExplosion] = useState(false);
+  const [guardandoExplosion, setGuardandoExplosion] = useState(false);
+  const [errorExplosion, setErrorExplosion] = useState<string>("");
+  const [formExplosion, setFormExplosion] = useState({ clan: "", familia: "", presupuesto: "" });
+  const [editandoExplosionId, setEditandoExplosionId] = useState<number | null>(null);
+  const [presupuestoMiscelBase, setPresupuestoMiscelBase] = useState<number>(0);
+  const [presupuestoMiscelDisponible, setPresupuestoMiscelDisponible] = useState<number>(0);
+
+  const moduloOrigen = useMemo(() => {
+    const fromState = (state as ProyectoLocationState | null)?.modulo;
+    if (fromState) return fromState.toLowerCase();
+    if (typeof window !== "undefined") {
+      const stored = sessionStorage.getItem("moduloActual");
+      return stored ? stored.toLowerCase() : "";
+    }
+    return "";
+  }, [state]);
+  const mostrarHistorialPresupuesto = moduloOrigen === "contabilidad";
+  const mostrarPedidosModulo = moduloOrigen === "pedidos";
+  const mostrarCobranza = moduloOrigen === "contabilidad";
   const nombreProyecto = proyectoInfo?.nombre || state?.nombre || "Proyecto";
   const role = (getRole() || '').toLowerCase();
   const isAdmin = role === 'administrador';
+  const mostrarViaticos = moduloOrigen === "viaticos";
+
+  // viáticos
+  const [presupuestosViaticos, setPresupuestosViaticos] = useState<PresupuestoViatico[]>([]);
+  const [movimientosViaticos, setMovimientosViaticos] = useState<MovimientoViatico[]>([]);
+  const [cargandoPresupuestos, setCargandoPresupuestos] = useState(false);
+  const [cargandoMovimientos, setCargandoMovimientos] = useState(false);
+  const [errorPresupuestos, setErrorPresupuestos] = useState("");
+  const [errorMovimientos, setErrorMovimientos] = useState("");
+  const [familiaFiltro, setFamiliaFiltro] = useState("");
+  const [fechaDesdeFiltro, setFechaDesdeFiltro] = useState("");
+  const [fechaHastaFiltro, setFechaHastaFiltro] = useState("");
+  const [vistaViaticosActiva, setVistaViaticosActiva] = useState<"movimientos" | "presupuestos">("movimientos");
+  const [modalMovimientoViatico, setModalMovimientoViatico] = useState(false);
+  const [modalPresupuestoViatico, setModalPresupuestoViatico] = useState(false);
 
   // cobranza
   const [cargandoCobranza, setCargandoCobranza] = useState(false);
-  const [cobranzas, setCobranzas] = useState<Cobranza[]>([]);
+  const [cobranzaResumen, setCobranzaResumen] = useState<CobranzaResumen | null>(null);
+  const [cobranzaFacturas, setCobranzaFacturas] = useState<CobranzaFactura[]>([]);
   const [formCobranzaAbierto, setFormCobranzaAbierto] = useState(false);
-  const hoyISO = new Date();
-  const hoyStr = `${hoyISO.getFullYear()}-${String(hoyISO.getMonth()+1).padStart(2,'0')}-${String(hoyISO.getDate()).padStart(2,'0')}`;
-  const [contratadoFecha, setContratadoFecha] = useState<string>("");
-  const [manoObra, setManoObra] = useState<string>("");
-  const [cobradoTotal, setCobradoTotal] = useState<string>("");
-  const [porCobrarTotal, setPorCobrarTotal] = useState<string>("");
-  const [fondoGarantia, setFondoGarantia] = useState<string>("");
-  const [liquidoPorCobrar, setLiquidoPorCobrar] = useState<string>("");
   const [numeroRegistro, setNumeroRegistro] = useState<string>("");
   const [fechaDetalle, setFechaDetalle] = useState<string>("");
   const [numeroFactura, setNumeroFactura] = useState<string>("");
   const [conceptoCobranza, setConceptoCobranza] = useState<string>("");
   const [importeACobrar, setImporteACobrar] = useState<string>("");
   const [importeCobrado, setImporteCobrado] = useState<string>("");
-  const [saldoPorCobrar, setSaldoPorCobrar] = useState<string>("");
   const [fechaPago, setFechaPago] = useState<string>("");
   const [periodoRegistro, setPeriodoRegistro] = useState<string>("");
-  const [fechaReporte, setFechaReporte] = useState<string>(hoyStr);
+  const [editandoCobranzaConfig, setEditandoCobranzaConfig] = useState(false);
+  const [codigoControlEdit, setCodigoControlEdit] = useState<string>("");
+  const [fondoGarantiaEdit, setFondoGarantiaEdit] = useState<string>("");
+  const [factorIndirectosEdit, setFactorIndirectosEdit] = useState<string>("");
+  const [indirectosAplicadosEdit, setIndirectosAplicadosEdit] = useState<string>("");
 
   const abrirExplorador = useCallback(() => {
     fileInputRef.current?.click();
@@ -429,6 +515,7 @@ export function ProyectoDetalle() {
         setMensaje(data?.message || "Pedidos cargados correctamente");
         await cargarPedidos();
         await cargarProyecto();
+        await cargarExplosion();
       }
     } catch (_) {
       setError("No se pudo procesar los archivos CSV");
@@ -485,12 +572,17 @@ export function ProyectoDetalle() {
     if (!id) return;
     setCargandoCobranza(true);
     try {
-      const res = await fetch(`http://localhost:3000/proyectos/${id}/cobranza`, { headers: { ...authHeader() } });
-      const data = await res.json();
-      if (res.ok && data?.success) {
-        setCobranzas(data.data as Cobranza[]);
-      } else {
-        setError(data?.message || "Error cargando cobranza");
+      // Cargar resumen de cobranza
+      const resResumen = await fetch(`http://localhost:3000/proyectos/${id}/cobranza-resumen`, { headers: { ...authHeader() } });
+      const dataResumen = await resResumen.json();
+      if (resResumen.ok && dataResumen?.success) {
+        setCobranzaResumen(dataResumen.data as CobranzaResumen);
+      }
+      // Cargar facturas de cobranza
+      const resFacturas = await fetch(`http://localhost:3000/proyectos/${id}/cobranza-facturas`, { headers: { ...authHeader() } });
+      const dataFacturas = await resFacturas.json();
+      if (resFacturas.ok && dataFacturas?.success) {
+        setCobranzaFacturas(dataFacturas.data as CobranzaFactura[]);
       }
     } catch (_) {
       setError("Error de conexion al cargar cobranza");
@@ -543,19 +635,209 @@ export function ProyectoDetalle() {
     }
   }, [id]);
 
+  const limpiarFormularioExplosion = () => {
+    setFormExplosion({ clan: "", familia: "", presupuesto: "" });
+    setEditandoExplosionId(null);
+  };
+
+  const seleccionarExplosion = (row: ExplosionRow) => {
+    setEditandoExplosionId(row.id);
+    setFormExplosion({
+      clan: row.clan || "",
+      familia: row.familia || "",
+      presupuesto: String(row.presupuesto_asignado ?? 0),
+    });
+  };
+
+  const guardarExplosion = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!id) return;
+    const monto = parseMontoPositivo(formExplosion.presupuesto);
+    if (Number.isNaN(monto)) {
+      setErrorExplosion("Ingresa un monto válido (0 o mayor)");
+      return;
+    }
+    if (!formExplosion.familia.trim()) {
+      setErrorExplosion("La familia es obligatoria");
+      return;
+    }
+    setGuardandoExplosion(true);
+    setErrorExplosion("");
+    try {
+      const payload = {
+        clan: formExplosion.clan.trim().toUpperCase(),
+        familia: formExplosion.familia.trim().toUpperCase(),
+        presupuesto_asignado: monto,
+      };
+      const url = editandoExplosionId
+        ? `http://localhost:3000/proyectos/${id}/explosion-insumos/${editandoExplosionId}`
+        : `http://localhost:3000/proyectos/${id}/explosion-insumos`;
+      const method = editandoExplosionId ? "PUT" : "POST";
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json", ...authHeader() },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        setErrorExplosion(data?.message || "No se pudo guardar la asignación");
+        return;
+      }
+      setMensaje(editandoExplosionId ? "Asignación actualizada" : "Asignación agregada");
+      limpiarFormularioExplosion();
+      await cargarExplosion();
+    } catch {
+      setErrorExplosion("Error de conexión al guardar la asignación");
+    } finally {
+      setGuardandoExplosion(false);
+    }
+  };
+
+  const eliminarExplosion = async (registroId: number) => {
+    if (!id || !registroId) return;
+    const confirmar = window.confirm("¿Eliminar esta asignación?");
+    if (!confirmar) return;
+    setGuardandoExplosion(true);
+    setErrorExplosion("");
+    try {
+      const res = await fetch(`http://localhost:3000/proyectos/${id}/explosion-insumos/${registroId}`, {
+        method: "DELETE",
+        headers: { ...authHeader() },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        setErrorExplosion(data?.message || "No se pudo eliminar la asignación");
+        return;
+      }
+      setMensaje("Asignación eliminada");
+      limpiarFormularioExplosion();
+      await cargarExplosion();
+    } catch {
+      setErrorExplosion("Error de conexión al eliminar la asignación");
+    } finally {
+      setGuardandoExplosion(false);
+    }
+  };
+
+  const cargarExplosion = useCallback(async () => {
+    if (!id || !isAdmin || !mostrarPedidosModulo) return;
+    setCargandoExplosion(true);
+    setErrorExplosion("");
+    try {
+      const res = await fetch(`http://localhost:3000/proyectos/${id}/explosion-insumos`, { headers: { ...authHeader() } });
+      const data = await res.json().catch(() => ({}));
+        if (res.ok && data?.success) {
+          const filas: ExplosionRow[] = Array.isArray(data.data)
+            ? data.data.map((row: any) => ({
+                id: Number(row?.id ?? 0),
+                clan: row?.clan ?? "",
+                familia: row?.familia ?? "",
+                presupuesto_asignado: Number(row?.presupuesto_asignado ?? 0),
+                presupuesto_restante: Number(row?.presupuesto_restante ?? row?.presupuesto_usado ?? 0),
+                gastado: Number(row?.gastado ?? 0),
+              }))
+            : [];
+        setExplosionInsumos(filas);
+        setPresupuestoMiscelBase(Number(data.presupuesto_miscelaneos_base ?? 0));
+        setPresupuestoMiscelDisponible(Number(data.presupuesto_miscelaneos_disponible ?? 0));
+      } else {
+        setErrorExplosion(data?.message || "No se pudo cargar la explosión de insumos");
+        setExplosionInsumos([]);
+        setPresupuestoMiscelBase(0);
+        setPresupuestoMiscelDisponible(0);
+      }
+    } catch {
+      setErrorExplosion("Error de conexión al cargar la explosión de insumos");
+      setExplosionInsumos([]);
+      setPresupuestoMiscelBase(0);
+      setPresupuestoMiscelDisponible(0);
+    } finally {
+      setCargandoExplosion(false);
+    }
+  }, [id, isAdmin, mostrarPedidosModulo]);
+
+  const cargarPresupuestosViaticos = useCallback(async () => {
+    if (!id) return;
+    try {
+      setCargandoPresupuestos(true);
+      setErrorPresupuestos("");
+      const res = await fetch(`http://localhost:3000/proyectos/${id}/viaticos-presupuestos`, {
+        headers: { ...authHeader() },
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setPresupuestosViaticos(data.data || []);
+      } else {
+        setErrorPresupuestos(data.message || "Error cargando presupuestos");
+      }
+    } catch {
+      setErrorPresupuestos("Error de conexión");
+    } finally {
+      setCargandoPresupuestos(false);
+    }
+  }, [id]);
+
+  const cargarMovimientosViaticos = useCallback(async () => {
+    if (!id) return;
+    try {
+      setCargandoMovimientos(true);
+      setErrorMovimientos("");
+
+      const params = new URLSearchParams();
+      if (familiaFiltro) params.append("familia", familiaFiltro);
+      if (fechaDesdeFiltro) params.append("fecha_desde", fechaDesdeFiltro);
+      if (fechaHastaFiltro) params.append("fecha_hasta", fechaHastaFiltro);
+
+      const query = params.toString();
+      const url = `http://localhost:3000/proyectos/${id}/viaticos-movimientos${query ? `?${query}` : ""}`;
+
+      const res = await fetch(url, { headers: { ...authHeader() } });
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        setMovimientosViaticos(data.data || []);
+      } else {
+        setErrorMovimientos(data.message || "Error cargando movimientos");
+      }
+    } catch {
+      setErrorMovimientos("Error de conexión");
+    } finally {
+      setCargandoMovimientos(false);
+    }
+  }, [id, familiaFiltro, fechaDesdeFiltro, fechaHastaFiltro]);
+
+  useEffect(() => {
+    if (mostrarViaticos && id) {
+      cargarPresupuestosViaticos();
+      cargarMovimientosViaticos();
+    }
+  }, [mostrarViaticos, id, cargarPresupuestosViaticos, cargarMovimientosViaticos]);
+
   useEffect(() => {
     if (!isTokenValid(getToken())) { navigate("/"); return; }
     cargarProyecto();
     if (isAdmin) {
       cargarPedidos();
+      if (mostrarPedidosModulo) {
+        cargarExplosion();
+      } else {
+        setExplosionInsumos([]);
+        setPresupuestoMiscelBase(0);
+        setPresupuestoMiscelDisponible(0);
+        setErrorExplosion("");
+      }
     } else {
       setPedidos([]);
       setMensaje("");
       setError("");
+      setErrorExplosion("");
+      setExplosionInsumos([]);
+      setPresupuestoMiscelBase(0);
+      setPresupuestoMiscelDisponible(0);
     }
     cargarCobranza();
     cargarHistorialPresupuesto();
-  }, [cargarPedidos, cargarProyecto, cargarCobranza, cargarHistorialPresupuesto, navigate, isAdmin]);
+  }, [cargarPedidos, cargarProyecto, cargarCobranza, cargarHistorialPresupuesto, navigate, isAdmin, mostrarPedidosModulo, cargarExplosion]);
 
   useEffect(() => {
     const combinar = (prev: string[], valores: (string | null | undefined)[], adicionales: string[] = []) => {
@@ -648,14 +930,9 @@ export function ProyectoDetalle() {
 
   const guardarPresupuesto = async (e: FormEvent) => {
     e.preventDefault();
-    const parseMonto = (value: string) => {
-      const num = Number(value);
-      if (!Number.isFinite(num) || num < 0) return NaN;
-      return Number(num.toFixed(2));
-    };
-    const cristalNum = parseMonto(formPresupuesto.cristal);
-    const aluminioNum = parseMonto(formPresupuesto.aluminio);
-    const miscelaneosNum = parseMonto(formPresupuesto.miscelaneos);
+    const cristalNum = parseMontoPositivo(formPresupuesto.cristal);
+    const aluminioNum = parseMontoPositivo(formPresupuesto.aluminio);
+    const miscelaneosNum = parseMontoPositivo(formPresupuesto.miscelaneos);
     if ([cristalNum, aluminioNum, miscelaneosNum].some((n) => Number.isNaN(n))) {
       setError("Ingresa montos válidos (0 o mayores) para cada familia");
       return;
@@ -694,6 +971,7 @@ export function ProyectoDetalle() {
       setMensaje("Presupuestos actualizados correctamente");
       setModalPresupuestoAbierto(false);
       await cargarHistorialPresupuesto();
+      await cargarExplosion();
     } catch {
       setError("Error de conexión al actualizar presupuesto");
     } finally {
@@ -845,6 +1123,23 @@ export function ProyectoDetalle() {
     cargar();
   };
 
+  const irAVistaPrevia = useCallback(() => {
+    if (!pedidoSeleccionado || !id) return;
+    const detalleActual = tipoDetallePedido === "cristal"
+      ? detallesCristal
+      : tipoDetallePedido === "aluminio"
+        ? detallesAluminio
+        : detallesPedido;
+    navigate(`/proyecto/${id}/pedido/${pedidoSeleccionado.id}/vista-previa`, {
+      state: {
+        pedido: { ...pedidoSeleccionado, nombre_proyecto: nombreProyecto },
+        detalles: detalleActual,
+        tipoDetalle: tipoDetallePedido,
+        proyectoNombre: nombreProyecto,
+      },
+    });
+  }, [detallesAluminio, detallesCristal, detallesPedido, id, navigate, nombreProyecto, pedidoSeleccionado, tipoDetallePedido]);
+
   useEffect(() => {
     if (!pedidoSeleccionado) return;
     const handleKey = (event: KeyboardEvent) => {
@@ -865,62 +1160,102 @@ export function ProyectoDetalle() {
     try {
       setError("");
       const toNumber = (value: string) => Number(value || 0);
-      const numeroValue = Number(numeroRegistro);
       const conceptoLimpio = conceptoCobranza.trim();
-      if (!numeroRegistro || Number.isNaN(numeroValue) || conceptoLimpio === "") {
-        setError("Captura un número consecutivo y un concepto válido");
+      if (conceptoLimpio === "") {
+        setError("Captura un concepto válido");
         return;
       }
       const body = {
-        contratado_a_fecha: toNumber(contratadoFecha),
-        mano_obra: toNumber(manoObra),
-        cobrado_total: toNumber(cobradoTotal),
-        por_cobrar_total: toNumber(porCobrarTotal),
-        fondo_garantia: toNumber(fondoGarantia),
-        liquido_por_cobrar: toNumber(liquidoPorCobrar),
-        numero: numeroValue,
+        numero: numeroRegistro ? Number(numeroRegistro) : null,
         fecha: fechaDetalle || null,
         numero_factura: numeroFactura || null,
         concepto: conceptoLimpio,
         importe_a_cobrar: toNumber(importeACobrar),
         importe_cobrado: toNumber(importeCobrado),
-        saldo_por_cobrar: toNumber(saldoPorCobrar),
         fecha_pago: fechaPago || null,
         periodo: periodoRegistro || null,
-        fecha_reporte: fechaReporte,
       };
-      const res = await fetch(`http://localhost:3000/proyectos/${id}/cobranza`, {
+      const res = await fetch(`http://localhost:3000/proyectos/${id}/cobranza-facturas`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeader() },
         body: JSON.stringify(body),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(data?.message || "No se pudo agregar cobranza");
+        setError(data?.message || "No se pudo agregar factura de cobranza");
         return;
       }
-      setMensaje("Cobranza agregada");
+      setMensaje("Factura de cobranza agregada");
       setFormCobranzaAbierto(false);
-      setContratadoFecha("");
-      setManoObra("");
-      setCobradoTotal("");
-      setPorCobrarTotal("");
-      setFondoGarantia("");
-      setLiquidoPorCobrar("");
       setNumeroRegistro("");
       setFechaDetalle("");
       setNumeroFactura("");
       setConceptoCobranza("");
       setImporteACobrar("");
       setImporteCobrado("");
-      setSaldoPorCobrar("");
       setFechaPago("");
       setPeriodoRegistro("");
-      setFechaReporte(hoyStr);
       cargarCobranza();
     } catch (_) {
-      setError("Error de conexion al guardar cobranza");
+      setError("Error de conexion al guardar factura");
     }
+  };
+
+  const guardarCobranzaConfig = async () => {
+    if (!id) return;
+    try {
+      setError("");
+      const body = {
+        codigo_control: codigoControlEdit || null,
+        fondo_garantia: fondoGarantiaEdit ? Number(fondoGarantiaEdit) : 0,
+        factor_indirectos: factorIndirectosEdit ? Number(factorIndirectosEdit) / 100 : 0.20,
+        indirectos_aplicados: indirectosAplicadosEdit ? Number(indirectosAplicadosEdit) : 0,
+      };
+      const res = await fetch(`http://localhost:3000/proyectos/${id}/cobranza-resumen`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...authHeader() },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data?.message || "No se pudo actualizar configuración de cobranza");
+        return;
+      }
+      setMensaje("Configuración de cobranza actualizada");
+      setEditandoCobranzaConfig(false);
+      cargarCobranza();
+    } catch (_) {
+      setError("Error de conexión al actualizar configuración");
+    }
+  };
+
+  const eliminarFactura = async (idFactura: number) => {
+    if (!id) return;
+    if (!window.confirm("¿Eliminar esta factura?")) return;
+    try {
+      setError("");
+      const res = await fetch(`http://localhost:3000/proyectos/${id}/cobranza-facturas/${idFactura}`, {
+        method: "DELETE",
+        headers: { ...authHeader() },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data?.message || "No se pudo eliminar la factura");
+        return;
+      }
+      setMensaje("Factura eliminada");
+      cargarCobranza();
+    } catch (_) {
+      setError("Error de conexión al eliminar factura");
+    }
+  };
+
+  const abrirEditarCobranzaConfig = () => {
+    setCodigoControlEdit(cobranzaResumen?.codigo_control || "");
+    setFondoGarantiaEdit(String(cobranzaResumen?.fondo_garantia || 0));
+    setFactorIndirectosEdit(String((cobranzaResumen?.factor_indirectos || 0.20) * 100));
+    setIndirectosAplicadosEdit(String(cobranzaResumen?.indirectos_aplicados || 0));
+    setEditandoCobranzaConfig(true);
   };
 
   return (
@@ -929,9 +1264,9 @@ export function ProyectoDetalle() {
         <button className="btn btn-secondary" onClick={volver}>&larr; Regresar</button>
         <h2 className="detalle-titulo">{nombreProyecto}</h2>
         <div className="detalle-actions">
-          {!isAdmin && (
+          {mostrarCobranza && !isAdmin && (
             <button className="btn btn-primary" onClick={() => setFormCobranzaAbierto(v => !v)}>
-              Agregar cobranza
+              Agregar factura
             </button>
           )}
           {isAdmin && (
@@ -1033,13 +1368,6 @@ export function ProyectoDetalle() {
       </header>
 
       <main className="detalle-contenido">
-        <div className="presupuesto-actions-bar">
-          {isAdmin && (
-            <button type="button" className="btn btn-primary" onClick={abrirModalPresupuesto}>
-              Editar presupuestos
-            </button>
-          )}
-        </div>
         <div className="presupuesto-summary">
           <div className="presupuesto-card">
             <span>Presupuesto total cargado</span>
@@ -1073,49 +1401,51 @@ export function ProyectoDetalle() {
           </div>
         </div>
 
-        <section className="historial-presupuesto">
-          <div className="historial-header">
-            <h3>Historial de presupuestos</h3>
-            {isAdmin && (
-              <button type="button" className="btn btn-secondary" onClick={abrirModalPresupuesto}>
-                Ajustar presupuesto
-              </button>
-            )}
-          </div>
-          {cargandoHistorial ? (
-            <p>Cargando historial...</p>
-          ) : historialPresupuesto.length === 0 ? (
-            <p>No hay cambios registrados.</p>
-          ) : (
-            <table className="tabla-historial">
-              <thead>
-                <tr>
-                  <th>Fecha</th>
-                  <th>Cristal</th>
-                  <th>Aluminio</th>
-                  <th>Misceláneos</th>
-                  <th>Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {historialPresupuesto.map((row) => (
-                  <tr key={row.id_historial}>
-                    <td>{row.fecha_presupuesto}</td>
-                    <td>{formatCurrency(row.presupuesto_cristal)}</td>
-                    <td>{formatCurrency(row.presupuesto_aluminio)}</td>
-                    <td>{formatCurrency(row.presupuesto_miscelaneos)}</td>
-                    <td>{formatCurrency(row.presupuesto_total)}</td>
+        {mostrarHistorialPresupuesto && (
+          <section className="historial-presupuesto">
+            <div className="historial-header">
+              <h3>Historial de presupuestos</h3>
+              {isAdmin && (
+                <button type="button" className="btn btn-secondary" onClick={abrirModalPresupuesto}>
+                  Ajustar presupuesto
+                </button>
+              )}
+            </div>
+            {cargandoHistorial ? (
+              <p>Cargando historial...</p>
+            ) : historialPresupuesto.length === 0 ? (
+              <p>No hay cambios registrados.</p>
+            ) : (
+              <table className="tabla-historial">
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Cristal</th>
+                    <th>Aluminio</th>
+                    <th>Misceláneos</th>
+                    <th>Total</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </section>
+                </thead>
+                <tbody>
+                  {historialPresupuesto.map((row) => (
+                    <tr key={row.id_historial}>
+                      <td>{row.fecha_presupuesto}</td>
+                      <td>{formatCurrency(row.presupuesto_cristal)}</td>
+                      <td>{formatCurrency(row.presupuesto_aluminio)}</td>
+                      <td>{formatCurrency(row.presupuesto_miscelaneos)}</td>
+                      <td>{formatCurrency(row.presupuesto_total)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </section>
+        )}
 
         {modalPresupuestoAbierto && (
           <div className="presupuesto-modal-backdrop" onClick={cerrarModalPresupuesto}>
             <div className="presupuesto-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-              <h3>Editar presupuestos</h3>
+              <h3>Ajustar presupuestos</h3>
               <p className="modal-subtitle">Actualiza el disponible por familia y guarda una fecha de referencia.</p>
               <form className="form-presupuesto" onSubmit={guardarPresupuesto}>
                 <label>
@@ -1175,78 +1505,183 @@ export function ProyectoDetalle() {
 
         {mensaje && <p className="alert success">{mensaje}</p>}
         {error && <p className="alert error">{error}</p>}
-        {!isAdmin ? null : (
+        {!isAdmin || !mostrarPedidosModulo ? null : (
           <>
-        <div className="placeholder-card">
-          <p>Selecciona uno o varios archivos CSV con el formato esperado para cargar pedidos.</p>
-        </div>
-        <div className="tabla-wrapper">
-          <div className="tabla-toolbar">
-            <div className="tabla-header">Pedidos del proyecto</div>
-            <div className="tabla-actions">
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={alternarOrdenPedidos}
-                disabled={pedidos.length === 0}
-              >
-                Ordenar por fecha ({ordenPedidos === "desc" ? "recientes primero" : "antiguos primero"})
-              </button>
-              <button className="btn btn-primary" onClick={exportarExplosion} disabled={pedidos.length === 0}>
-                Generar explosión de insumos
-              </button>
+            <div className="placeholder-card">
+              <p>Selecciona uno o varios archivos CSV con el formato esperado para cargar pedidos.</p>
             </div>
-          </div>
-          {cargandoPedidos ? (
-            <p>Cargando...</p>
-          ) : pedidos.length === 0 ? (
-            <p style={{ padding: 12 }}>No hay pedidos aun.</p>
-          ) : (
-            <table className="tabla-pedidos">
-              <thead>
-                <tr>
-                  <th>Pedido</th>
-                  <th>Clan</th>
-                  <th>Familia</th>
-                  <th>Proveedor</th>
-                  <th>Fecha Aprobacion</th>
-                  <th>Concepto</th>
-                  <th>Situaciones</th>
-                  <th style={{ textAlign: "right" }}>Importe</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pedidosOrdenados.map((p) => (
-                  <tr
-                    key={p.id}
-                    className="clickable-row"
-                    onClick={() => abrirDetallesPedido(p)}
-                    onKeyDown={(ev) => {
-                      if (ev.key === "Enter" || ev.key === " ") {
-                        ev.preventDefault();
-                        abrirDetallesPedido(p);
-                      }
-                    }}
-                    tabIndex={0}
-                    role="button"
-                    aria-label={`Ver detalles del pedido ${p.pedido}`}
+            <div className="tabla-wrapper">
+              <div className="tabla-toolbar">
+                <div className="tabla-header">Pedidos del proyecto</div>
+                <div className="tabla-actions">
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={alternarOrdenPedidos}
+                    disabled={pedidos.length === 0}
                   >
-                    <td>{p.pedido}</td>
-                    <td>{p.clan}</td>
-                    <td>{p.familia}</td>
-                    <td>{p.proveedor}</td>
-                    <td>{p.fecha_aprobacion}</td>
-                    <td>{p.concepto}</td>
-                    <td>{p.situaciones_especiales || "-"}</td>
-                    <td style={{ textAlign: "right" }}>
-                      {Number(p.importe).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+                    Ordenar por fecha ({ordenPedidos === "desc" ? "recientes primero" : "antiguos primero"})
+                  </button>
+                  <button className="btn btn-primary" onClick={exportarExplosion} disabled={pedidos.length === 0}>
+                    Generar explosión de insumos
+                  </button>
+                </div>
+              </div>
+              {cargandoPedidos ? (
+                <p>Cargando...</p>
+              ) : pedidos.length === 0 ? (
+                <p style={{ padding: 12 }}>No hay pedidos aun.</p>
+              ) : (
+                <table className="tabla-pedidos">
+                  <thead>
+                    <tr>
+                      <th>Pedido</th>
+                      <th>Clan</th>
+                      <th>Familia</th>
+                      <th>Proveedor</th>
+                      <th>Fecha Aprobacion</th>
+                      <th>Concepto</th>
+                      <th>Situaciones</th>
+                      <th style={{ textAlign: "right" }}>Importe</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pedidosOrdenados.map((p) => (
+                      <tr
+                        key={p.id}
+                        className="clickable-row"
+                        onClick={() => abrirDetallesPedido(p)}
+                        onKeyDown={(ev) => {
+                          if (ev.key === "Enter" || ev.key === " ") {
+                            ev.preventDefault();
+                            abrirDetallesPedido(p);
+                          }
+                        }}
+                        tabIndex={0}
+                        role="button"
+                        aria-label={`Ver detalles del pedido ${p.pedido}`}
+                      >
+                        <td>{p.pedido}</td>
+                        <td>{p.clan}</td>
+                        <td>{p.familia}</td>
+                        <td>{p.proveedor}</td>
+                        <td>{p.fecha_aprobacion}</td>
+                        <td>{p.concepto}</td>
+                        <td>{p.situaciones_especiales || "-"}</td>
+                        <td style={{ textAlign: "right" }}>
+                          {Number(p.importe).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+            <div className="tabla-wrapper explosion-wrapper">
+              <div className="tabla-toolbar">
+                <div className="tabla-header">Explosión de insumos</div>
+                <div className="tabla-actions explosion-actions-bar">
+                </div>
+              </div>
+              <form className="explosion-form" onSubmit={guardarExplosion}>
+                <div className="explosion-grid">
+                  <label>
+                    Clan
+                    <input
+                      type="text"
+                      value={formExplosion.clan}
+                      onChange={(e) => setFormExplosion((prev) => ({ ...prev, clan: e.target.value.toUpperCase() }))}
+                      placeholder="Ej. C1"
+                    />
+                  </label>
+                  <label>
+                    Familia*
+                    <input
+                      type="text"
+                      value={formExplosion.familia}
+                      onChange={(e) => setFormExplosion((prev) => ({ ...prev, familia: e.target.value.toUpperCase() }))}
+                      placeholder="Ej. MI"
+                      required
+                    />
+                  </label>
+                  <label>
+                    Presupuesto asignado*
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={formExplosion.presupuesto}
+                      onChange={(e) => setFormExplosion((prev) => ({ ...prev, presupuesto: e.target.value }))}
+                      placeholder="0.00"
+                      required
+                    />
+                  </label>
+                </div>
+                <div className="explosion-actions">
+                  <button type="submit" className="btn btn-primary" disabled={guardandoExplosion}>
+                    {guardandoExplosion ? "Guardando..." : editandoExplosionId ? "Actualizar" : "Asignar presupuesto"}
+                  </button>
+                  <button type="button" className="btn btn-secondary" onClick={limpiarFormularioExplosion} disabled={guardandoExplosion}>
+                    Limpiar
+                  </button>
+                  {editandoExplosionId && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => eliminarExplosion(editandoExplosionId)}
+                      disabled={guardandoExplosion}
+                    >
+                      Eliminar
+                    </button>
+                  )}
+                  <span className="explosion-hint">Haz clic en una fila para editarla.</span>
+                </div>
+              </form>
+              {errorExplosion && <p className="alert error">{errorExplosion}</p>}
+              {cargandoExplosion ? (
+                <p>Cargando explosión...</p>
+              ) : explosionInsumos.length === 0 ? (
+                <p style={{ padding: 12 }}>No hay asignaciones registradas.</p>
+              ) : (
+                <table className="tabla-explosion">
+                  <thead>
+                    <tr>
+                      <th>N</th>
+                      <th>Clan</th>
+                      <th>Familia</th>
+                      <th>Presupuesto asignado</th>
+                      <th>Presupuesto restante</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {explosionInsumos.map((row, idx) => (
+                      <tr
+                        key={row.id}
+                        className={`clickable-row ${editandoExplosionId === row.id ? "fila-activa" : ""}`}
+                        onClick={() => seleccionarExplosion(row)}
+                        onKeyDown={(ev) => {
+                          if (ev.key === "Enter" || ev.key === " ") {
+                            ev.preventDefault();
+                            seleccionarExplosion(row);
+                          }
+                        }}
+                        tabIndex={0}
+                        role="button"
+                        aria-label={`Editar asignación de ${row.familia || "familia"}`}
+                      >
+                        <td>{idx + 1}</td>
+                        <td>{row.clan || "-"}</td>
+                        <td>{row.familia || "-"}</td>
+                        <td className="text-right">{formatCurrency(row.presupuesto_asignado)}</td>
+                        <td className={`text-right ${row.presupuesto_restante < 0 ? "monto-negativo" : ""}`}>
+                          {formatCurrency(row.presupuesto_restante)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
           </>
         )}
 
@@ -1266,9 +1701,14 @@ export function ProyectoDetalle() {
                   </h3>
                   <p className="pedido-modal-subtitle">{pedidoSeleccionado.concepto || "-"}</p>
                 </div>
-                <button type="button" className="btn btn-secondary" onClick={cerrarModalDetalles}>
-                  Cerrar
-                </button>
+                <div className="pedido-modal-actions">
+                  <button type="button" className="btn btn-primary" onClick={irAVistaPrevia} disabled={!pedidoSeleccionado}>
+                    Ver vista previa
+                  </button>
+                  <button type="button" className="btn btn-secondary" onClick={cerrarModalDetalles}>
+                    Cerrar
+                  </button>
+                </div>
               </div>
               <div className="pedido-modal-meta">
                 <div>
@@ -1301,6 +1741,22 @@ export function ProyectoDetalle() {
                 <p className="pedido-modal-status">Este pedido no tiene detalles registrados.</p>
               ) : (
                 <>
+                  {tipoDetallePedido !== "aluminio" && (
+                    <div className="pedido-descripciones">
+                      <h4>Descripciones</h4>
+                      <ul>
+                        {(tipoDetallePedido === "cristal"
+                          ? detallesCristal
+                          : detallesPedido
+                        ).map((detalle, index) => (
+                          <li key={`${detalle.id_detalle}-${index}`}>
+                            <strong>{index + 1}.</strong>{" "}
+                            {((detalle as any).descripcion || "").trim() || "-"}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                   <div className="pedido-detalle-ledger">
                     <div className="pedido-detalle-table-wrapper">
                       {tipoDetallePedido === "cristal" ? (
@@ -1308,7 +1764,6 @@ export function ProyectoDetalle() {
                           <thead>
                             <tr>
                               <th>No #</th>
-                              <th>Descripción</th>
                               <th>Clave/Modelo</th>
                               <th>Ancho</th>
                               <th>Largo</th>
@@ -1323,7 +1778,6 @@ export function ProyectoDetalle() {
                             {detallesCristal.map((detalle, index) => (
                               <tr key={`${detalle.id_detalle}-${index}`}>
                                 <td>{index + 1}</td>
-                                <td>{detalle.descripcion || "-"}</td>
                                 <td>{detalle.clave_modelo || "-"}</td>
                                 <td>{detalle.ancho === null || detalle.ancho === undefined ? "-" : Number(detalle.ancho).toLocaleString(undefined, { maximumFractionDigits: 3 })}</td>
                                 <td>{detalle.largo === null || detalle.largo === undefined ? "-" : Number(detalle.largo).toLocaleString(undefined, { maximumFractionDigits: 3 })}</td>
@@ -1340,7 +1794,6 @@ export function ProyectoDetalle() {
                         <table className="pedido-detalle-table">
                           <thead>
                             <tr>
-                              <th>No #</th>
                               <th>Descripción</th>
                               <th>N° Perfil</th>
                               <th>Medida (tramo)</th>
@@ -1358,8 +1811,9 @@ export function ProyectoDetalle() {
                           <tbody>
                             {detallesAluminio.map((detalle, index) => (
                               <tr key={`${detalle.id_detalle}-${index}`}>
-                                <td>{index + 1}</td>
-                                <td>{detalle.descripcion || "-"}</td>
+                                <td className="descripcion-cell">
+                                  {((detalle as any).descripcion || "").trim() || "-"}
+                                </td>
                                 <td>{detalle.numero_perfil || "-"}</td>
                                 <td>
                                   {detalle.medida_tramo === null || detalle.medida_tramo === undefined
@@ -1408,7 +1862,6 @@ export function ProyectoDetalle() {
                           <thead>
                             <tr>
                               <th>No #</th>
-                              <th>Descripción</th>
                               <th>Unidad</th>
                               <th>Medida</th>
                               <th>Cantidad</th>
@@ -1425,7 +1878,6 @@ export function ProyectoDetalle() {
                             {detallesPedido.map((detalle, index) => (
                               <tr key={`${detalle.id_detalle}-${index}`}>
                                 <td>{index + 1}</td>
-                                <td>{detalle.descripcion || "-"}</td>
                                 <td>{detalle.unidad || "-"}</td>
                                 <td>{detalle.medida || "-"}</td>
                                 <td>{Number(detalle.cantidad || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
@@ -1493,217 +1945,792 @@ export function ProyectoDetalle() {
           </div>
         )}
 
-        {(!isAdmin && formCobranzaAbierto) && (
-          <div className="placeholder-card" style={{ marginTop: 16 }}>
-            <h3 style={{ marginTop: 0 }}>Nueva cobranza</h3>
-            <form onSubmit={submitCobranza} className="form-cobranza">
-              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                <input
-                  className="filter-select"
-                  type="number"
-                  step="1"
-                  value={numeroRegistro}
-                  onChange={(e) => setNumeroRegistro(e.target.value)}
-                  placeholder="No. consecutivo"
-                  required
-                />
-                <input
-                  className="filter-select"
-                  type="text"
-                  value={conceptoCobranza}
-                  onChange={(e) => setConceptoCobranza(e.target.value)}
-                  placeholder="Concepto (ej. EST 22)"
-                  required
-                />
-                <input
-                  className="filter-select"
-                  type="text"
-                  value={periodoRegistro}
-                  onChange={(e) => setPeriodoRegistro(e.target.value)}
-                  placeholder="Periodo (ej. 29/03/2025 al 18/04/2025)"
-                />
-                <input
-                  className="filter-select"
-                  type="text"
-                  value={numeroFactura}
-                  onChange={(e) => setNumeroFactura(e.target.value)}
-                  placeholder="No. factura"
-                />
-                <div className="filter-select-wrapper">
-                  <label htmlFor="fechaDetalleInput">Fecha de factura</label>
-                  <input
-                    id="fechaDetalleInput"
-                    className="filter-select"
-                    type="date"
-                    value={fechaDetalle}
-                    onChange={(e) => setFechaDetalle(e.target.value)}
-                    aria-label="Fecha de factura o estimación"
-                    title="Fecha de factura o estimación"
-                    placeholder="Fecha de factura o estimación"
-                  />
+        {mostrarCobranza && (
+          <div className="cobranza-section">
+            {/* Configuración de cobranza (código control y fondo garantía) */}
+            {!isAdmin && (
+              <div className="placeholder-card" style={{ marginBottom: 16 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                  <h3 style={{ margin: 0 }}>Configuración de Cobranza</h3>
+                  {!editandoCobranzaConfig && (
+                    <button className="btn btn-secondary" onClick={abrirEditarCobranzaConfig}>Editar</button>
+                  )}
                 </div>
-                <div className="filter-select-wrapper">
-                  <label htmlFor="fechaPagoInput">Fecha de pago recibido</label>
-                  <input
-                    id="fechaPagoInput"
-                    className="filter-select"
-                    type="date"
-                    value={fechaPago}
-                    onChange={(e) => setFechaPago(e.target.value)}
-                    aria-label="Fecha de pago recibido"
-                    title="Fecha de pago recibido"
-                    placeholder="Fecha en que se recibió el pago"
-                  />
-                </div>
-                <div className="filter-select-wrapper">
-                  <label htmlFor="fechaReporteInput">Fecha del reporte</label>
-                  <input
-                    id="fechaReporteInput"
-                    className="filter-select"
-                    type="date"
-                    value={fechaReporte}
-                    onChange={(e) => setFechaReporte(e.target.value)}
-                    aria-label="Fecha del reporte de cobranza"
-                    title="Fecha del reporte de cobranza"
-                    placeholder="Fecha del reporte de cobranza"
-                  />
-                </div>
-                <input
-                  className="filter-select"
-                  type="number"
-                  step="0.01"
-                  value={contratadoFecha}
-                  onChange={(e) => setContratadoFecha(e.target.value)}
-                  placeholder="Contratado a la fecha"
-                />
-                <input
-                  className="filter-select"
-                  type="number"
-                  step="0.01"
-                  value={manoObra}
-                  onChange={(e) => setManoObra(e.target.value)}
-                  placeholder="Mano de obra"
-                />
-                <input
-                  className="filter-select"
-                  type="number"
-                  step="0.01"
-                  value={cobradoTotal}
-                  onChange={(e) => setCobradoTotal(e.target.value)}
-                  placeholder="Cobrado total"
-                />
-                <input
-                  className="filter-select"
-                  type="number"
-                  step="0.01"
-                  value={porCobrarTotal}
-                  onChange={(e) => setPorCobrarTotal(e.target.value)}
-                  placeholder="Por cobrar total"
-                />
-                <input
-                  className="filter-select"
-                  type="number"
-                  step="0.01"
-                  value={fondoGarantia}
-                  onChange={(e) => setFondoGarantia(e.target.value)}
-                  placeholder="Fondo garantía"
-                />
-                <input
-                  className="filter-select"
-                  type="number"
-                  step="0.01"
-                  value={liquidoPorCobrar}
-                  onChange={(e) => setLiquidoPorCobrar(e.target.value)}
-                  placeholder="Líquido por cobrar"
-                />
-                <input
-                  className="filter-select"
-                  type="number"
-                  step="0.01"
-                  value={importeACobrar}
-                  onChange={(e) => setImporteACobrar(e.target.value)}
-                  placeholder="Importe a cobrar"
-                />
-                <input
-                  className="filter-select"
-                  type="number"
-                  step="0.01"
-                  value={importeCobrado}
-                  onChange={(e) => setImporteCobrado(e.target.value)}
-                  placeholder="Importe cobrado"
-                />
-                <input
-                  className="filter-select"
-                  type="number"
-                  step="0.01"
-                  value={saldoPorCobrar}
-                  onChange={(e) => setSaldoPorCobrar(e.target.value)}
-                  placeholder="Saldo por cobrar"
-                />
+                {editandoCobranzaConfig ? (
+                  <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 12, color: '#666', marginBottom: 4 }}>Código de Control</label>
+                      <input
+                        className="filter-select"
+                        type="text"
+                        value={codigoControlEdit}
+                        onChange={(e) => setCodigoControlEdit(e.target.value)}
+                        placeholder="Ej: 00431"
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 12, color: '#666', marginBottom: 4 }}>Fondo de Garantía</label>
+                      <input
+                        className="filter-select"
+                        type="number"
+                        step="0.01"
+                        value={fondoGarantiaEdit}
+                        onChange={(e) => setFondoGarantiaEdit(e.target.value)}
+                        placeholder="Monto fijo"
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 12, color: '#666', marginBottom: 4 }}>Factor Indirectos (%)</label>
+                      <input
+                        className="filter-select"
+                        type="number"
+                        step="1"
+                        min="0"
+                        max="100"
+                        value={factorIndirectosEdit}
+                        onChange={(e) => setFactorIndirectosEdit(e.target.value)}
+                        placeholder="Ej: 20"
+                        style={{ width: 80 }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 12, color: '#666', marginBottom: 4 }}>Indirectos Aplicados</label>
+                      <input
+                        className="filter-select"
+                        type="number"
+                        step="0.01"
+                        value={indirectosAplicadosEdit}
+                        onChange={(e) => setIndirectosAplicadosEdit(e.target.value)}
+                        placeholder="Monto"
+                      />
+                    </div>
+                    <button className="btn btn-secondary" onClick={() => setEditandoCobranzaConfig(false)}>Cancelar</button>
+                    <button className="btn btn-primary" onClick={guardarCobranzaConfig}>Guardar</button>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+                    <div>
+                      <small style={{ color: '#666' }}>Código de Control</small>
+                      <p style={{ margin: 0, fontSize: 16, fontWeight: 500 }}>{cobranzaResumen?.codigo_control || '-'}</p>
+                    </div>
+                    <div>
+                      <small style={{ color: '#666' }}>Fondo de Garantía</small>
+                      <p style={{ margin: 0, fontSize: 16, fontWeight: 500 }}>
+                        ${Number(cobranzaResumen?.fondo_garantia || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      </p>
+                    </div>
+                    <div>
+                      <small style={{ color: '#666' }}>Factor Indirectos</small>
+                      <p style={{ margin: 0, fontSize: 16, fontWeight: 500 }}>{((cobranzaResumen?.factor_indirectos || 0.20) * 100).toFixed(0)}%</p>
+                    </div>
+                    <div>
+                      <small style={{ color: '#666' }}>Indirectos Aplicados</small>
+                      <p style={{ margin: 0, fontSize: 16, fontWeight: 500 }}>
+                        ${Number(cobranzaResumen?.indirectos_aplicados || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
-              <div style={{ marginTop: 12, display: 'flex', gap: 10 }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setFormCobranzaAbierto(false)}>Cancelar</button>
-                <button type="submit" className="btn btn-primary">Guardar cobranza</button>
+            )}
+
+            {/* Resumen de cobranza */}
+            {cobranzaResumen && (
+              <div className="placeholder-card" style={{ marginBottom: 16 }}>
+                <h3 style={{ marginTop: 0 }}>Resumen de Cobranza</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16 }}>
+                  <div>
+                    <small style={{ color: '#666' }}>Importe Contratado</small>
+                    <p style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>
+                      ${Number(cobranzaResumen.importe_contratado || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                  <div>
+                    <small style={{ color: '#666' }}>Importe Cobrado</small>
+                    <p style={{ margin: 0, fontSize: 18, fontWeight: 600, color: '#16a34a' }}>
+                      ${Number(cobranzaResumen.importe_cobrado || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                  <div>
+                    <small style={{ color: '#666' }}>Importe a Cobrar</small>
+                    <p style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>
+                      ${Number(cobranzaResumen.importe_a_cobrar || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                  <div>
+                    <small style={{ color: '#666' }}>Fondo de Garantía</small>
+                    <p style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>
+                      ${Number(cobranzaResumen.fondo_garantia || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                  <div>
+                    <small style={{ color: '#666' }}>Líquido por Cobrar</small>
+                    <p style={{ margin: 0, fontSize: 18, fontWeight: 600, color: '#f59e0b' }}>
+                      ${Number(cobranzaResumen.liquido_por_cobrar || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                  <div>
+                    <small style={{ color: '#666' }}>Aplicado (Gastos)</small>
+                    <p style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>
+                      ${Number(cobranzaResumen.aplicado || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                  <div>
+                    <small style={{ color: '#666' }}>Cobrado vs Aplicado</small>
+                    <p style={{
+                      margin: 0,
+                      fontSize: 18,
+                      fontWeight: 700,
+                      color: (cobranzaResumen.cobrado_vs_aplicado || 0) < 0 ? '#dc2626' : '#16a34a'
+                    }}>
+                      ${Number(cobranzaResumen.cobrado_vs_aplicado || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      {(cobranzaResumen.cobrado_vs_aplicado || 0) < 0 && <span style={{ marginLeft: 8, fontSize: 12 }}>EN ROJO</span>}
+                    </p>
+                  </div>
+                </div>
               </div>
-            </form>
+            )}
+
+            {/* Tabla de facturas */}
+            <div className="tabla-wrapper cobranza-wrapper">
+              <div className="tabla-toolbar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div className="tabla-header">Historial de Facturas</div>
+                {!isAdmin && (
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => setFormCobranzaAbierto(v => !v)}
+                    style={{ marginLeft: 'auto' }}
+                  >
+                    {formCobranzaAbierto ? 'Cancelar' : '+ Agregar Factura'}
+                  </button>
+                )}
+              </div>
+
+              {/* Formulario para agregar factura */}
+              {!isAdmin && formCobranzaAbierto && (
+                <div style={{ padding: 16, background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                  <h4 style={{ margin: '0 0 12px 0', fontSize: 14 }}>Nueva Factura de Cobranza</h4>
+                  <form onSubmit={submitCobranza}>
+                    <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                      <input
+                        className="filter-select"
+                        type="number"
+                        step="1"
+                        value={numeroRegistro}
+                        onChange={(e) => setNumeroRegistro(e.target.value)}
+                        placeholder="No. consecutivo"
+                        style={{ width: 120 }}
+                      />
+                      <input
+                        className="filter-select"
+                        type="text"
+                        value={conceptoCobranza}
+                        onChange={(e) => setConceptoCobranza(e.target.value)}
+                        placeholder="Concepto (ej. EST 22, ANTICIPO)"
+                        required
+                        style={{ minWidth: 200 }}
+                      />
+                      <input
+                        className="filter-select"
+                        type="text"
+                        value={periodoRegistro}
+                        onChange={(e) => setPeriodoRegistro(e.target.value)}
+                        placeholder="Periodo (ej. 29/03/2025 al 18/04/2025)"
+                        style={{ minWidth: 220 }}
+                      />
+                      <input
+                        className="filter-select"
+                        type="text"
+                        value={numeroFactura}
+                        onChange={(e) => setNumeroFactura(e.target.value)}
+                        placeholder="No. factura"
+                        style={{ width: 120 }}
+                      />
+                      <div className="filter-select-wrapper">
+                        <label style={{ fontSize: 11, color: '#666' }}>Fecha factura</label>
+                        <input
+                          className="filter-select"
+                          type="date"
+                          value={fechaDetalle}
+                          onChange={(e) => setFechaDetalle(e.target.value)}
+                        />
+                      </div>
+                      <div className="filter-select-wrapper">
+                        <label style={{ fontSize: 11, color: '#666' }}>Fecha pago</label>
+                        <input
+                          className="filter-select"
+                          type="date"
+                          value={fechaPago}
+                          onChange={(e) => setFechaPago(e.target.value)}
+                        />
+                      </div>
+                      <input
+                        className="filter-select"
+                        type="number"
+                        step="0.01"
+                        value={importeACobrar}
+                        onChange={(e) => setImporteACobrar(e.target.value)}
+                        placeholder="Importe a cobrar"
+                        style={{ width: 140 }}
+                      />
+                      <input
+                        className="filter-select"
+                        type="number"
+                        step="0.01"
+                        value={importeCobrado}
+                        onChange={(e) => setImporteCobrado(e.target.value)}
+                        placeholder="Importe cobrado"
+                        style={{ width: 140 }}
+                      />
+                    </div>
+                    <div style={{ marginTop: 12, display: 'flex', gap: 10 }}>
+                      <button type="button" className="btn btn-secondary" onClick={() => setFormCobranzaAbierto(false)}>Cancelar</button>
+                      <button type="submit" className="btn btn-primary">Guardar Factura</button>
+                    </div>
+                  </form>
+                </div>
+              )}
+
+              {cargandoCobranza ? (
+                <p style={{ padding: 12 }}>Cargando cobranza...</p>
+              ) : cobranzaFacturas.length === 0 ? (
+                <p style={{ padding: 12 }}>No hay facturas registradas. Haz clic en "+ Agregar Factura" para comenzar.</p>
+              ) : (
+                <table className="tabla-pedidos">
+                  <thead>
+                    <tr>
+                      <th>No.</th>
+                      <th>Concepto</th>
+                      <th>Periodo</th>
+                      <th>Fecha</th>
+                      <th>No. Factura</th>
+                      <th style={{ textAlign: 'right' }}>Importe a Cobrar</th>
+                      <th style={{ textAlign: 'right' }}>Importe Cobrado</th>
+                      <th style={{ textAlign: 'right' }}>Saldo por Cobrar</th>
+                      <th>Fecha Pago</th>
+                      {!isAdmin && <th>Acciones</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cobranzaFacturas.map(f => (
+                      <tr key={f.id_factura}>
+                        <td>{f.numero || '-'}</td>
+                        <td>{f.concepto || '-'}</td>
+                        <td>{f.periodo || '-'}</td>
+                        <td>{f.fecha || '-'}</td>
+                        <td>{f.numero_factura || '-'}</td>
+                        <td style={{ textAlign: 'right' }}>${Number(f.importe_a_cobrar || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                        <td style={{ textAlign: 'right' }}>${Number(f.importe_cobrado || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                        <td style={{ textAlign: 'right', color: (f.saldo_por_cobrar || 0) > 0 ? '#dc2626' : '#16a34a', fontWeight: 600 }}>
+                          ${Number(f.saldo_por_cobrar || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        </td>
+                        <td>{f.fecha_pago || '-'}</td>
+                        {!isAdmin && (
+                          <td>
+                            <button
+                              className="btn btn-danger"
+                              style={{ padding: '4px 8px', fontSize: 12 }}
+                              onClick={() => eliminarFactura(f.id_factura)}
+                            >
+                              Eliminar
+                            </button>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ fontWeight: 'bold', background: '#f3f4f6' }}>
+                      <td colSpan={5}>TOTALES</td>
+                      <td style={{ textAlign: 'right' }}>
+                        ${cobranzaFacturas.reduce((sum, f) => sum + Number(f.importe_a_cobrar || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        ${cobranzaFacturas.reduce((sum, f) => sum + Number(f.importe_cobrado || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        ${cobranzaFacturas.reduce((sum, f) => sum + Number(f.saldo_por_cobrar || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      </td>
+                      <td></td>
+                      {!isAdmin && <td></td>}
+                    </tr>
+                  </tfoot>
+                </table>
+              )}
+            </div>
           </div>
         )}
 
-        <div className="tabla-wrapper" style={{ marginTop: 16 }}>
-          <div className="tabla-toolbar">
-            <div className="tabla-header">Cobranza del proyecto</div>
+        {/* VIÁTICOS MODULE */}
+        {mostrarViaticos && (
+          <div className="viaticos-container">
+            {/* View Toggle */}
+            <div className="viaticos-toggle">
+              <button
+                className={vistaViaticosActiva === "movimientos" ? "active" : ""}
+                onClick={() => setVistaViaticosActiva("movimientos")}
+              >
+                Registrar Pagos en Efectivo
+              </button>
+              <button
+                className={vistaViaticosActiva === "presupuestos" ? "active" : ""}
+                onClick={() => setVistaViaticosActiva("presupuestos")}
+              >
+                Registrar Saldos
+              </button>
+            </div>
+
+            {/* Cash Movements View */}
+            {vistaViaticosActiva === "movimientos" && (
+              <div className="seccion-movimientos">
+                <div className="movimientos-header">
+                  <h3>Pagos en Efectivo</h3>
+                  {isAdmin && (
+                    <button className="action-button create-button" onClick={() => setModalMovimientoViatico(true)}>
+                      Agregar Movimiento
+                    </button>
+                  )}
+                </div>
+
+                {/* Filters */}
+                <div className="movimientos-filtros">
+                  <div className="filtro">
+                    <label htmlFor="familia-filtro">Familia</label>
+                    <select
+                      id="familia-filtro"
+                      value={familiaFiltro}
+                      onChange={(e) => setFamiliaFiltro(e.target.value)}
+                    >
+                      <option value="">Todas</option>
+                      <option value="Mano de Obra">Mano de Obra</option>
+                      <option value="Viáticos">Viáticos</option>
+                      <option value="Fletes">Fletes</option>
+                    </select>
+                  </div>
+                  <div className="filtro">
+                    <label htmlFor="fecha-desde">Desde</label>
+                    <input
+                      id="fecha-desde"
+                      type="date"
+                      value={fechaDesdeFiltro}
+                      onChange={(e) => setFechaDesdeFiltro(e.target.value)}
+                    />
+                  </div>
+                  <div className="filtro">
+                    <label htmlFor="fecha-hasta">Hasta</label>
+                    <input
+                      id="fecha-hasta"
+                      type="date"
+                      value={fechaHastaFiltro}
+                      onChange={(e) => setFechaHastaFiltro(e.target.value)}
+                    />
+                  </div>
+                  <button
+                    className="action-button secondary-button"
+                    onClick={() => {
+                      setFamiliaFiltro("");
+                      setFechaDesdeFiltro("");
+                      setFechaHastaFiltro("");
+                    }}
+                  >
+                    Limpiar filtros
+                  </button>
+                  <button
+                    className="action-button primary-button"
+                    onClick={async () => {
+                      try {
+                        const params = new URLSearchParams();
+                        if (familiaFiltro) params.append("familia", familiaFiltro);
+                        if (fechaDesdeFiltro) params.append("fecha_desde", fechaDesdeFiltro);
+                        if (fechaHastaFiltro) params.append("fecha_hasta", fechaHastaFiltro);
+
+                        const res = await fetch(
+                          `http://localhost:3000/proyectos/${id}/viaticos-movimientos/export?${params}`,
+                          { headers: { ...authHeader() } }
+                        );
+                        if (!res.ok) throw new Error("Error al exportar");
+
+                        const blob = await res.blob();
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement("a");
+                        a.href = url;
+                        a.download = `Pagos_Efectivo_${nombreProyecto}_${new Date().toISOString().split("T")[0]}.xlsx`;
+                        document.body.appendChild(a);
+                        a.click();
+                        window.URL.revokeObjectURL(url);
+                        document.body.removeChild(a);
+                      } catch (err) {
+                        console.error("Error exportando:", err);
+                        alert("Error al exportar a Excel");
+                      }
+                    }}
+                  >
+                    📊 Exportar a Excel
+                  </button>
+                </div>
+
+                {errorMovimientos && <p className="error-text">{errorMovimientos}</p>}
+
+                {cargandoMovimientos ? (
+                  <p>Cargando movimientos...</p>
+                ) : movimientosViaticos.length === 0 ? (
+                  <p>No hay movimientos registrados</p>
+                ) : (
+                  <table className="tabla-movimientos">
+                    <thead>
+                      <tr>
+                        <th>N°</th>
+                        <th>Nombre</th>
+                        <th>Concepto</th>
+                        <th>Familia</th>
+                        <th>Clave</th>
+                        <th>Proyecto</th>
+                        <th>Fecha</th>
+                        <th className="columna-numero">Ingreso</th>
+                        <th className="columna-numero">Egreso</th>
+                        <th className="columna-numero">Saldo</th>
+                        <th>Observaciones</th>
+                        {isAdmin && <th>Acciones</th>}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {movimientosViaticos.map((mov, idx) => (
+                        <tr key={mov.id_movimiento}>
+                          <td>{idx + 1}</td>
+                          <td>{mov.persona}</td>
+                          <td>{mov.concepto}</td>
+                          <td>{mov.familia}</td>
+                          <td>{mov.clave_referencia || "-"}</td>
+                          <td>{nombreProyecto}</td>
+                          <td>{mov.fecha}</td>
+                          <td className="columna-numero">{formatCurrency(mov.ingreso)}</td>
+                          <td className="columna-numero">{formatCurrency(mov.egreso)}</td>
+                          <td className={`columna-numero ${mov.saldo < 0 ? "negativo" : ""}`}>
+                            {formatCurrency(mov.saldo)}
+                          </td>
+                          <td></td>
+                          {isAdmin && (
+                            <td>
+                              <button
+                                className="icon-button trash-button"
+                                onClick={async () => {
+                                  if (!confirm("¿Eliminar este movimiento?")) return;
+                                  try {
+                                    const res = await fetch(
+                                      `http://localhost:3000/proyectos/${id}/viaticos-movimientos/${mov.id_movimiento}`,
+                                      { method: "DELETE", headers: { ...authHeader() } }
+                                    );
+                                    const data = await res.json();
+                                    if (res.ok && data.success) {
+                                      await cargarMovimientosViaticos();
+                                      await cargarPresupuestosViaticos();
+                                    } else {
+                                      setErrorMovimientos(data.message || "Error al eliminar");
+                                    }
+                                  } catch {
+                                    setErrorMovimientos("Error de conexión");
+                                  }
+                                }}
+                                aria-label="Eliminar"
+                              >
+                                🗑️
+                              </button>
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            )}
+
+            {/* Budget Balances View */}
+            {vistaViaticosActiva === "presupuestos" && (
+              <div className="seccion-presupuestos">
+                <div className="presupuestos-header">
+                  <h3>Saldos por Familia</h3>
+                  {isAdmin && (
+                    <button className="action-button create-button" onClick={() => setModalPresupuestoViatico(true)}>
+                      Editar Presupuestos
+                    </button>
+                  )}
+                </div>
+
+                {errorPresupuestos && <p className="error-text">{errorPresupuestos}</p>}
+
+                {cargandoPresupuestos ? (
+                  <p>Cargando presupuestos...</p>
+                ) : presupuestosViaticos.length === 0 ? (
+                  <p>No hay presupuestos configurados. Configure los presupuestos para comenzar.</p>
+                ) : (
+                  <>
+                    <div className="presupuestos-grid">
+                      {presupuestosViaticos.map((pres) => (
+                        <div key={pres.id_presupuesto} className="presupuesto-card">
+                          <h4>{pres.familia}</h4>
+                          <div className="presupuesto-detalle">
+                            <div className="presupuesto-fila">
+                              <span>Presupuesto:</span>
+                              <strong>{formatCurrency(pres.presupuesto_asignado)}</strong>
+                            </div>
+                            <div className="presupuesto-fila">
+                              <span>Gastado:</span>
+                              <strong>{formatCurrency(pres.gastado)}</strong>
+                            </div>
+                            <div className={`presupuesto-fila ${pres.restante < 0 ? "negativo" : "positivo"}`}>
+                              <span>Restante:</span>
+                              <strong>{formatCurrency(pres.restante)}</strong>
+                            </div>
+                          </div>
+                          <div className="presupuesto-barra">
+                            <div
+                              className="presupuesto-progreso"
+                              style={{
+                                width: `${Math.min((pres.gastado / pres.presupuesto_asignado) * 100, 100)}%`,
+                                backgroundColor: pres.restante < 0 ? "#dc3545" : "#28a745"
+                              }}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Budget Breakdown Table */}
+                    <div className="desglose-presupuestos-tabla">
+                      <h3>Desglose de Presupuestos por Proyecto</h3>
+                      <table className="tabla-desglose-presupuestos">
+                        <thead>
+                          <tr>
+                            <th rowSpan={2}>N°</th>
+                            <th rowSpan={2}>PROYECTO</th>
+                            <th colSpan={3}>MANO DE OBRA</th>
+                            <th colSpan={3}>VIÁTICOS</th>
+                            <th colSpan={3}>FLETES</th>
+                            <th rowSpan={2}>TOTAL POR EROGAR</th>
+                          </tr>
+                          <tr>
+                            <th>PRESUPUESTO</th>
+                            <th>EROGADO</th>
+                            <th>POR EROGAR</th>
+                            <th>PRESUPUESTO</th>
+                            <th>EROGADO</th>
+                            <th>POR EROGAR</th>
+                            <th>PRESUPUESTO</th>
+                            <th>EROGADO</th>
+                            <th>POR EROGAR</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr>
+                            <td>1</td>
+                            <td>{nombreProyecto}</td>
+                            {(() => {
+                              const manoDeObra = presupuestosViaticos.find(p => p.familia === "Mano de Obra");
+                              const viaticos = presupuestosViaticos.find(p => p.familia === "Viáticos");
+                              const fletes = presupuestosViaticos.find(p => p.familia === "Fletes");
+                              const totalPorErogar = (manoDeObra?.restante || 0) + (viaticos?.restante || 0) + (fletes?.restante || 0);
+
+                              return (
+                                <>
+                                  <td className="columna-numero">{formatCurrency(manoDeObra?.presupuesto_asignado || 0)}</td>
+                                  <td className="columna-numero">{formatCurrency(manoDeObra?.gastado || 0)}</td>
+                                  <td className={`columna-numero ${(manoDeObra?.restante || 0) < 0 ? "negativo" : ""}`}>
+                                    {formatCurrency(manoDeObra?.restante || 0)}
+                                  </td>
+                                  <td className="columna-numero">{formatCurrency(viaticos?.presupuesto_asignado || 0)}</td>
+                                  <td className="columna-numero">{formatCurrency(viaticos?.gastado || 0)}</td>
+                                  <td className={`columna-numero ${(viaticos?.restante || 0) < 0 ? "negativo" : ""}`}>
+                                    {formatCurrency(viaticos?.restante || 0)}
+                                  </td>
+                                  <td className="columna-numero">{formatCurrency(fletes?.presupuesto_asignado || 0)}</td>
+                                  <td className="columna-numero">{formatCurrency(fletes?.gastado || 0)}</td>
+                                  <td className={`columna-numero ${(fletes?.restante || 0) < 0 ? "negativo" : ""}`}>
+                                    {formatCurrency(fletes?.restante || 0)}
+                                  </td>
+                                  <td className={`columna-numero total-column ${totalPorErogar < 0 ? "negativo" : ""}`}>
+                                    {formatCurrency(totalPorErogar)}
+                                  </td>
+                                </>
+                              );
+                            })()}
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* Movement Modal */}
+            {modalMovimientoViatico && (
+              <div className="modal-overlay" onClick={() => setModalMovimientoViatico(false)}>
+                <div className="modal modal-viaticos-movimiento" onClick={(e) => e.stopPropagation()}>
+                  <h3>Agregar Movimiento</h3>
+                  <form
+                    onSubmit={async (e) => {
+                      e.preventDefault();
+                      const form = e.currentTarget;
+                      const formData = new FormData(form);
+
+                      const familia = formData.get("familia") as string;
+                      const persona = formData.get("persona") as string;
+                      const concepto = formData.get("concepto") as string;
+                      const clave_referencia = formData.get("clave_referencia") as string;
+                      const fecha = formData.get("fecha") as string;
+                      const tipo = formData.get("tipo_movimiento") as string;
+                      const monto = Number(formData.get("monto"));
+
+                      if (isNaN(monto) || monto <= 0) {
+                        setErrorMovimientos("Monto inválido");
+                        return;
+                      }
+
+                      try {
+                        const res = await fetch(`http://localhost:3000/proyectos/${id}/viaticos-movimientos`, {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json", ...authHeader() },
+                          body: JSON.stringify({
+                            familia,
+                            persona,
+                            concepto,
+                            clave_referencia: clave_referencia || null,
+                            fecha,
+                            ingreso: tipo === "ingreso" ? monto : 0,
+                            egreso: tipo === "egreso" ? monto : 0,
+                          }),
+                        });
+
+                        const data = await res.json();
+                        if (res.ok && data.success) {
+                          setModalMovimientoViatico(false);
+                          await cargarMovimientosViaticos();
+                          await cargarPresupuestosViaticos();
+                        } else {
+                          setErrorMovimientos(data.message || "Error al guardar");
+                        }
+                      } catch {
+                        setErrorMovimientos("Error de conexión");
+                      }
+                    }}
+                  >
+                    <label>Familia</label>
+                    <select name="familia" required>
+                      <option value="">Seleccionar...</option>
+                      <option value="Mano de Obra">Mano de Obra</option>
+                      <option value="Viáticos">Viáticos</option>
+                      <option value="Fletes">Fletes</option>
+                    </select>
+
+                    <label>Persona</label>
+                    <input type="text" name="persona" required placeholder="Nombre" />
+
+                    <label>Concepto</label>
+                    <textarea name="concepto" required placeholder="Descripción" rows={3} />
+
+                    <label>Clave/Referencia</label>
+                    <input type="text" name="clave_referencia" placeholder="Opcional" />
+
+                    <label>Fecha</label>
+                    <input type="date" name="fecha" required defaultValue={getTodayISO()} />
+
+                    <label>Tipo de Movimiento</label>
+                    <div className="radio-group">
+                      <label>
+                        <input type="radio" name="tipo_movimiento" value="egreso" defaultChecked />
+                        Egreso (Gasto)
+                      </label>
+                      <label>
+                        <input type="radio" name="tipo_movimiento" value="ingreso" />
+                        Ingreso (Reembolso)
+                      </label>
+                    </div>
+
+                    <label>Monto</label>
+                    <input type="number" name="monto" required min="0" step="0.01" placeholder="0.00" />
+
+                    <div className="modal-actions">
+                      <button type="button" className="cancel-button" onClick={() => setModalMovimientoViatico(false)}>
+                        Cancelar
+                      </button>
+                      <button type="submit" className="action-button create-button">Guardar</button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {/* Budget Modal */}
+            {modalPresupuestoViatico && (
+              <div className="modal-overlay" onClick={() => setModalPresupuestoViatico(false)}>
+                <div className="modal" onClick={(e) => e.stopPropagation()}>
+                  <h3>Editar Presupuestos de Viáticos</h3>
+                  <form
+                    onSubmit={async (e) => {
+                      e.preventDefault();
+                      const form = e.currentTarget;
+                      const formData = new FormData(form);
+
+                      const familias = ["Mano de Obra", "Viáticos", "Fletes"];
+
+                      try {
+                        for (const familia of familias) {
+                          const presupuesto = Number(formData.get(familia));
+                          if (isNaN(presupuesto) || presupuesto < 0) {
+                            setErrorPresupuestos(`Presupuesto inválido para ${familia}`);
+                            return;
+                          }
+
+                          const res = await fetch(`http://localhost:3000/proyectos/${id}/viaticos-presupuestos`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json", ...authHeader() },
+                            body: JSON.stringify({ familia, presupuesto_asignado: presupuesto }),
+                          });
+
+                          const data = await res.json();
+                          if (!res.ok || !data.success) {
+                            setErrorPresupuestos(data.message || `Error guardando ${familia}`);
+                            return;
+                          }
+                        }
+
+                        setModalPresupuestoViatico(false);
+                        await cargarPresupuestosViaticos();
+                      } catch {
+                        setErrorPresupuestos("Error de conexión");
+                      }
+                    }}
+                  >
+                    {["Mano de Obra", "Viáticos", "Fletes"].map((familia) => {
+                      const actual = presupuestosViaticos.find((p) => p.familia === familia);
+                      return (
+                        <div key={familia} className="presupuesto-input-group">
+                          <label>{familia}</label>
+                          <input
+                            type="number"
+                            name={familia}
+                            min="0"
+                            step="0.01"
+                            defaultValue={actual?.presupuesto_asignado || 0}
+                            required
+                          />
+                        </div>
+                      );
+                    })}
+
+                    <div className="modal-actions">
+                      <button type="button" className="cancel-button" onClick={() => setModalPresupuestoViatico(false)}>
+                        Cancelar
+                      </button>
+                      <button type="submit" className="action-button create-button">Guardar</button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
           </div>
-          {cargandoCobranza ? (
-            <p style={{ padding: 12 }}>Cargando cobranza...</p>
-          ) : cobranzas.length === 0 ? (
-            <p style={{ padding: 12 }}>No hay registros de cobranza.</p>
-          ) : (
-            <table className="tabla-pedidos">
-              <thead>
-                <tr>
-                  <th>No.</th>
-                  <th>Concepto</th>
-                  <th>Periodo</th>
-                  <th>Fecha</th>
-                  <th>Fecha pago</th>
-                  <th>No. factura</th>
-                  <th style={{ textAlign: 'right' }}>Contratado a la fecha</th>
-                  <th style={{ textAlign: 'right' }}>Mano de obra</th>
-                  <th style={{ textAlign: 'right' }}>Cobrado total</th>
-                  <th style={{ textAlign: 'right' }}>Por cobrar total</th>
-                  <th style={{ textAlign: 'right' }}>Importe a cobrar</th>
-                  <th style={{ textAlign: 'right' }}>Importe cobrado</th>
-                  <th style={{ textAlign: 'right' }}>Saldo por cobrar</th>
-                  <th style={{ textAlign: 'right' }}>Fondo garantía</th>
-                  <th style={{ textAlign: 'right' }}>Líquido por cobrar</th>
-                  <th>Fecha reporte</th>
-                </tr>
-              </thead>
-              <tbody>
-                {cobranzas.map(c => (
-                  <tr key={c.id_cobranza}>
-                    <td>{c.numero}</td>
-                    <td>{c.concepto || '-'}</td>
-                    <td>{c.periodo || '-'}</td>
-                    <td>{c.fecha || '-'}</td>
-                    <td>{c.fecha_pago || '-'}</td>
-                    <td>{c.numero_factura || '-'}</td>
-                    <td style={{ textAlign: 'right' }}>{Number(c.contratado_a_fecha || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                    <td style={{ textAlign: 'right' }}>{Number(c.mano_obra || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                    <td style={{ textAlign: 'right' }}>{Number(c.cobrado_total || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                    <td style={{ textAlign: 'right' }}>{Number(c.por_cobrar_total || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                    <td style={{ textAlign: 'right' }}>{Number(c.importe_a_cobrar || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                    <td style={{ textAlign: 'right' }}>{Number(c.importe_cobrado || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                    <td style={{ textAlign: 'right' }}>{Number(c.saldo_por_cobrar || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                    <td style={{ textAlign: 'right' }}>{Number(c.fondo_garantia || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                    <td style={{ textAlign: 'right' }}>{Number(c.liquido_por_cobrar || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                    <td>{c.fecha_reporte || '-'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+        )}
       </main>
     </div>
   );

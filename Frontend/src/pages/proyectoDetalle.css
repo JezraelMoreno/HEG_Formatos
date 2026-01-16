@@ -48,6 +48,12 @@
 .presupuesto-card .monto-negativo {
   color: #b3261e;
 }
+.monto-positivo {
+  color: #1b5e20;
+}
+.monto-negativo {
+  color: #b3261e;
+}
 .presupuesto-card small {
   display: block;
   margin-top: 4px;
@@ -315,6 +321,9 @@
   border-radius: 12px;
   overflow: hidden;
 }
+.cobranza-wrapper {
+  margin: 8px 20px 16px;
+}
 
 .tabla-toolbar {
   display: flex;
@@ -362,6 +371,116 @@
   outline-offset: 1px;
 }
 
+.explosion-wrapper {
+  margin-top: 12px;
+}
+
+.explosion-form {
+  margin-top: 8px;
+  padding: 12px;
+  border: 1px solid #e2e6ed;
+  border-radius: 8px;
+  background: #f9fafc;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.explosion-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.explosion-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.9rem;
+  color: #1f2933;
+}
+
+.explosion-form input {
+  padding: 8px;
+  border: 1px solid #cfd5e1;
+  border-radius: 6px;
+  font-size: 0.95rem;
+}
+
+.explosion-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.explosion-hint {
+  font-size: 0.85rem;
+  color: #5b6472;
+}
+
+.explosion-tag {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #f8f9fb;
+  border: 1px solid #e2e6ed;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 0.85rem;
+}
+
+.explosion-actions-bar {
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.tabla-explosion {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+}
+
+.tabla-explosion th,
+.tabla-explosion td {
+  border: 1px solid #e2e6ed;
+  padding: 10px 8px;
+}
+
+.tabla-explosion thead th {
+  background: #f1f4f9;
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.85rem;
+  letter-spacing: 0.5px;
+}
+
+.tabla-explosion tbody tr:hover {
+  background: #f9fbff;
+}
+
+.tabla-explosion tbody tr.clickable-row {
+  cursor: pointer;
+}
+
+.tabla-explosion tbody tr.clickable-row:focus {
+  outline: 2px solid #224c84;
+  outline-offset: -2px;
+}
+
+.tabla-explosion td.text-right {
+  text-align: right;
+}
+
+.tabla-explosion td.monto-negativo {
+  color: #b42318;
+  font-weight: 600;
+}
+
+.fila-activa {
+  background: #eef3ff;
+}
+
 .pedido-modal-backdrop {
   position: fixed;
   inset: 0;
@@ -389,6 +508,12 @@
   align-items: flex-start;
   gap: 12px;
   margin-bottom: 16px;
+}
+
+.pedido-modal-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 
 .pedido-modal-title {
@@ -447,6 +572,27 @@
   overflow: hidden;
 }
 
+.pedido-descripciones {
+  margin-bottom: 12px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.pedido-descripciones h4 {
+  margin: 0 0 8px;
+  font-size: 0.95rem;
+  color: #0f172a;
+}
+
+.pedido-descripciones ul {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+}
+
 .pedido-detalle-table-wrapper {
   overflow: auto;
 }
@@ -487,122 +633,92 @@
   background: #fbfbfb;
 }
 
+/* Misceláneos table - descripción in first column */
 .pedido-detalle-table th:first-child,
 .pedido-detalle-table td:first-child {
-  width: 20px;
-  text-align: center;
-}
-
-.pedido-detalle-table tbody td:nth-child(2) {
+  min-width: 250px;
   text-align: left;
 }
 
+.pedido-detalle-table td.descripcion-cell {
+  min-width: 250px;
+  max-width: 400px;
+  text-align: left;
+  font-weight: 500;
+  word-wrap: break-word;
+}
+
+/* Numeric columns - align right */
+.pedido-detalle-table tbody td:nth-child(3),
+.pedido-detalle-table tbody td:nth-child(4),
 .pedido-detalle-table tbody td:nth-child(5),
 .pedido-detalle-table tbody td:nth-child(9),
-.pedido-detalle-table tbody td:nth-child(10),
-.pedido-detalle-table tbody td:nth-child(11) {
+.pedido-detalle-table tbody td:nth-child(10) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Center aligned columns (Medida, Clave, M.L., Acabado, KG) */
+.pedido-detalle-table tbody td:nth-child(2),
+.pedido-detalle-table tbody td:nth-child(6),
+.pedido-detalle-table tbody td:nth-child(7),
+.pedido-detalle-table tbody td:nth-child(8) {
   text-align: center;
 }
 
-.pedido-detalle-table tbody td:nth-child(6),
-.pedido-detalle-table tbody td:nth-child(7),
-.pedido-detalle-table tbody td:nth-child(12) {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-.pedido-detalle-table tbody td:nth-child(3),
-.pedido-detalle-table tbody td:nth-child(4),
-.pedido-detalle-table tbody td:nth-child(8),
-.pedido-detalle-table tbody td:nth-child(9),
-.pedido-detalle-table tbody td:nth-child(10),
-.pedido-detalle-table tbody td:nth-child(11) {
-  white-space: nowrap;
-}
-
-.pedido-detalle-table th:nth-child(2),
-.pedido-detalle-table td:nth-child(2) {
-  min-width: 220px;
-}
-
-.pedido-detalle-table th:nth-child(3),
-.pedido-detalle-table td:nth-child(3) {
-  min-width: 150px;
-}
-
-.pedido-detalle-table th:nth-child(4),
-.pedido-detalle-table td:nth-child(4) {
-  min-width: 120px;
-}
-
-.pedido-detalle-table th:nth-child(5),
-.pedido-detalle-table td:nth-child(5) {
-  min-width: 80px;
-}
-
-.pedido-detalle-table th:nth-child(6),
-.pedido-detalle-table td:nth-child(6),
-.pedido-detalle-table th:nth-child(7),
-.pedido-detalle-table td:nth-child(7),
-.pedido-detalle-table th:nth-child(12),
-.pedido-detalle-table td:nth-child(12) {
-  min-width: 120px;
-}
-
-.pedido-detalle-table th:nth-child(8),
-.pedido-detalle-table td:nth-child(8) {
-  min-width: 140px;
-}
-
-.pedido-detalle-table th:nth-child(9),
-.pedido-detalle-table td:nth-child(9),
-.pedido-detalle-table th:nth-child(10),
-.pedido-detalle-table td:nth-child(10),
-.pedido-detalle-table th:nth-child(11),
-.pedido-detalle-table td:nth-child(11) {
-  min-width: 90px;
-}
-
-.pedido-detalle-summary {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+.pedido-detalle-footer {
+  margin-top: 16px;
   border-top: 2px solid #1f2937;
   background: #f7f9fc;
 }
 
-.pedido-detalle-summary-cell {
-  padding: 10px 12px;
+.pedido-detalle-summary {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  border-bottom: 1px solid #1f2937;
+}
+
+.pedido-detalle-summary-row {
+  padding: 10px 16px;
   border-right: 1px solid #1f2937;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   text-align: center;
 }
 
-.pedido-detalle-summary-cell:last-child {
+.pedido-detalle-summary-row:last-child {
   border-right: none;
 }
 
-.pedido-detalle-summary-cell span {
+.pedido-detalle-summary-row span {
   display: block;
-  font-size: 0.65rem;
+  font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: #111827;
+  font-weight: 600;
 }
 
-.pedido-detalle-summary-cell strong {
+.pedido-detalle-summary-row strong {
   display: block;
   margin-top: 4px;
   font-size: 0.95rem;
   color: #111827;
 }
 
-.pedido-detalle-summary-cell.total {
+.pedido-detalle-summary-row.total {
   background: #fff;
   font-weight: 700;
 }
 
+.pedido-detalle-summary-row.total strong {
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
 .pedido-detalle-situaciones {
-  border-top: 2px solid #1f2937;
   padding: 12px 16px;
   background: #fdfdfd;
 }
@@ -642,4 +758,352 @@
   .btn {
     flex: 1 1 auto;
   }
+}
+
+/* ========================================
+   VIÁTICOS MODULE STYLES
+   ======================================== */
+
+.viaticos-container {
+  margin-top: 2rem;
+}
+
+.viaticos-toggle {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 2rem;
+  border-bottom: 2px solid #e0e0e0;
+}
+
+.viaticos-toggle button {
+  padding: 0.75rem 1.5rem;
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 500;
+  color: #666;
+  transition: all 0.3s ease;
+}
+
+.viaticos-toggle button.active {
+  color: #0b2f4a;
+  border-bottom-color: #0b2f4a;
+}
+
+.viaticos-toggle button:hover {
+  color: #0b2f4a;
+}
+
+/* Movements Section */
+.seccion-movimientos {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.movimientos-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.movimientos-filtros {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background: #f8f9fa;
+  border-radius: 6px;
+}
+
+.movimientos-filtros .filtro {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.movimientos-filtros label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #495057;
+}
+
+.movimientos-filtros select,
+.movimientos-filtros input[type="date"] {
+  padding: 0.5rem;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  font-size: 0.875rem;
+}
+
+.tabla-movimientos {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+}
+
+.tabla-movimientos th,
+.tabla-movimientos td {
+  padding: 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.tabla-movimientos th {
+  background: #f8f9fa;
+  font-weight: 600;
+  color: #495057;
+}
+
+.tabla-movimientos .columna-numero {
+  text-align: right;
+  font-family: 'Courier New', monospace;
+}
+
+.tabla-movimientos .negativo {
+  color: #dc3545;
+  font-weight: 600;
+}
+
+/* Budgets Section */
+.seccion-presupuestos {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.presupuestos-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.presupuestos-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5rem;
+}
+
+.presupuesto-card {
+  background: #f8f9fa;
+  padding: 1.5rem;
+  border-radius: 8px;
+  border-left: 4px solid #0b2f4a;
+}
+
+.presupuesto-card h4 {
+  margin: 0 0 1rem 0;
+  color: #212529;
+  font-size: 1.125rem;
+}
+
+.presupuesto-detalle {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.presupuesto-fila {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.95rem;
+}
+
+.presupuesto-fila.negativo strong {
+  color: #dc3545;
+}
+
+.presupuesto-fila.positivo strong {
+  color: #28a745;
+}
+
+.presupuesto-barra {
+  height: 8px;
+  background: #e9ecef;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.presupuesto-progreso {
+  height: 100%;
+  transition: width 0.3s ease;
+}
+
+/* Modal Form Styles - Specific to Viaticos Movement Modal */
+.modal-viaticos-movimiento {
+  max-width: 600px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.modal-viaticos-movimiento h3 {
+  margin-bottom: 1.5rem;
+  color: #2c3e50;
+  font-size: 1.5rem;
+  border-bottom: 2px solid #e9ecef;
+  padding-bottom: 0.75rem;
+}
+
+.modal-viaticos-movimiento form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.modal-viaticos-movimiento label {
+  font-weight: 600;
+  color: #495057;
+  font-size: 0.95rem;
+  margin-bottom: 0.5rem;
+  display: block;
+}
+
+.modal-viaticos-movimiento input[type="text"],
+.modal-viaticos-movimiento input[type="number"],
+.modal-viaticos-movimiento input[type="date"],
+.modal-viaticos-movimiento select,
+.modal-viaticos-movimiento textarea {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid #ced4da;
+  border-radius: 6px;
+  font-size: 1rem;
+  transition: all 0.2s;
+  box-sizing: border-box;
+}
+
+.modal-viaticos-movimiento input:focus,
+.modal-viaticos-movimiento select:focus,
+.modal-viaticos-movimiento textarea:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.modal-viaticos-movimiento textarea {
+  resize: vertical;
+  min-height: 80px;
+  font-family: inherit;
+}
+
+.modal-viaticos-movimiento .radio-group {
+  display: flex;
+  gap: 1.5rem;
+  margin-top: 0.5rem;
+}
+
+.modal-viaticos-movimiento .radio-group label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-weight: 500;
+  padding: 0.5rem 1rem;
+  border: 2px solid #e9ecef;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.modal-viaticos-movimiento .radio-group label:hover {
+  background: #f8f9fa;
+  border-color: #667eea;
+}
+
+.modal-viaticos-movimiento .radio-group input[type="radio"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.modal-viaticos-movimiento .modal-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: flex-end;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e9ecef;
+}
+
+.presupuesto-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-bottom: 1rem;
+}
+
+/* Budget Breakdown Table */
+.desglose-presupuestos-tabla {
+  margin-top: 2rem;
+}
+
+.desglose-presupuestos-tabla h3 {
+  margin-bottom: 1rem;
+  color: #0f172a;
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.tabla-desglose-presupuestos {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  margin-top: 10px;
+}
+
+.tabla-desglose-presupuestos th,
+.tabla-desglose-presupuestos td {
+  border: 1px solid #e2e6ed;
+  padding: 10px 8px;
+}
+
+.tabla-desglose-presupuestos thead th {
+  background: #f1f4f9;
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.85rem;
+  letter-spacing: 0.5px;
+  text-align: center;
+}
+
+.tabla-desglose-presupuestos tbody td {
+  text-align: left;
+  font-size: 0.9rem;
+}
+
+.tabla-desglose-presupuestos tbody tr:hover {
+  background: #f9fbff;
+}
+
+.tabla-desglose-presupuestos .columna-numero {
+  text-align: right;
+}
+
+.tabla-desglose-presupuestos .total-column {
+  font-weight: 700;
+  background: #f1f4f9;
+  font-size: 1rem;
+}
+
+.tabla-desglose-presupuestos .negativo {
+  color: #b42318;
+  font-weight: 600;
+}
+
+.presupuesto-input-group label {
+  font-weight: 500;
+  color: #495057;
+}
+
+.presupuesto-input-group input {
+  padding: 0.5rem;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
 }

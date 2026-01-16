@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS proyectos (
   id_proyecto INT AUTO_INCREMENT PRIMARY KEY,
   nombre VARCHAR(50),
   fecha_proyecto DATE,
+  estado ENUM('en_progreso', 'completado') NOT NULL DEFAULT 'en_progreso',
   presupuesto DECIMAL (15,2) NOT NULL,
   presupuesto_cristal DECIMAL(15,2) NOT NULL DEFAULT 0.00,
   presupuesto_aluminio DECIMAL(15,2) NOT NULL DEFAULT 0.00,
@@ -37,6 +38,22 @@ CREATE TABLE IF NOT EXISTS proyectos_presupuestos_historial (
   presupuesto_aluminio DECIMAL(15,2) NOT NULL DEFAULT 0.00,
   presupuesto_miscelaneos DECIMAL(15,2) NOT NULL DEFAULT 0.00,
   presupuesto_total DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+  FOREIGN KEY (id_proyecto) REFERENCES proyectos(id_proyecto)
+    ON DELETE CASCADE
+    ON UPDATE CASCADE
+);
+
+------------------------------------------------------------
+-- Tabla de asignaciones para explosión de insumos
+------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS explosion_insumos (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  id_proyecto INT NOT NULL,
+  clan VARCHAR(10) NOT NULL DEFAULT "",
+  familia VARCHAR(10) NOT NULL,
+  presupuesto_asignado DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+  fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT uk_explosion_proyecto_familia UNIQUE (id_proyecto, clan, familia),
   FOREIGN KEY (id_proyecto) REFERENCES proyectos(id_proyecto)
     ON DELETE CASCADE
     ON UPDATE CASCADE
@@ -177,32 +194,116 @@ CREATE TABLE IF NOT EXISTS pedidos_detalles_cristal (
 );
 
 ------------------------------------------------------------
--- Tabla cobranza (Carmen)
+-- Tabla cobranza_proyecto (resumen de cobranza por proyecto)
+-- Similar a la hoja "COBRANZA TOTAL" del Excel
 ------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS cobranza (
-  id_cobranza INT AUTO_INCREMENT PRIMARY KEY,
-  id_proyecto INT NOT NULL,
+CREATE TABLE IF NOT EXISTS cobranza_proyecto (
+  id_cobranza_proyecto INT AUTO_INCREMENT PRIMARY KEY,
+  id_proyecto INT NOT NULL UNIQUE,
 
-  contratado_a_fecha DECIMAL(15,2) DEFAULT 0.00,
-  mano_obra DECIMAL(15,2) DEFAULT 0.00,
-  cobrado_total DECIMAL(15,2) DEFAULT 0.00,
-  por_cobrar_total DECIMAL(15,2) DEFAULT 0.00,
-  fondo_garantia DECIMAL(15,2) DEFAULT 0.00,
-  liquido_por_cobrar DECIMAL(15,2) DEFAULT 0.00,
+  -- Datos principales
+  codigo_control VARCHAR(20),                           -- CONTROL (ej: 00431)
+  importe_cobrado DECIMAL(15,2) DEFAULT 0.00,          -- IMPORTE COBRADO
+  fondo_garantia DECIMAL(15,2) DEFAULT 0.00,           -- FONDO DE GARANTIA (monto fijo)
 
-  numero INT,
-  fecha DATE,
-  numero_factura VARCHAR(50),
-  concepto VARCHAR(100),
-  importe_a_cobrar DECIMAL(15,2) DEFAULT 0.00,
-  importe_cobrado DECIMAL(15,2) DEFAULT 0.00,
-  saldo_por_cobrar DECIMAL(15,2) DEFAULT 0.00,
-  fecha_pago DATE,
-  periodo VARCHAR(50),
+  -- INDIRECTOS (nuevo)
+  factor_indirectos DECIMAL(5,2) DEFAULT 0.20,         -- FACTOR (ej: 0.20 = 20%, 0.30 = 30%)
+  indirectos_aplicados DECIMAL(15,2) DEFAULT 0.00,     -- APLICADO de indirectos (captura manual)
 
-  fecha_reporte DATE DEFAULT (CURRENT_DATE()),
+  -- Campos calculados (se guardan para reportes pero se pueden recalcular):
+  -- importe_contratado = proyectos.presupuesto_total
+  -- importe_a_cobrar = importe_contratado - importe_cobrado
+  -- liquido_por_cobrar = importe_a_cobrar - fondo_garantia
+  -- facturas_por_cobrar = SUM de facturas pendientes
+  -- aplicado = SUM(pedidos) + SUM(viaticos gastado)
+  -- cobrado_vs_aplicado = importe_cobrado - aplicado (números rojos si es negativo)
+  -- INDIRECTOS:
+  -- indirectos_esperado = importe_contratado * factor_indirectos
+  -- indirectos_cobrado = importe_cobrado * factor_indirectos
+  -- indirectos_cobrado_vs_aplicado = indirectos_cobrado - indirectos_aplicados
+
+  fecha_actualizacion DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  nombre_usuario VARCHAR(50),
 
   FOREIGN KEY (id_proyecto) REFERENCES proyectos(id_proyecto)
+    ON DELETE CASCADE ON UPDATE CASCADE,
+  FOREIGN KEY (nombre_usuario) REFERENCES usuarios(nombre_usuario)
+    ON UPDATE CASCADE ON DELETE SET NULL
+);
+
+-- Para bases existentes, agregar columnas de indirectos:
+-- ALTER TABLE cobranza_proyecto ADD COLUMN factor_indirectos DECIMAL(5,2) DEFAULT 0.20;
+-- ALTER TABLE cobranza_proyecto ADD COLUMN indirectos_aplicados DECIMAL(15,2) DEFAULT 0.00;
+
+------------------------------------------------------------
+-- Tabla cobranza_facturas (detalle de facturas por proyecto)
+-- Similar a las hojas individuales por proyecto del Excel
+------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS cobranza_facturas (
+  id_factura INT AUTO_INCREMENT PRIMARY KEY,
+  id_proyecto INT NOT NULL,
+
+  numero INT,                                           -- N° consecutivo
+  fecha DATE,                                           -- FECHA de factura
+  numero_factura VARCHAR(50),                           -- N° FACTURA
+  concepto VARCHAR(100),                                -- CONCEPTO (ej: EST 01, ANTICIPO 70%)
+  importe_a_cobrar DECIMAL(15,2) DEFAULT 0.00,         -- IMPORTE A COBRAR
+  importe_cobrado DECIMAL(15,2) DEFAULT 0.00,          -- IMPORTE COBRADO
+  saldo_por_cobrar DECIMAL(15,2) DEFAULT 0.00,         -- SALDO POR COBRAR
+  fecha_pago DATE,                                      -- FECHA DE PAGO
+  periodo VARCHAR(100),                                 -- PERIODO (ej: 29/03/2025 AL 18/04/2025)
+
+  fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP,
+  nombre_usuario VARCHAR(50),
+
+  FOREIGN KEY (id_proyecto) REFERENCES proyectos(id_proyecto)
+    ON DELETE CASCADE ON UPDATE CASCADE,
+  FOREIGN KEY (nombre_usuario) REFERENCES usuarios(nombre_usuario)
+    ON UPDATE CASCADE ON DELETE SET NULL
+);
+
+------------------------------------------------------------
+-- Tabla viaticos_presupuestos
+------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS viaticos_presupuestos (
+  id_presupuesto INT AUTO_INCREMENT PRIMARY KEY,
+  id_proyecto INT NOT NULL,
+  familia ENUM('Mano de Obra', 'Viáticos', 'Fletes') NOT NULL,
+  presupuesto_asignado DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+  gastado DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+  fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP,
+  nombre_usuario VARCHAR(50) NOT NULL,
+
+  CONSTRAINT uk_viaticos_proyecto_familia UNIQUE (id_proyecto, familia),
+  FOREIGN KEY (id_proyecto) REFERENCES proyectos(id_proyecto)
+    ON DELETE CASCADE ON UPDATE CASCADE,
+  FOREIGN KEY (nombre_usuario) REFERENCES usuarios(nombre_usuario)
+    ON UPDATE CASCADE ON DELETE RESTRICT
+);
+
+------------------------------------------------------------
+-- Tabla viaticos_movimientos
+------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS viaticos_movimientos (
+  id_movimiento INT AUTO_INCREMENT PRIMARY KEY,
+  id_proyecto INT NOT NULL,
+  familia ENUM('Mano de Obra', 'Viáticos', 'Fletes') NOT NULL,
+  persona VARCHAR(255) NOT NULL,
+  concepto TEXT NOT NULL,
+  clave_referencia VARCHAR(100),
+  fecha DATE NOT NULL,
+  ingreso DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+  egreso DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+  saldo DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+  fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP,
+  nombre_usuario VARCHAR(50) NOT NULL,
+
+  INDEX idx_proyecto_familia (id_proyecto, familia),
+  INDEX idx_fecha (fecha),
+  FOREIGN KEY (id_proyecto) REFERENCES proyectos(id_proyecto)
+    ON DELETE CASCADE ON UPDATE CASCADE,
+  FOREIGN KEY (nombre_usuario) REFERENCES usuarios(nombre_usuario)
+    ON UPDATE CASCADE ON DELETE RESTRICT
 );
 
 ------------------------------------------------------------
@@ -314,6 +415,114 @@ BEGIN
       IFNULL((SELECT SUM(importe) FROM pedidos_detalles_miscelaneos WHERE id_pedido = OLD.id_pedido),0)
     + IFNULL((SELECT SUM(importe) FROM pedidos_detalles_cristal WHERE id_pedido = OLD.id_pedido),0)
   WHERE id = OLD.id_pedido;
+END;
+//
+
+------------------------------------------------------------
+-- TRIGGERS PARA VIÁTICOS
+------------------------------------------------------------
+-- FIXED: These triggers now only update viaticos_presupuestos, not viaticos_movimientos
+-- The saldo calculation is handled by the stored procedure sp_recalcular_saldos_viaticos
+
+CREATE TRIGGER trg_viaticos_mov_after_insert
+AFTER INSERT ON viaticos_movimientos
+FOR EACH ROW
+BEGIN
+  -- Update gastado in presupuestos
+  INSERT INTO viaticos_presupuestos (id_proyecto, familia, gastado, nombre_usuario, presupuesto_asignado)
+  VALUES (
+    NEW.id_proyecto,
+    NEW.familia,
+    (SELECT IFNULL(SUM(egreso) - SUM(ingreso), 0) FROM viaticos_movimientos
+     WHERE id_proyecto = NEW.id_proyecto AND familia = NEW.familia),
+    NEW.nombre_usuario,
+    0.00
+  )
+  ON DUPLICATE KEY UPDATE gastado = VALUES(gastado);
+END;
+//
+
+CREATE TRIGGER trg_viaticos_mov_after_update
+AFTER UPDATE ON viaticos_movimientos
+FOR EACH ROW
+BEGIN
+  UPDATE viaticos_presupuestos
+  SET gastado = (
+    SELECT IFNULL(SUM(egreso) - SUM(ingreso), 0) FROM viaticos_movimientos
+    WHERE id_proyecto = NEW.id_proyecto AND familia = NEW.familia
+  )
+  WHERE id_proyecto = NEW.id_proyecto AND familia = NEW.familia;
+END;
+//
+
+CREATE TRIGGER trg_viaticos_mov_after_delete
+AFTER DELETE ON viaticos_movimientos
+FOR EACH ROW
+BEGIN
+  UPDATE viaticos_presupuestos
+  SET gastado = (
+    SELECT IFNULL(SUM(egreso) - SUM(ingreso), 0) FROM viaticos_movimientos
+    WHERE id_proyecto = OLD.id_proyecto AND familia = OLD.familia
+  )
+  WHERE id_proyecto = OLD.id_proyecto AND familia = OLD.familia;
+END;
+//
+
+------------------------------------------------------------
+-- STORED PROCEDURE FOR RECALCULATING SALDOS
+------------------------------------------------------------
+-- This procedure recalculates saldos for a specific project/familia
+-- It's called from the application after inserting/updating/deleting movements
+
+DROP PROCEDURE IF EXISTS sp_recalcular_saldos_viaticos;
+//
+
+CREATE PROCEDURE sp_recalcular_saldos_viaticos(
+  IN p_id_proyecto INT,
+  IN p_familia VARCHAR(50)
+)
+BEGIN
+  DECLARE v_saldo DECIMAL(15,2);
+  DECLARE v_id INT;
+  DECLARE v_ingreso DECIMAL(15,2);
+  DECLARE v_egreso DECIMAL(15,2);
+  DECLARE done INT DEFAULT FALSE;
+
+  -- Cursor to iterate through all movements ordered by date and id
+  DECLARE cur CURSOR FOR
+    SELECT id_movimiento, ingreso, egreso
+    FROM viaticos_movimientos
+    WHERE id_proyecto = p_id_proyecto AND familia = p_familia
+    ORDER BY fecha ASC, id_movimiento ASC;
+
+  -- Handler for when cursor reaches end
+  DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
+
+  -- Initialize running balance
+  SET v_saldo = 0;
+
+  -- Open cursor
+  OPEN cur;
+
+  -- Loop through all movements
+  read_loop: LOOP
+    FETCH cur INTO v_id, v_ingreso, v_egreso;
+
+    IF done THEN
+      LEAVE read_loop;
+    END IF;
+
+    -- Calculate new balance
+    SET v_saldo = v_saldo + v_ingreso - v_egreso;
+
+    -- Update the saldo for this specific movement
+    UPDATE viaticos_movimientos
+    SET saldo = v_saldo
+    WHERE id_movimiento = v_id;
+  END LOOP;
+
+  -- Close cursor
+  CLOSE cur;
 END;
 //
 

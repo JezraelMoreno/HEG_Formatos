@@ -5,11 +5,15 @@ import "./mainPage.css";
 import { authHeader, clearToken, getRole, getToken, isTokenValid } from "../auth";
 import { parsePedidosCsv } from "../utils/pedidosCsv";
 import type { PedidoCsv } from "../utils/pedidosCsv";
+import pedidosImg from "../../assets/proyectos.png";
+import contabilidadImg from "../../assets/contabilidad.png";
+import viaticosImg from "../../assets/viaticos.png";
 
 type Proyecto = {
   id_proyecto: number;
   nombre: string;
   fecha_proyecto: string; // formato YYYY-MM-DD
+  estado?: 'en_progreso' | 'completado';
   presupuesto?: number;
   presupuesto_total?: number;
   presupuesto_cristal?: number;
@@ -28,6 +32,8 @@ type PedidoResumen = {
 };
 
 type DateInputWithPicker = HTMLInputElement & { showPicker?: () => void };
+
+type ModuleKey = "pedidos" | "contabilidad" | "viaticos" | "dashboards";
 
 const getTodayISO = () => {
   const now = new Date();
@@ -104,6 +110,7 @@ export function MainPage() {
   const [cargandoResumen, setCargandoResumen] = useState(false);
   const [errorResumen, setErrorResumen] = useState("");
   const [busquedaProyecto, setBusquedaProyecto] = useState("");
+  const [moduloSeleccionado, setModuloSeleccionado] = useState<ModuleKey | null>(null);
   const pedidoFileInputRef = useRef<HTMLInputElement | null>(null);
   const filtroFechaRef = useRef<HTMLInputElement | null>(null);
   const role = (getRole() || "").toLowerCase();
@@ -115,10 +122,60 @@ export function MainPage() {
     },
     0
   );
+  const modulos: Array<{ key: ModuleKey; titulo: string; descripcion: string; imagen: string }> = [
+    {
+      key: "pedidos",
+      titulo: "Módulo de Pedidos",
+      descripcion: "Carga y consulta los pedidos asociados a cada proyecto.",
+      imagen: pedidosImg,
+    },
+    {
+      key: "contabilidad",
+      titulo: "Módulo de Contabilidad",
+      descripcion: "Crea proyectos, ajusta presupuestos y genera la cobranza.",
+      imagen: contabilidadImg,
+    },
+    {
+      key: "viaticos",
+      titulo: "Módulo de Viáticos",
+      descripcion: "Visualiza los proyectos para gestionar viáticos y gastos.",
+      imagen: viaticosImg,
+    },
+    {
+      key: "dashboards",
+      titulo: "Módulo de Dashboards",
+      descripcion: "Visualiza métricas y análisis de proyectos, presupuestos y materiales.",
+      imagen: contabilidadImg,
+    },
+  ];
+  const moduloActivo = moduloSeleccionado ? modulos.find((m) => m.key === moduloSeleccionado) : null;
+  const esModuloContabilidad = moduloSeleccionado === "contabilidad";
+  const mostrarBuscador = Boolean(moduloSeleccionado) && moduloSeleccionado !== "dashboards";
+  const mostrarProyectos = Boolean(moduloSeleccionado) && moduloSeleccionado !== "dashboards";
 
   const handleLogout = () => {
     clearToken();
     navigate("/");
+  };
+
+  const seleccionarModulo = (key: ModuleKey) => {
+    if (key === "dashboards") {
+      navigate("/dashboards/ejecutivo");
+      return;
+    }
+    setModuloSeleccionado(key);
+    setBusquedaProyecto("");
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem("moduloActual", key);
+    }
+  };
+
+  const volverAModulos = () => {
+    setModuloSeleccionado(null);
+    setBusquedaProyecto("");
+    if (typeof window !== "undefined") {
+      sessionStorage.removeItem("moduloActual");
+    }
   };
 
   const cargarProyectos = async () => {
@@ -262,6 +319,29 @@ export function MainPage() {
       setError("Error de conexión al eliminar proyecto");
     } finally {
       setEliminandoProyecto(false);
+    }
+  };
+
+  const cambiarEstadoProyecto = async (idProyecto: number, nuevoEstado: 'en_progreso' | 'completado', event: MouseEvent<HTMLSelectElement>) => {
+    event.stopPropagation();
+    try {
+      const res = await fetch(`http://localhost:3000/proyectos/${idProyecto}/estado`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeader(),
+        },
+        body: JSON.stringify({ estado: nuevoEstado }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        setError(data?.message || "No se pudo actualizar el estado del proyecto");
+        return;
+      }
+      setMensajeGeneral(`Estado del proyecto actualizado a: ${nuevoEstado === 'en_progreso' ? 'En Progreso' : 'Completado'}`);
+      await cargarProyectos();
+    } catch {
+      setError("Error de conexión al cambiar estado del proyecto");
     }
   };
 
@@ -453,45 +533,62 @@ export function MainPage() {
 
   return (
     <div className="main-page">
-      <h1 className="titulo">Página Principal</h1>
-      <div className="search-bar">
-        <label htmlFor="busqueda-proyecto" className="visually-hidden">
-          Buscar proyecto
-        </label>
-        <input
-          id="busqueda-proyecto"
-          type="text"
-          placeholder="Buscar proyecto"
-          value={busquedaProyecto}
-          onChange={(e) => setBusquedaProyecto(e.target.value)}
-        />
-      </div>
-
-      <div className="actions">
-        {isAdmin && (
-          <>
-            <input
-              ref={pedidoFileInputRef}
-              type="file"
-              accept=".csv,text/csv"
-              style={{ display: "none" }}
-              multiple
-              onChange={subirPedidosDesdeCsv}
-            />
-            <button className="action-button create-button" onClick={abrirCargaPedidos} disabled={subiendoPedidos}>
-              {subiendoPedidos ? "Subiendo pedidos..." : "Agregar pedidos"}
+      <div className="encabezado">
+        <div className="titulo-bloque">
+          <h1 className="titulo">{moduloActivo ? moduloActivo.titulo : "Pagina Principal"}</h1>
+        </div>
+        <div className="actions">
+          {mostrarBuscador && (
+            <div className="search-bar search-bar-inline">
+              <label htmlFor="busqueda-proyecto" className="visually-hidden">
+                Buscar proyecto
+              </label>
+              <input
+                id="busqueda-proyecto"
+                type="text"
+                placeholder="Buscar proyecto"
+                value={busquedaProyecto}
+                onChange={(e) => setBusquedaProyecto(e.target.value)}
+              />
+            </div>
+          )}
+          {moduloSeleccionado && (
+            <button className="action-button secondary-button" onClick={volverAModulos}>
+              Cambiar módulo
             </button>
-          </>
-        )}
-        <button className="action-button create-button" onClick={abrirModal}>
-          Crear proyecto
-        </button>
-        <button className="action-button create-button" onClick={generarCobranzaTotal}>
-          Generar cobranza total
-        </button>
-        <button className="action-button logout-button" onClick={handleLogout}>
-          Cerrar sesión
-        </button>
+          )}
+
+          {moduloSeleccionado === "pedidos" && isAdmin && (
+            <>
+              <input
+                ref={pedidoFileInputRef}
+                type="file"
+                accept=".csv,text/csv"
+                style={{ display: "none" }}
+                multiple
+                onChange={subirPedidosDesdeCsv}
+              />
+              <button className="action-button create-button" onClick={abrirCargaPedidos} disabled={subiendoPedidos}>
+                {subiendoPedidos ? "Subiendo pedidos..." : "Agregar pedidos"}
+              </button>
+            </>
+          )}
+
+          {esModuloContabilidad && (
+            <>
+              <button className="action-button create-button" onClick={abrirModal}>
+                Crear proyecto
+              </button>
+              <button className="action-button create-button" onClick={generarCobranzaTotal}>
+                Generar cobranza total
+              </button>
+            </>
+          )}
+
+          <button className="action-button logout-button" onClick={handleLogout}>
+            Cerrar sesión
+          </button>
+        </div>
       </div>
 
       <div className="contenido">
@@ -505,25 +602,98 @@ export function MainPage() {
 
         <div className="paneles">
           <section className="panel panel-proyectos">
-            {!loading && !error && (
-              <ul className="lista-proyectos">
-                {proyectosFiltrados.map((p) => {
-                  const totalPedidos = p.total_pedidos ?? 0;
-                  const sumaFamilias = (p.presupuesto_cristal ?? 0) + (p.presupuesto_aluminio ?? 0) + (p.presupuesto_miscelaneos ?? 0);
-                  const presupuestoRestante = (p.presupuesto_total ?? 0) || sumaFamilias || (p.presupuesto ?? 0);
-                  const presupuestoAsignado = presupuestoRestante + totalPedidos;
-                  const claseDisponible = presupuestoRestante < 0 ? "presupuesto-disponible negativo" : "presupuesto-disponible positivo";
-                  const presupuestoFamilias = {
-                    cristal: p.presupuesto_cristal ?? 0,
-                    aluminio: p.presupuesto_aluminio ?? 0,
-                    miscelaneos: p.presupuesto_miscelaneos ?? 0,
-                  };
-                  return (
-                    <li
-                      key={p.id_proyecto}
-                      className="item-proyecto"
-                      onClick={() =>
-                        navigate(`/proyecto/${p.id_proyecto}`, {
+            {!mostrarProyectos && moduloSeleccionado !== "dashboards" && (
+              <div className="module-selector">
+                {modulos.map((modulo) => (
+                  <button
+                    key={modulo.key}
+                    className="module-card"
+                    type="button"
+                    onClick={() => seleccionarModulo(modulo.key)}
+                  >
+                    <div className="module-image">
+                      <img src={modulo.imagen} alt={modulo.titulo} />
+                    </div>
+                    <div className="module-content">
+                      <span className="module-chip">Entrar</span>
+                      <h3>{modulo.titulo}</h3>
+                      <p>{modulo.descripcion}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {moduloSeleccionado === "dashboards" && (
+              <div className="module-selector">
+                <button
+                  className="module-card"
+                  type="button"
+                  onClick={() => navigate("/dashboards/ejecutivo")}
+                >
+                  <div className="module-content">
+                    <span className="module-chip">Ver</span>
+                    <h3>Dashboard Ejecutivo</h3>
+                    <p>Vista general del sistema de proyectos</p>
+                  </div>
+                </button>
+                <button
+                  className="module-card"
+                  type="button"
+                  onClick={() => navigate("/dashboards/presupuestos")}
+                >
+                  <div className="module-content">
+                    <span className="module-chip">Ver</span>
+                    <h3>Dashboard de Presupuestos</h3>
+                    <p>Análisis financiero y control presupuestal</p>
+                  </div>
+                </button>
+                <button
+                  className="module-card"
+                  type="button"
+                  onClick={() => navigate("/dashboards/proyectos")}
+                >
+                  <div className="module-content">
+                    <span className="module-chip">Ver</span>
+                    <h3>Dashboard de Proyectos</h3>
+                    <p>Seguimiento y control de proyectos</p>
+                  </div>
+                </button>
+                <button
+                  className="module-card"
+                  type="button"
+                  onClick={() => navigate("/dashboards/materiales")}
+                >
+                  <div className="module-content">
+                    <span className="module-chip">Ver</span>
+                    <h3>Dashboard de Materiales</h3>
+                    <p>Gestión de inventario y proyección de compras</p>
+                  </div>
+                </button>
+              </div>
+            )}
+
+            {mostrarProyectos && (
+              <div className="proyectos-wrapper">
+                {!loading && !error && (
+                  <ul className="lista-proyectos">
+                    {proyectosFiltrados.map((p) => {
+                      const totalPedidos = p.total_pedidos ?? 0;
+                      const sumaFamilias = (p.presupuesto_cristal ?? 0) + (p.presupuesto_aluminio ?? 0) + (p.presupuesto_miscelaneos ?? 0);
+                      const presupuestoRestante = (p.presupuesto_total ?? 0) || sumaFamilias || (p.presupuesto ?? 0);
+                      const presupuestoAsignado = presupuestoRestante + totalPedidos;
+                      const claseDisponible = presupuestoRestante < 0 ? "presupuesto-disponible negativo" : "presupuesto-disponible positivo";
+                      const presupuestoFamilias = {
+                        cristal: p.presupuesto_cristal ?? 0,
+                        aluminio: p.presupuesto_aluminio ?? 0,
+                        miscelaneos: p.presupuesto_miscelaneos ?? 0,
+                      };
+                      return (
+                        <li
+                          key={p.id_proyecto}
+                          className="item-proyecto"
+                          onClick={() =>
+                            navigate(`/proyecto/${p.id_proyecto}`, {
                           state: {
                             nombre: p.nombre,
                             fecha: p.fecha_proyecto,
@@ -533,48 +703,66 @@ export function MainPage() {
                             presupuesto_aluminio: presupuestoFamilias.aluminio,
                             presupuesto_miscelaneos: presupuestoFamilias.miscelaneos,
                             total_pedidos: totalPedidos,
+                            modulo: moduloSeleccionado || undefined,
                           },
                         })
                       }
                       style={{ cursor: "pointer" }}
                     >
-                      <div className="proyecto-info">
-                        <span className="nombre">{p.nombre}</span>
-                        <span className="fecha">{p.fecha_proyecto}</span>
-                        <div className="presupuesto-resumen">
-                          <span>Asignado: {formatCurrency(presupuestoAsignado)}</span>
-                          <span>Gastado: {formatCurrency(totalPedidos)}</span>
-                          <span className={claseDisponible}>Disponible: {formatCurrency(presupuestoRestante)}</span>
-                        </div>
-                        <div className="presupuesto-familias">
-                          <span className="presupuesto-chip">CR: <strong>{formatCurrency(presupuestoFamilias.cristal)}</strong></span>
-                          <span className="presupuesto-chip">AL: <strong>{formatCurrency(presupuestoFamilias.aluminio)}</strong></span>
-                          <span className="presupuesto-chip">MI: <strong>{formatCurrency(presupuestoFamilias.miscelaneos)}</strong></span>
-                        </div>
-                      </div>
-                      {isAdmin && (
-                        <button
-                          type="button"
-                          className="icon-button trash-button"
-                          aria-label={`Eliminar proyecto ${p.nombre}`}
-                          onClick={(event) => abrirConfirmacionEliminar(p, event)}
-                        >
-                          <TrashIcon />
-                        </button>
-                      )}
-                    </li>
-                  );
-                })}
-                {proyectos.length === 0 && <li>No hay proyectos aún</li>}
-                {proyectos.length > 0 && proyectosFiltrados.length === 0 && <li>No se encontraron proyectos</li>}
-              </ul>
+                          <div className="proyecto-info">
+                            <span className="nombre">{p.nombre}</span>
+                            <span className="fecha">{p.fecha_proyecto}</span>
+                            <div className="presupuesto-resumen">
+                              <span>Asignado: {formatCurrency(presupuestoAsignado)}</span>
+                              <span>Gastado: {formatCurrency(totalPedidos)}</span>
+                              <span className={claseDisponible}>Disponible: {formatCurrency(presupuestoRestante)}</span>
+                            </div>
+                            <div className="presupuesto-familias">
+                              <span className="presupuesto-chip">CR: <strong>{formatCurrency(presupuestoFamilias.cristal)}</strong></span>
+                              <span className="presupuesto-chip">AL: <strong>{formatCurrency(presupuestoFamilias.aluminio)}</strong></span>
+                              <span className="presupuesto-chip">MI: <strong>{formatCurrency(presupuestoFamilias.miscelaneos)}</strong></span>
+                            </div>
+                            {esModuloContabilidad && (
+                              <div className="estado-selector">
+                                <label htmlFor={`estado-${p.id_proyecto}`}>Estado:</label>
+                                <select
+                                  id={`estado-${p.id_proyecto}`}
+                                  value={p.estado || 'en_progreso'}
+                                  onChange={(e) => cambiarEstadoProyecto(p.id_proyecto, e.target.value as 'en_progreso' | 'completado', e as any)}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className={`estado-select ${p.estado === 'completado' ? 'completado' : 'en-progreso'}`}
+                                >
+                                  <option value="en_progreso">En Progreso</option>
+                                  <option value="completado">Completado</option>
+                                </select>
+                              </div>
+                            )}
+                          </div>
+                          {isAdmin && (
+                            <button
+                              type="button"
+                              className="icon-button trash-button"
+                              aria-label={`Eliminar proyecto ${p.nombre}`}
+                              onClick={(event) => abrirConfirmacionEliminar(p, event)}
+                            >
+                              <TrashIcon />
+                            </button>
+                          )}
+                        </li>
+                      );
+                    })}
+                    {proyectos.length === 0 && <li>No hay proyectos aún</li>}
+                    {proyectos.length > 0 && proyectosFiltrados.length === 0 && <li>No se encontraron proyectos</li>}
+                  </ul>
+                )}
+              </div>
             )}
           </section>
 
           {isAdmin && (
             <section className="panel panel-resumen">
               <div className="panel-resumen-header">
-                <h2>Pedidos subidos</h2>
+                <h2>Pedidos ingresados</h2>
                 <div className="resumen-filtros">
                   <div className="filtro campo-fecha">
                     <label htmlFor="filtro-fecha">Fecha</label>
