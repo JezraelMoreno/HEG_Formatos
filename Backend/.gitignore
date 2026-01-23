@@ -7,3 +7,4 @@ node_modules/
 # Archivos de build o cache
 dist/
 build/
+.claude/

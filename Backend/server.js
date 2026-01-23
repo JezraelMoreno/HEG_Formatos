@@ -525,7 +525,7 @@ app.get("/proyectos/:id/pedidos", authenticateToken, requireRole("administrador"
     query += " AND DATE(fecha_aprobacion) = ?";
     params.push(String(fecha));
   }
-  query += " ORDER BY id ASC";
+  query += " ORDER BY clan ASC, familia ASC, CAST(pedido AS UNSIGNED) ASC";
   db.query(query, params, async (err, results) => {
     if (err) {
       console.error("Error consultando pedidos:", err);
@@ -799,7 +799,7 @@ app.get("/proyectos/:id/pedidos/export", authenticateToken, requireRole("adminis
     qPedidos += " AND DATE(fecha_aprobacion) = ?";
     pedidosParams.push(String(fecha));
   }
-  qPedidos += " ORDER BY id ASC";
+  qPedidos += " ORDER BY clan ASC, familia ASC, CAST(pedido AS UNSIGNED) ASC";
 
   db.query(qProyecto, [id], (e1, projRows) => {
     if (e1) {

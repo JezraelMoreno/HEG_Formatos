@@ -360,6 +360,14 @@
   background: #fafbfc;
   text-align: left;
 }
+.tabla-pedidos thead th.th-sortable {
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.2s;
+}
+.tabla-pedidos thead th.th-sortable:hover {
+  background: #e8ecf0;
+}
 .tabla-pedidos tbody tr:hover {
   background: #fafafa;
 }

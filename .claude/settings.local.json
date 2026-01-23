@@ -21,7 +21,10 @@
       "Bash(npx tsc:*)",
       "Bash(node --check:*)",
       "Bash(tasklist:*)",
-      "Bash(findstr:*)"
+      "Bash(findstr:*)",
+      "Bash(git show:*)",
+      "Bash(node scripts/generate_excel.js:*)",
+      "Bash(gh issue list:*)"
     ]
   }
 }

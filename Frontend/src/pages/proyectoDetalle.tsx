@@ -327,7 +327,8 @@ export function ProyectoDetalle() {
   const [error, setError] = useState<string>("");
   const [cargandoPedidos, setCargandoPedidos] = useState(false);
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
-  const [ordenPedidos, setOrdenPedidos] = useState<"desc" | "asc">("desc");
+  const [ordenColumna, setOrdenColumna] = useState<keyof Pedido | null>(null);
+  const [ordenDireccion, setOrdenDireccion] = useState<"asc" | "desc">("asc");
   const [pedidoSeleccionado, setPedidoSeleccionado] = useState<Pedido | null>(null);
   const [detallesPedido, setDetallesPedido] = useState<PedidoDetalleItem[]>([]);
   const [detallesCristal, setDetallesCristal] = useState<PedidoDetalleCristalItem[]>([]);
@@ -393,18 +394,48 @@ export function ProyectoDetalle() {
   const clasePresupuestoCristal = presupuestoCristal < 0 ? "monto-negativo" : "monto-positivo";
   const clasePresupuestoAluminio = presupuestoAluminio < 0 ? "monto-negativo" : "monto-positivo";
   const clasePresupuestoMiscelaneos = presupuestoMiscelaneos < 0 ? "monto-negativo" : "monto-positivo";
+  // Ordenamiento dinámico de pedidos por columna seleccionada
   const pedidosOrdenados = useMemo(() => {
-    const toTime = (valor: string) => {
-      const time = Date.parse(valor);
-      return Number.isNaN(time) ? 0 : time;
-    };
+    if (!ordenColumna) return pedidos;
     const copia = [...pedidos];
     copia.sort((a, b) => {
-      const diff = toTime(b.fecha_aprobacion) - toTime(a.fecha_aprobacion);
-      return ordenPedidos === "desc" ? diff : -diff;
+      let valA = a[ordenColumna];
+      let valB = b[ordenColumna];
+      // Ordenamiento numérico para pedido e importe
+      if (ordenColumna === "pedido") {
+        const numA = parseInt(String(valA).replace(/\D/g, ""), 10) || 0;
+        const numB = parseInt(String(valB).replace(/\D/g, ""), 10) || 0;
+        return ordenDireccion === "asc" ? numA - numB : numB - numA;
+      }
+      if (ordenColumna === "importe") {
+        const numA = Number(valA) || 0;
+        const numB = Number(valB) || 0;
+        return ordenDireccion === "asc" ? numA - numB : numB - numA;
+      }
+      // Ordenamiento por fecha
+      if (ordenColumna === "fecha_aprobacion") {
+        const timeA = Date.parse(String(valA)) || 0;
+        const timeB = Date.parse(String(valB)) || 0;
+        return ordenDireccion === "asc" ? timeA - timeB : timeB - timeA;
+      }
+      // Ordenamiento alfabético para el resto
+      const strA = String(valA || "").toLowerCase();
+      const strB = String(valB || "").toLowerCase();
+      if (strA < strB) return ordenDireccion === "asc" ? -1 : 1;
+      if (strA > strB) return ordenDireccion === "asc" ? 1 : -1;
+      return 0;
     });
     return copia;
-  }, [ordenPedidos, pedidos]);
+  }, [pedidos, ordenColumna, ordenDireccion]);
+
+  const manejarOrdenColumna = useCallback((columna: keyof Pedido) => {
+    if (ordenColumna === columna) {
+      setOrdenDireccion((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setOrdenColumna(columna);
+      setOrdenDireccion("asc");
+    }
+  }, [ordenColumna]);
 
   // filtros
   const [familiasSeleccionadas, setFamiliasSeleccionadas] = useState<string[]>([]);
@@ -979,9 +1010,6 @@ export function ProyectoDetalle() {
     }
   };
 
-  const alternarOrdenPedidos = useCallback(() => {
-    setOrdenPedidos((prev) => (prev === "desc" ? "asc" : "desc"));
-  }, []);
 
   const cerrarModalDetalles = useCallback(() => {
     setPedidoSeleccionado(null);
@@ -1514,14 +1542,6 @@ export function ProyectoDetalle() {
               <div className="tabla-toolbar">
                 <div className="tabla-header">Pedidos del proyecto</div>
                 <div className="tabla-actions">
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={alternarOrdenPedidos}
-                    disabled={pedidos.length === 0}
-                  >
-                    Ordenar por fecha ({ordenPedidos === "desc" ? "recientes primero" : "antiguos primero"})
-                  </button>
                   <button className="btn btn-primary" onClick={exportarExplosion} disabled={pedidos.length === 0}>
                     Generar explosión de insumos
                   </button>
@@ -1535,14 +1555,28 @@ export function ProyectoDetalle() {
                 <table className="tabla-pedidos">
                   <thead>
                     <tr>
-                      <th>Pedido</th>
-                      <th>Clan</th>
-                      <th>Familia</th>
-                      <th>Proveedor</th>
-                      <th>Fecha Aprobacion</th>
-                      <th>Concepto</th>
+                      <th className="th-sortable" onClick={() => manejarOrdenColumna("pedido")}>
+                        Pedido {ordenColumna === "pedido" && (ordenDireccion === "asc" ? "▲" : "▼")}
+                      </th>
+                      <th className="th-sortable" onClick={() => manejarOrdenColumna("clan")}>
+                        Clan {ordenColumna === "clan" && (ordenDireccion === "asc" ? "▲" : "▼")}
+                      </th>
+                      <th className="th-sortable" onClick={() => manejarOrdenColumna("familia")}>
+                        Familia {ordenColumna === "familia" && (ordenDireccion === "asc" ? "▲" : "▼")}
+                      </th>
+                      <th className="th-sortable" onClick={() => manejarOrdenColumna("proveedor")}>
+                        Proveedor {ordenColumna === "proveedor" && (ordenDireccion === "asc" ? "▲" : "▼")}
+                      </th>
+                      <th className="th-sortable" onClick={() => manejarOrdenColumna("fecha_aprobacion")}>
+                        Fecha Aprobacion {ordenColumna === "fecha_aprobacion" && (ordenDireccion === "asc" ? "▲" : "▼")}
+                      </th>
+                      <th className="th-sortable" onClick={() => manejarOrdenColumna("concepto")}>
+                        Concepto {ordenColumna === "concepto" && (ordenDireccion === "asc" ? "▲" : "▼")}
+                      </th>
                       <th>Situaciones</th>
-                      <th style={{ textAlign: "right" }}>Importe</th>
+                      <th className="th-sortable" style={{ textAlign: "right" }} onClick={() => manejarOrdenColumna("importe")}>
+                        Importe {ordenColumna === "importe" && (ordenDireccion === "asc" ? "▲" : "▼")}
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
