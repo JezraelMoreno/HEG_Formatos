@@ -1,25 +1,23 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { DashboardLayout } from './DashboardLayout';
 import { KPICard } from '../../components/charts/KPICard';
+import { PieChart } from '../../components/charts/PieChart';
 import '../../components/styles/KPICard.css';
 import '../../components/styles/charts.css';
 import './dashboards.css';
 
-interface CobranzaProyecto {
+interface CobranzaResumen {
   id_proyecto: number;
-  proyecto: string;
+  nombre_proyecto: string;
   codigo_control: string;
   importe_contratado: number;
   importe_cobrado: number;
   importe_a_cobrar: number;
   fondo_garantia: number;
   liquido_por_cobrar: number;
-  facturas_por_cobrar: number;
   aplicado: number;
   cobrado_vs_aplicado: number;
-  estado: string;
-  // Indirectos
   factor_indirectos: number;
   indirectos_aplicados: number;
   indirectos_esperado: number;
@@ -27,27 +25,15 @@ interface CobranzaProyecto {
   indirectos_cobrado_vs_aplicado: number;
 }
 
-interface CobranzaTotales {
-  importe_contratado: number;
+interface Factura {
+  id_factura: number;
+  numero_factura: string;
+  fecha_factura: string;
+  importe_factura: number;
   importe_cobrado: number;
-  importe_a_cobrar: number;
-  fondo_garantia: number;
-  liquido_por_cobrar: number;
-  facturas_por_cobrar: number;
-  aplicado: number;
-  cobrado_vs_aplicado: number;
-  // Indirectos
-  indirectos_esperado: number;
-  indirectos_cobrado: number;
-  indirectos_aplicados: number;
-  indirectos_cobrado_vs_aplicado: number;
-}
-
-interface CobranzaData {
-  data: CobranzaProyecto[];
-  totales: CobranzaTotales;
-  proyectos_en_rojo: number;
-  proyectos_indirectos_rojo: number;
+  saldo_por_cobrar: number;
+  fecha_cobro: string | null;
+  observaciones: string;
 }
 
 const formatCurrency = (value: number): string => {
@@ -59,34 +45,58 @@ const formatCurrency = (value: number): string => {
   }).format(value);
 };
 
+const formatDate = (dateStr: string | null): string => {
+  if (!dateStr) return '-';
+  return new Date(dateStr).toLocaleDateString('es-MX', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  });
+};
+
 export const DashboardCobranza: React.FC = () => {
+  const { projectId } = useParams();
   const navigate = useNavigate();
-  const [data, setData] = useState<CobranzaData | null>(null);
+  const [resumen, setResumen] = useState<CobranzaResumen | null>(null);
+  const [facturas, setFacturas] = useState<Factura[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [filtroEstado, setFiltroEstado] = useState<'todos' | 'en_progreso' | 'completado' | 'en_rojo'>('todos');
-  const [busqueda, setBusqueda] = useState('');
-  const [exportando, setExportando] = useState(false);
 
   const fetchCobranzaData = useCallback(async () => {
+    if (!projectId || isNaN(Number(projectId))) {
+      navigate('/dashboards');
+      return;
+    }
+
     try {
       setLoading(true);
       const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:3000/cobranza-general', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+
+      // Fetch resumen de cobranza
+      const resumenResponse = await fetch(`http://localhost:3000/proyectos/${projectId}/cobranza-resumen`, {
+        headers: { 'Authorization': `Bearer ${token}` }
       });
 
-      if (response.ok) {
-        const result = await response.json();
-        if (result.success) {
-          setData(result);
-        } else {
-          setError(result.message || 'Error al cargar datos');
+      // Fetch facturas
+      const facturasResponse = await fetch(`http://localhost:3000/proyectos/${projectId}/cobranza-facturas`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (resumenResponse.ok) {
+        const resumenData = await resumenResponse.json();
+        if (resumenData.success) {
+          setResumen(resumenData.data);
         }
-      } else {
-        setError('Error de conexión');
+      } else if (resumenResponse.status === 404) {
+        navigate('/dashboards');
+        return;
+      }
+
+      if (facturasResponse.ok) {
+        const facturasData = await facturasResponse.json();
+        if (facturasData.success) {
+          setFacturas(facturasData.data || []);
+        }
       }
     } catch (err) {
       console.error('Error fetching cobranza data:', err);
@@ -94,71 +104,21 @@ export const DashboardCobranza: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [projectId, navigate]);
 
   useEffect(() => {
     fetchCobranzaData();
   }, [fetchCobranzaData]);
 
-  const exportarExcel = async () => {
-    try {
-      setExportando(true);
-      const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:3000/cobranza-general/export', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (response.ok) {
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `cobranza_general_${new Date().toISOString().slice(0, 10)}.xlsx`;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-      } else {
-        setError('Error al exportar');
-      }
-    } catch (err) {
-      console.error('Error exportando:', err);
-      setError('Error al exportar el archivo');
-    } finally {
-      setExportando(false);
-    }
-  };
-
-  const irAProyecto = (idProyecto: number) => {
-    navigate(`/proyecto/${idProyecto}`, { state: { moduloOrigen: 'contabilidad' } });
-  };
-
-  const proyectosFiltrados = data?.data.filter(p => {
-    // Filtro por estado
-    if (filtroEstado === 'en_progreso' && p.estado !== 'en_progreso') return false;
-    if (filtroEstado === 'completado' && p.estado !== 'completado') return false;
-    if (filtroEstado === 'en_rojo' && p.cobrado_vs_aplicado >= 0) return false;
-
-    // Filtro por búsqueda
-    if (busqueda) {
-      const searchLower = busqueda.toLowerCase();
-      return p.proyecto.toLowerCase().includes(searchLower) ||
-             p.codigo_control.toLowerCase().includes(searchLower);
-    }
-    return true;
-  }) || [];
-
   if (loading) {
     return (
       <DashboardLayout>
-        <div className="dashboard-loading">Cargando cobranza general...</div>
+        <div className="dashboard-loading">Cargando cobranza del proyecto...</div>
       </DashboardLayout>
     );
   }
 
-  if (error && !data) {
+  if (error && !resumen) {
     return (
       <DashboardLayout>
         <div className="dashboard-error">{error}</div>
@@ -166,208 +126,214 @@ export const DashboardCobranza: React.FC = () => {
     );
   }
 
-  const totales = data?.totales || {
-    importe_contratado: 0,
-    importe_cobrado: 0,
-    importe_a_cobrar: 0,
-    fondo_garantia: 0,
-    liquido_por_cobrar: 0,
-    facturas_por_cobrar: 0,
-    aplicado: 0,
-    cobrado_vs_aplicado: 0,
-    indirectos_esperado: 0,
-    indirectos_cobrado: 0,
-    indirectos_aplicados: 0,
-    indirectos_cobrado_vs_aplicado: 0
-  };
+  if (!resumen) {
+    return (
+      <DashboardLayout>
+        <div className="dashboard-error">No se encontraron datos de cobranza para este proyecto</div>
+      </DashboardLayout>
+    );
+  }
 
-  const porcentajeCobrado = totales.importe_contratado > 0
-    ? ((totales.importe_cobrado / totales.importe_contratado) * 100).toFixed(1)
+  const porcentajeCobrado = resumen.importe_contratado > 0
+    ? ((resumen.importe_cobrado / resumen.importe_contratado) * 100).toFixed(1)
     : '0';
 
+  const enRojo = resumen.cobrado_vs_aplicado < 0;
+  const indirectosEnRojo = resumen.indirectos_cobrado_vs_aplicado < 0;
+
+  // Datos para el pie chart
+  const pieData = [
+    { nombre: 'Cobrado', valor: resumen.importe_cobrado },
+    { nombre: 'Por Cobrar', valor: resumen.importe_a_cobrar },
+    { nombre: 'Fondo Garantía', valor: resumen.fondo_garantia }
+  ].filter(item => item.valor > 0);
+
   return (
-    <DashboardLayout>
+    <DashboardLayout projectName={resumen.nombre_proyecto}>
       <div className="dashboard-container">
         <div className="dashboard-header">
           <div>
-            <h1>Cobranza General</h1>
-            <p className="dashboard-subtitle">Tabla de cobranza a clientes - HEG Diseño e Instalación</p>
+            <h1>Dashboard de Cobranza</h1>
+            <p className="dashboard-subtitle">
+              Control de cobranza del proyecto
+              {resumen.codigo_control && ` - Control: ${resumen.codigo_control}`}
+            </p>
           </div>
-          <button
-            className="btn btn-primary"
-            onClick={exportarExcel}
-            disabled={exportando}
-          >
-            {exportando ? 'Exportando...' : 'Exportar Excel'}
-          </button>
         </div>
 
         {/* KPIs */}
         <div className="kpi-grid">
           <KPICard
             title="Importe Contratado"
-            value={formatCurrency(totales.importe_contratado)}
-            subtitle={`${data?.data.length || 0} proyectos`}
+            value={formatCurrency(resumen.importe_contratado)}
             color="#3b82f6"
           />
           <KPICard
             title="Importe Cobrado"
-            value={formatCurrency(totales.importe_cobrado)}
+            value={formatCurrency(resumen.importe_cobrado)}
             subtitle={`${porcentajeCobrado}% del contratado`}
             color="#10b981"
           />
           <KPICard
             title="Líquido por Cobrar"
-            value={formatCurrency(totales.liquido_por_cobrar)}
+            value={formatCurrency(resumen.liquido_por_cobrar)}
             color="#f59e0b"
           />
           <KPICard
             title="Cobrado vs Aplicado"
-            value={formatCurrency(totales.cobrado_vs_aplicado)}
-            subtitle={`${data?.proyectos_en_rojo || 0} proyectos en rojo`}
-            color={totales.cobrado_vs_aplicado < 0 ? '#ef4444' : '#10b981'}
+            value={formatCurrency(resumen.cobrado_vs_aplicado)}
+            subtitle={enRojo ? 'En números rojos' : 'Positivo'}
+            color={enRojo ? '#ef4444' : '#10b981'}
           />
         </div>
 
-        {/* Filtros */}
-        <div className="cobranza-filtros">
-          <input
-            type="text"
-            placeholder="Buscar proyecto..."
-            value={busqueda}
-            onChange={(e) => setBusqueda(e.target.value)}
-          />
-          <select
-            value={filtroEstado}
-            onChange={(e) => setFiltroEstado(e.target.value as typeof filtroEstado)}
-          >
-            <option value="todos">Todos los proyectos</option>
-            <option value="en_progreso">En progreso</option>
-            <option value="completado">Completados</option>
-            <option value="en_rojo">En números rojos</option>
-          </select>
-          <span className="cobranza-count">
-            Mostrando {proyectosFiltrados.length} de {data?.data.length || 0} proyectos
-          </span>
+        <div className="charts-grid">
+          {pieData.length > 0 && (
+            <div className="chart-item">
+              <PieChart
+                data={pieData}
+                dataKey="valor"
+                nameKey="nombre"
+                title="Distribución de Cobranza"
+                height={350}
+                colors={['#10b981', '#f59e0b', '#8b5cf6']}
+              />
+            </div>
+          )}
+
+          <div className="chart-item">
+            <div className="chart-container">
+              <h3 className="chart-title">Resumen de Cobranza</h3>
+              <div className="cobranza-resumen-detalle">
+                <div className="resumen-row">
+                  <span className="resumen-label">Importe Contratado:</span>
+                  <span className="resumen-value">{formatCurrency(resumen.importe_contratado)}</span>
+                </div>
+                <div className="resumen-row">
+                  <span className="resumen-label">Importe Cobrado:</span>
+                  <span className="resumen-value">{formatCurrency(resumen.importe_cobrado)}</span>
+                </div>
+                <div className="resumen-row">
+                  <span className="resumen-label">Importe por Cobrar:</span>
+                  <span className="resumen-value">{formatCurrency(resumen.importe_a_cobrar)}</span>
+                </div>
+                <div className="resumen-row">
+                  <span className="resumen-label">Fondo de Garantía:</span>
+                  <span className="resumen-value">{formatCurrency(resumen.fondo_garantia)}</span>
+                </div>
+                <div className="resumen-row">
+                  <span className="resumen-label">Líquido por Cobrar:</span>
+                  <span className="resumen-value">{formatCurrency(resumen.liquido_por_cobrar)}</span>
+                </div>
+                <div className="resumen-row highlight">
+                  <span className="resumen-label">Aplicado (Gastos):</span>
+                  <span className="resumen-value">{formatCurrency(resumen.aplicado)}</span>
+                </div>
+                <div className={`resumen-row ${enRojo ? 'danger' : 'success'}`}>
+                  <span className="resumen-label"><strong>Cobrado vs Aplicado:</strong></span>
+                  <span className="resumen-value"><strong>{formatCurrency(resumen.cobrado_vs_aplicado)}</strong></span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
-        {/* Tabla de cobranza */}
-        <div className="cobranza-tabla-wrapper">
-          <table className="tabla-cobranza">
-            <thead>
-              <tr>
-                <th rowSpan={2}>N</th>
-                <th rowSpan={2} className="text-left">Proyecto</th>
-                <th rowSpan={2}>Control</th>
-                <th rowSpan={2} className="text-right">Importe Contratado</th>
-                <th rowSpan={2} className="text-right">Importe Cobrado</th>
-                <th rowSpan={2} className="text-right">Importe a Cobrar</th>
-                <th rowSpan={2} className="text-right">Fondo Garantía</th>
-                <th rowSpan={2} className="text-right">Líquido por Cobrar</th>
-                <th rowSpan={2} className="text-right">Facturas por Cobrar</th>
-                <th rowSpan={2} className="text-right">Aplicado</th>
-                <th rowSpan={2} className="text-right">Cobrado vs Aplicado</th>
-                <th colSpan={5} className="text-center indirectos-header">INDIRECTOS</th>
-                <th rowSpan={2}>Estado</th>
-              </tr>
-              <tr>
-                <th className="text-center indirectos-subheader">Factor</th>
-                <th className="text-right indirectos-subheader">Esperado</th>
-                <th className="text-right indirectos-subheader">Cobrado</th>
-                <th className="text-right indirectos-subheader">Aplicado</th>
-                <th className="text-right indirectos-subheader">Cob. vs Apl.</th>
-              </tr>
-            </thead>
-            <tbody>
-              {proyectosFiltrados.map((row, idx) => {
-                const enRojo = row.cobrado_vs_aplicado < 0;
-                const indirectosEnRojo = row.indirectos_cobrado_vs_aplicado < 0;
-                return (
-                  <tr
-                    key={row.id_proyecto}
-                    className={enRojo ? 'en-rojo' : ''}
-                    onClick={() => irAProyecto(row.id_proyecto)}
-                  >
-                    <td className="text-center">{idx + 1}</td>
-                    <td className="proyecto-nombre">{row.proyecto}</td>
-                    <td className="text-center">{row.codigo_control || '-'}</td>
-                    <td className="text-right">{formatCurrency(row.importe_contratado)}</td>
-                    <td className="text-right">{formatCurrency(row.importe_cobrado)}</td>
-                    <td className="text-right">{formatCurrency(row.importe_a_cobrar)}</td>
-                    <td className="text-right">{formatCurrency(row.fondo_garantia)}</td>
-                    <td className="text-right">{formatCurrency(row.liquido_por_cobrar)}</td>
-                    <td className="text-right">{formatCurrency(row.facturas_por_cobrar)}</td>
-                    <td className="text-right">{formatCurrency(row.aplicado)}</td>
-                    <td className={`text-right ${enRojo ? 'valor-negativo' : 'valor-positivo'}`}>
-                      {formatCurrency(row.cobrado_vs_aplicado)}
-                    </td>
-                    {/* Indirectos */}
-                    <td className="text-center indirectos-col">{(row.factor_indirectos * 100).toFixed(0)}%</td>
-                    <td className="text-right indirectos-col">{formatCurrency(row.indirectos_esperado)}</td>
-                    <td className="text-right indirectos-col">{formatCurrency(row.indirectos_cobrado)}</td>
-                    <td className="text-right indirectos-col">{formatCurrency(row.indirectos_aplicados)}</td>
-                    <td className={`text-right indirectos-col ${indirectosEnRojo ? 'valor-negativo' : 'valor-positivo'}`}>
-                      {formatCurrency(row.indirectos_cobrado_vs_aplicado)}
-                    </td>
-                    <td className="text-center">
-                      <span className={`estado-badge ${row.estado === 'en_progreso' ? 'en-progreso' : 'completado'}`}>
-                        {row.estado === 'en_progreso' ? 'En progreso' : 'Completado'}
-                      </span>
+        {/* Sección de Indirectos */}
+        <div className="indirectos-section">
+          <h3>Indirectos</h3>
+          <div className="indirectos-grid">
+            <div className="indirecto-card">
+              <span className="indirecto-label">Factor</span>
+              <span className="indirecto-value">{(resumen.factor_indirectos * 100).toFixed(0)}%</span>
+            </div>
+            <div className="indirecto-card">
+              <span className="indirecto-label">Esperado</span>
+              <span className="indirecto-value">{formatCurrency(resumen.indirectos_esperado)}</span>
+            </div>
+            <div className="indirecto-card">
+              <span className="indirecto-label">Cobrado</span>
+              <span className="indirecto-value">{formatCurrency(resumen.indirectos_cobrado)}</span>
+            </div>
+            <div className="indirecto-card">
+              <span className="indirecto-label">Aplicado</span>
+              <span className="indirecto-value">{formatCurrency(resumen.indirectos_aplicados)}</span>
+            </div>
+            <div className={`indirecto-card ${indirectosEnRojo ? 'danger' : 'success'}`}>
+              <span className="indirecto-label">Cob. vs Apl.</span>
+              <span className="indirecto-value">{formatCurrency(resumen.indirectos_cobrado_vs_aplicado)}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Tabla de Facturas */}
+        <div className="materials-projection-section">
+          <h3>Facturas del Proyecto</h3>
+          <div className="materials-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>No. Factura</th>
+                  <th>Fecha Factura</th>
+                  <th className="text-right">Importe</th>
+                  <th className="text-right">Cobrado</th>
+                  <th className="text-right">Saldo</th>
+                  <th>Fecha Cobro</th>
+                  <th>Observaciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {facturas.length > 0 ? (
+                  facturas.map((factura) => (
+                    <tr key={factura.id_factura}>
+                      <td>{factura.numero_factura || '-'}</td>
+                      <td>{formatDate(factura.fecha_factura)}</td>
+                      <td className="text-right">{formatCurrency(factura.importe_factura)}</td>
+                      <td className="text-right">{formatCurrency(factura.importe_cobrado)}</td>
+                      <td className={`text-right ${factura.saldo_por_cobrar > 0 ? 'valor-pendiente' : ''}`}>
+                        {formatCurrency(factura.saldo_por_cobrar)}
+                      </td>
+                      <td>{formatDate(factura.fecha_cobro)}</td>
+                      <td>{factura.observaciones || '-'}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={7} className="text-center">
+                      No hay facturas registradas para este proyecto
                     </td>
                   </tr>
-                );
-              })}
-            </tbody>
-            <tfoot>
-              <tr>
-                <td colSpan={3}>TOTALES</td>
-                <td className="text-right">{formatCurrency(totales.importe_contratado)}</td>
-                <td className="text-right">{formatCurrency(totales.importe_cobrado)}</td>
-                <td className="text-right">{formatCurrency(totales.importe_a_cobrar)}</td>
-                <td className="text-right">{formatCurrency(totales.fondo_garantia)}</td>
-                <td className="text-right">{formatCurrency(totales.liquido_por_cobrar)}</td>
-                <td className="text-right">{formatCurrency(totales.facturas_por_cobrar)}</td>
-                <td className="text-right">{formatCurrency(totales.aplicado)}</td>
-                <td className={`text-right ${totales.cobrado_vs_aplicado < 0 ? 'valor-negativo' : 'valor-positivo'}`}>
-                  {formatCurrency(totales.cobrado_vs_aplicado)}
-                </td>
-                {/* Indirectos totales */}
-                <td className="text-center indirectos-col">-</td>
-                <td className="text-right indirectos-col">{formatCurrency(totales.indirectos_esperado)}</td>
-                <td className="text-right indirectos-col">{formatCurrency(totales.indirectos_cobrado)}</td>
-                <td className="text-right indirectos-col">{formatCurrency(totales.indirectos_aplicados)}</td>
-                <td className={`text-right indirectos-col ${totales.indirectos_cobrado_vs_aplicado < 0 ? 'valor-negativo' : 'valor-positivo'}`}>
-                  {formatCurrency(totales.indirectos_cobrado_vs_aplicado)}
-                </td>
-                <td></td>
-              </tr>
-            </tfoot>
-          </table>
+                )}
+              </tbody>
+              {facturas.length > 0 && (
+                <tfoot>
+                  <tr>
+                    <td colSpan={2}><strong>TOTALES</strong></td>
+                    <td className="text-right">
+                      <strong>{formatCurrency(facturas.reduce((sum, f) => sum + f.importe_factura, 0))}</strong>
+                    </td>
+                    <td className="text-right">
+                      <strong>{formatCurrency(facturas.reduce((sum, f) => sum + f.importe_cobrado, 0))}</strong>
+                    </td>
+                    <td className="text-right">
+                      <strong>{formatCurrency(facturas.reduce((sum, f) => sum + f.saldo_por_cobrar, 0))}</strong>
+                    </td>
+                    <td colSpan={2}></td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
         </div>
 
-        {/* Resumen de proyectos en rojo */}
-        {(data?.proyectos_en_rojo || 0) > 0 && (
+        {/* Alerta si está en rojo */}
+        {enRojo && (
           <div className="alerta-proyectos-rojo">
-            <h3>Proyectos en números rojos ({data?.proyectos_en_rojo})</h3>
+            <h3>Proyecto en números rojos</h3>
             <p>
-              Estos proyectos tienen más gastos aplicados que cobranza recibida.
-              Requieren atención inmediata para evitar pérdidas.
+              Este proyecto tiene más gastos aplicados ({formatCurrency(resumen.aplicado)})
+              que cobranza recibida ({formatCurrency(resumen.importe_cobrado)}).
+              Diferencia: {formatCurrency(resumen.cobrado_vs_aplicado)}
             </p>
-            <div className="proyectos-rojo-lista">
-              {data?.data
-                .filter(p => p.cobrado_vs_aplicado < 0)
-                .sort((a, b) => a.cobrado_vs_aplicado - b.cobrado_vs_aplicado)
-                .slice(0, 5)
-                .map(p => (
-                  <button
-                    key={p.id_proyecto}
-                    className="proyecto-rojo-btn"
-                    onClick={() => irAProyecto(p.id_proyecto)}
-                  >
-                    {p.proyecto}: {formatCurrency(p.cobrado_vs_aplicado)}
-                  </button>
-                ))}
-            </div>
           </div>
         )}
 

@@ -160,7 +160,7 @@ export function MainPage() {
 
   const seleccionarModulo = (key: ModuleKey) => {
     if (key === "dashboards") {
-      navigate("/dashboards/ejecutivo");
+      navigate("/dashboards");
       return;
     }
     setModuloSeleccionado(key);

@@ -3,9 +3,10 @@ import { LoginPage } from "./pages/loginPage";
 import { MainPage } from "./pages/mainPage";
 import { ProyectoDetalle } from "./pages/proyectoDetalle";
 import { PedidoPreview } from "./pages/pedidoPreview";
+import { ProjectSelector } from "./pages/dashboards/ProjectSelector";
 import { DashboardEjecutivo } from "./pages/dashboards/DashboardEjecutivo";
 import { DashboardPresupuestos } from "./pages/dashboards/DashboardPresupuestos";
-import { DashboardProyectos } from "./pages/dashboards/DashboardProyectos";
+import { DashboardGeneral } from "./pages/dashboards/DashboardGeneral";
 import { DashboardMateriales } from "./pages/dashboards/DashboardMateriales";
 import { DashboardCobranza } from "./pages/dashboards/DashboardCobranza";
 import { PrivateRoute } from "./components/PrivateRoute";
@@ -39,7 +40,15 @@ function App() {
         }
       />
       <Route
-        path="/dashboards/ejecutivo"
+        path="/dashboards"
+        element={
+          <PrivateRoute>
+            <ProjectSelector />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/dashboards/:projectId/ejecutivo"
         element={
           <PrivateRoute>
             <DashboardEjecutivo />
@@ -47,7 +56,7 @@ function App() {
         }
       />
       <Route
-        path="/dashboards/presupuestos"
+        path="/dashboards/:projectId/presupuestos"
         element={
           <PrivateRoute>
             <DashboardPresupuestos />
@@ -55,15 +64,15 @@ function App() {
         }
       />
       <Route
-        path="/dashboards/proyectos"
+        path="/dashboards/:projectId/general"
         element={
           <PrivateRoute>
-            <DashboardProyectos />
+            <DashboardGeneral />
           </PrivateRoute>
         }
       />
       <Route
-        path="/dashboards/materiales"
+        path="/dashboards/:projectId/materiales"
         element={
           <PrivateRoute>
             <DashboardMateriales />
@@ -71,7 +80,7 @@ function App() {
         }
       />
       <Route
-        path="/dashboards/cobranza"
+        path="/dashboards/:projectId/cobranza"
         element={
           <PrivateRoute>
             <DashboardCobranza />

@@ -507,11 +507,11 @@ app.get("/proyectos/:id/pedidos", authenticateToken, requireRole("administrador"
   let query =
     "SELECT id, id_proyecto, nombre_proyecto, pedido, clan, familia, proveedor, nombre_usuario, DATE_FORMAT(fecha_aprobacion, '%Y-%m-%d') AS fecha_aprobacion, concepto, situaciones_especiales, porcentaje_descuento, importe_total AS importe FROM pedidos WHERE id_proyecto = ?";
   const params = [id];
-  const toList = (v) => Array.isArray(v) ? v : (typeof v === 'string' ? v.split(',').map(s=>s.trim()).filter(Boolean) : []);
+  const toList = (v) => Array.isArray(v) ? v : (typeof v === 'string' ? v.split(',').map(s => s.trim()).filter(Boolean) : []);
   const addMulti = (field, values) => {
     const list = toList(values);
     if (list.length === 1) { query += ` AND ${field} = ?`; params.push(list[0]); }
-    else if (list.length > 1) { query += ` AND ${field} IN (${list.map(_=>'?').join(',')})`; params.push(...list); }
+    else if (list.length > 1) { query += ` AND ${field} IN (${list.map(_ => '?').join(',')})`; params.push(...list); }
   };
   addMulti('familia', familia);
   const { clan, proveedor, concepto, fecha } = req.query;
@@ -781,11 +781,11 @@ app.get("/proyectos/:id/pedidos/export", authenticateToken, requireRole("adminis
   let qPedidos =
     "SELECT id, nombre_proyecto, pedido, clan, familia, proveedor, DATE_FORMAT(fecha_aprobacion, '%Y-%m-%d') AS fecha_aprobacion, concepto, situaciones_especiales, importe_total AS importe FROM pedidos WHERE id_proyecto = ?";
   const pedidosParams = [id];
-  const toListE = (v) => Array.isArray(v) ? v : (typeof v === 'string' ? v.split(',').map(s=>s.trim()).filter(Boolean) : []);
+  const toListE = (v) => Array.isArray(v) ? v : (typeof v === 'string' ? v.split(',').map(s => s.trim()).filter(Boolean) : []);
   const addMultiE = (field, values) => {
     const list = toListE(values);
     if (list.length === 1) { qPedidos += ` AND ${field} = ?`; pedidosParams.push(list[0]); }
-    else if (list.length > 1) { qPedidos += ` AND ${field} IN (${list.map(_=>'?').join(',')})`; pedidosParams.push(...list); }
+    else if (list.length > 1) { qPedidos += ` AND ${field} IN (${list.map(_ => '?').join(',')})`; pedidosParams.push(...list); }
   };
   addMultiE('familia', familia);
   const { clan, proveedor, concepto, fecha } = req.query;
@@ -2680,6 +2680,248 @@ app.get("/api/dashboard/materiales", authenticateToken, async (req, res) => {
   }
 });
 
+// ==================== ENDPOINTS DE DASHBOARDS POR PROYECTO ====================
+
+// Dashboard Ejecutivo por Proyecto
+app.get("/api/dashboard/proyecto/:id/ejecutivo", authenticateToken, async (req, res) => {
+  const proyectoId = Number(req.params.id);
+
+  if (!proyectoId || isNaN(proyectoId)) {
+    return res.status(400).json({ success: false, message: "ID de proyecto inválido" });
+  }
+
+  try {
+    // Info del proyecto
+    const proyectoQuery = `
+      SELECT
+        p.id_proyecto,
+        p.nombre,
+        p.estado,
+        p.fecha_proyecto,
+        COALESCE(p.presupuesto_total, p.presupuesto, 0) as presupuestoTotal,
+        COALESCE(p.presupuesto_cristal, 0) as presupuestoCristal,
+        COALESCE(p.presupuesto_aluminio, 0) as presupuestoAluminio,
+        COALESCE(p.presupuesto_miscelaneos, 0) as presupuestoMiscelaneos,
+        COALESCE(pe.total_pedidos, 0) as presupuestoEjecutado
+      FROM proyectos p
+      LEFT JOIN (
+        SELECT id_proyecto, SUM(importe_total) as total_pedidos
+        FROM pedidos
+        GROUP BY id_proyecto
+      ) pe ON p.id_proyecto = pe.id_proyecto
+      WHERE p.id_proyecto = ?
+    `;
+    const proyectoResult = await queryAsync(proyectoQuery, [proyectoId]);
+
+    if (!proyectoResult || proyectoResult.length === 0) {
+      return res.status(404).json({ success: false, message: "Proyecto no encontrado" });
+    }
+
+    const proyecto = proyectoResult[0];
+
+    // Distribución de presupuesto por categoría
+    const distribucionCategoria = [
+      { categoria: 'Cristal', monto: parseFloat(proyecto.presupuestoCristal) || 0 },
+      { categoria: 'Aluminio', monto: parseFloat(proyecto.presupuestoAluminio) || 0 },
+      { categoria: 'Misceláneos', monto: parseFloat(proyecto.presupuestoMiscelaneos) || 0 }
+    ].filter(item => item.monto > 0);
+
+    // Gastos por mes del proyecto
+    const gastosMensualesQuery = `
+      SELECT
+        DATE_FORMAT(fecha_aprobacion, '%Y-%m') as mes,
+        SUM(importe_total) as gasto
+      FROM pedidos
+      WHERE id_proyecto = ? AND fecha_aprobacion IS NOT NULL
+      GROUP BY DATE_FORMAT(fecha_aprobacion, '%Y-%m')
+      ORDER BY mes ASC
+      LIMIT 12
+    `;
+    const gastosMensuales = await queryAsync(gastosMensualesQuery, [proyectoId]);
+
+    // Pedidos por concepto
+    const pedidosConceptoQuery = `
+      SELECT
+        concepto,
+        COUNT(*) as cantidad,
+        SUM(importe_total) as total
+      FROM pedidos
+      WHERE id_proyecto = ?
+      GROUP BY concepto
+      ORDER BY total DESC
+      LIMIT 10
+    `;
+    const pedidosPorConcepto = await queryAsync(pedidosConceptoQuery, [proyectoId]);
+
+    const presupuestoTotal = parseFloat(proyecto.presupuestoTotal) || 0;
+    const presupuestoEjecutado = parseFloat(proyecto.presupuestoEjecutado) || 0;
+    const presupuestoDisponible = presupuestoTotal - presupuestoEjecutado;
+
+    res.json({
+      proyecto: {
+        id: proyecto.id_proyecto,
+        nombre: proyecto.nombre,
+        estado: proyecto.estado === 'en_progreso' ? 'En Progreso' : 'Completado',
+        fechaProyecto: proyecto.fecha_proyecto
+      },
+      kpis: {
+        presupuestoTotal,
+        presupuestoEjecutado,
+        presupuestoDisponible,
+        porcentajeEjecutado: presupuestoTotal > 0 ? (presupuestoEjecutado / presupuestoTotal) * 100 : 0
+      },
+      distribucionCategoria,
+      gastosMensuales: gastosMensuales.map(item => ({
+        mes: item.mes,
+        gasto: parseFloat(item.gasto) || 0
+      })),
+      pedidosPorConcepto: pedidosPorConcepto.map(item => ({
+        concepto: item.concepto,
+        cantidad: item.cantidad,
+        total: parseFloat(item.total) || 0
+      }))
+    });
+  } catch (err) {
+    console.error("Error en dashboard ejecutivo por proyecto:", err);
+    res.status(500).json({ success: false, message: "Error al obtener datos del dashboard" });
+  }
+});
+
+// Dashboard Presupuestos por Proyecto
+// NOTA: Endpoints de dashboards movidos al final del archivo (l�neas 4128+)
+// Dashboard Materiales por Proyecto
+app.get("/api/dashboard/proyecto/:id/materiales", authenticateToken, async (req, res) => {
+  const proyectoId = Number(req.params.id);
+
+  if (!proyectoId || isNaN(proyectoId)) {
+    return res.status(400).json({ success: false, message: "ID de proyecto inválido" });
+  }
+
+  try {
+    // Verificar proyecto existe
+    const proyectoQuery = `SELECT id_proyecto, nombre FROM proyectos WHERE id_proyecto = ?`;
+    const proyectoResult = await queryAsync(proyectoQuery, [proyectoId]);
+
+    if (!proyectoResult || proyectoResult.length === 0) {
+      return res.status(404).json({ success: false, message: "Proyecto no encontrado" });
+    }
+
+    const proyecto = proyectoResult[0];
+
+    // Materiales usados en misceláneos (tabla puede no existir)
+    let materialesUsados = [];
+    try {
+      const materialesQuery = `
+        SELECT
+          pdm.descripcion as material,
+          SUM(pdm.cantidad) as cantidad,
+          SUM(pdm.importe) as costoTotal
+        FROM pedidos_detalles_miscelaneos pdm
+        INNER JOIN pedidos p ON pdm.id_pedido = p.id_pedido
+        WHERE p.id_proyecto = ?
+        GROUP BY pdm.descripcion
+        ORDER BY costoTotal DESC
+        LIMIT 15
+      `;
+      materialesUsados = await queryAsync(materialesQuery, [proyectoId]);
+    } catch (matErr) {
+      console.log("Tabla pedidos_detalles_miscelaneos no disponible");
+    }
+
+    // Explosión de insumos del proyecto (tabla puede no existir)
+    let explosionInsumos = [];
+    try {
+      const explosionQuery = `
+        SELECT
+          familia,
+          clan,
+          presupuesto_asignado
+        FROM explosion_insumos
+        WHERE id_proyecto = ?
+        ORDER BY presupuesto_asignado DESC
+      `;
+      explosionInsumos = await queryAsync(explosionQuery, [proyectoId]);
+    } catch (expErr) {
+      console.log("Tabla explosion_insumos no disponible");
+    }
+
+    // Costo por tipo de pedido
+    const costoTipoQuery = `
+      SELECT
+        concepto as tipo,
+        COUNT(*) as cantidad,
+        SUM(importe_total) as costoTotal
+      FROM pedidos
+      WHERE id_proyecto = ?
+      GROUP BY concepto
+      ORDER BY costoTotal DESC
+    `;
+    const costoPorTipo = await queryAsync(costoTipoQuery, [proyectoId]);
+
+    // Proveedores del proyecto
+    const proveedoresQuery = `
+      SELECT
+        proveedor,
+        COUNT(*) as cantidadPedidos,
+        SUM(importe_total) as totalCompras
+      FROM pedidos
+      WHERE id_proyecto = ? AND proveedor IS NOT NULL AND proveedor != ''
+      GROUP BY proveedor
+      ORDER BY totalCompras DESC
+      LIMIT 10
+    `;
+    const proveedores = await queryAsync(proveedoresQuery, [proyectoId]);
+
+    // KPIs
+    const kpisQuery = `
+      SELECT
+        COUNT(DISTINCT concepto) as totalConceptos,
+        COALESCE(SUM(importe_total), 0) as totalGastado,
+        COUNT(*) as totalPedidos
+      FROM pedidos
+      WHERE id_proyecto = ?
+    `;
+    const kpisResult = await queryAsync(kpisQuery, [proyectoId]);
+    const kpis = kpisResult[0] || {};
+
+    res.json({
+      proyecto: {
+        id: proyecto.id_proyecto,
+        nombre: proyecto.nombre
+      },
+      kpis: {
+        totalConceptos: kpis.totalConceptos || 0,
+        totalGastado: parseFloat(kpis.totalGastado) || 0,
+        totalPedidos: kpis.totalPedidos || 0,
+        totalProveedores: proveedores.length
+      },
+      materialesUsados: materialesUsados.map(item => ({
+        material: item.material,
+        cantidad: parseFloat(item.cantidad) || 0,
+        costoTotal: parseFloat(item.costoTotal) || 0
+      })),
+      explosionInsumos: explosionInsumos.map(item => ({
+        familia: item.familia,
+        clan: item.clan,
+        presupuesto: parseFloat(item.presupuesto_asignado) || 0
+      })),
+      costoPorTipo: costoPorTipo.map(item => ({
+        tipo: item.tipo,
+        cantidad: item.cantidad,
+        costoTotal: parseFloat(item.costoTotal) || 0
+      })),
+      proveedores: proveedores.map(item => ({
+        proveedor: item.proveedor,
+        cantidadPedidos: item.cantidadPedidos,
+        totalCompras: parseFloat(item.totalCompras) || 0
+      }))
+    });
+  } catch (err) {
+    console.error("Error en dashboard materiales por proyecto:", err);
+    res.status(500).json({ success: false, message: "Error al obtener datos del dashboard" });
+  }
+});
+
 //------------------------------------------------------------
 // COBRANZA - Exportar tabla de cobranza a clientes (Excel)
 // Formato similar a la hoja "COBRANZA TOTAL" del Excel original
@@ -3621,6 +3863,245 @@ app.delete("/proyectos/:id/cobranza-facturas/:idFactura", authenticateToken, req
     res.json({ success: true, message: "Factura eliminada correctamente" });
   } catch (err) {
     console.error("Error eliminando factura de cobranza:", err);
+    res.status(500).json({ success: false, message: "Error interno del servidor" });
+  }
+});
+
+// ============================================================================
+// ENDPOINTS PARA DASHBOARDS DE PROYECTOS
+// ============================================================================
+
+// Dashboard de Presupuestos por Proyecto
+app.get("/api/dashboard/proyecto/:id/presupuestos", authenticateToken, async (req, res) => {
+  try {
+    const proyectoId = Number(req.params.id);
+    if (!Number.isInteger(proyectoId) || proyectoId <= 0) {
+      return res.status(400).json({ success: false, message: "Proyecto inválido" });
+    }
+
+    // Obtener información del proyecto
+    const proyectoRows = await queryAsync(
+      `SELECT id_proyecto, nombre, presupuesto_total, presupuesto_cristal, presupuesto_aluminio, presupuesto_miscelaneos
+       FROM proyectos WHERE id_proyecto = ?`,
+      [proyectoId]
+    );
+
+    if (!proyectoRows || proyectoRows.length === 0) {
+      return res.status(404).json({ success: false, message: "Proyecto no encontrado" });
+    }
+
+    const proyecto = proyectoRows[0];
+    const presupuestoTotal = Number(proyecto.presupuesto_total || 0);
+    const presupuestoCristal = Number(proyecto.presupuesto_cristal || 0);
+    const presupuestoAluminio = Number(proyecto.presupuesto_aluminio || 0);
+    const presupuestoMiscelaneos = Number(proyecto.presupuesto_miscelaneos || 0);
+
+    // Obtener total gastado por familia
+    const gastadoPorFamilia = await queryAsync(
+      `SELECT familia, SUM(importe_total) as total
+       FROM pedidos
+       WHERE id_proyecto = ?
+       GROUP BY familia`,
+      [proyectoId]
+    );
+
+    let gastadoCristal = 0;
+    let gastadoAluminio = 0;
+    let gastadoMiscelaneos = 0;
+
+    (gastadoPorFamilia || []).forEach(row => {
+      const familia = (row.familia || '').toUpperCase();
+      const total = Number(row.total || 0);
+      if (familia === 'CRISTAL') gastadoCristal = total;
+      else if (familia === 'ALUMINIO') gastadoAluminio = total;
+      else gastadoMiscelaneos += total;
+    });
+
+    const presupuestoEjecutado = gastadoCristal + gastadoAluminio + gastadoMiscelaneos;
+    const presupuestoDisponible = presupuestoTotal - presupuestoEjecutado;
+    const eficienciaGasto = presupuestoTotal > 0 ? (presupuestoEjecutado / presupuestoTotal) * 100 : 0;
+
+    // Distribución por categoría
+    const distribucionCategoria = [
+      {
+        categoria: 'Cristal',
+        presupuesto: presupuestoCristal,
+        gastado: gastadoCristal
+      },
+      {
+        categoria: 'Aluminio',
+        presupuesto: presupuestoAluminio,
+        gastado: gastadoAluminio
+      },
+      {
+        categoria: 'Misceláneos',
+        presupuesto: presupuestoMiscelaneos,
+        gastado: gastadoMiscelaneos
+      }
+    ];
+
+    // Historial de presupuestos
+    const historialRows = await queryAsync(
+      `SELECT fecha_presupuesto as fecha, presupuesto_total as presupuesto, 'Actualización de presupuesto' as motivo
+       FROM proyectos_presupuestos_historial
+       WHERE id_proyecto = ?
+       ORDER BY fecha_presupuesto DESC
+       LIMIT 10`,
+      [proyectoId]
+    );
+
+    // Pedidos más costosos
+    const pedidosCostosos = await queryAsync(
+      `SELECT id, concepto, proveedor, importe_total as importe, fecha_aprobacion as fecha
+       FROM pedidos
+       WHERE id_proyecto = ?
+       ORDER BY importe_total DESC
+       LIMIT 10`,
+      [proyectoId]
+    );
+
+    res.json({
+      proyecto: {
+        id: proyectoId,
+        nombre: proyecto.nombre
+      },
+      kpis: {
+        presupuestoTotal,
+        presupuestoEjecutado,
+        presupuestoDisponible,
+        eficienciaGasto
+      },
+      distribucionCategoria,
+      historialPresupuesto: historialRows || [],
+      pedidosCostosos: (pedidosCostosos || []).map(p => ({
+        id: p.id,
+        concepto: p.concepto || '',
+        proveedor: p.proveedor || '',
+        importe: Number(p.importe || 0),
+        fecha: p.fecha || ''
+      }))
+    });
+  } catch (err) {
+    console.error("Error en dashboard de presupuestos:", err);
+    res.status(500).json({ success: false, message: "Error interno del servidor" });
+  }
+});
+
+// Dashboard General por Proyecto
+app.get("/api/dashboard/proyecto/:id/general", authenticateToken, async (req, res) => {
+  try {
+    const proyectoId = Number(req.params.id);
+    if (!Number.isInteger(proyectoId) || proyectoId <= 0) {
+      return res.status(400).json({ success: false, message: "Proyecto inválido" });
+    }
+
+    // Obtener información del proyecto
+    const proyectoRows = await queryAsync(
+      `SELECT id_proyecto, nombre, estado, fecha_proyecto, presupuesto_total
+       FROM proyectos WHERE id_proyecto = ?`,
+      [proyectoId]
+    );
+
+    if (!proyectoRows || proyectoRows.length === 0) {
+      return res.status(404).json({ success: false, message: "Proyecto no encontrado" });
+    }
+
+    const proyecto = proyectoRows[0];
+    const presupuestoTotal = Number(proyecto.presupuesto_total || 0);
+    const fechaProyecto = proyecto.fecha_proyecto;
+
+    // Calcular días transcurridos
+    const diasTranscurridos = fechaProyecto
+      ? Math.floor((new Date() - new Date(fechaProyecto)) / (1000 * 60 * 60 * 24))
+      : 0;
+
+    // Obtener total gastado
+    const totalGastadoRows = await queryAsync(
+      `SELECT SUM(importe_total) as total FROM pedidos WHERE id_proyecto = ?`,
+      [proyectoId]
+    );
+    const totalGastado = Number(totalGastadoRows[0]?.total || 0);
+    const presupuestoDisponible = presupuestoTotal - totalGastado;
+
+    // Cantidad de pedidos y proveedores
+    const estadisticasRows = await queryAsync(
+      `SELECT COUNT(DISTINCT id) as cantidadPedidos, COUNT(DISTINCT proveedor) as cantidadProveedores
+       FROM pedidos WHERE id_proyecto = ?`,
+      [proyectoId]
+    );
+    const cantidadPedidos = Number(estadisticasRows[0]?.cantidadPedidos || 0);
+    const cantidadProveedores = Number(estadisticasRows[0]?.cantidadProveedores || 0);
+
+    // Proveedores con más compras
+    const proveedoresRows = await queryAsync(
+      `SELECT proveedor, COUNT(*) as cantidadPedidos, SUM(importe_total) as totalCompras
+       FROM pedidos
+       WHERE id_proyecto = ?
+       GROUP BY proveedor
+       ORDER BY totalCompras DESC
+       LIMIT 5`,
+      [proyectoId]
+    );
+
+    // Timeline de pedidos por mes
+    const timelineRows = await queryAsync(
+      `SELECT 
+         DATE_FORMAT(fecha_aprobacion, '%Y-%m') as mes,
+         COUNT(*) as cantidadPedidos,
+         SUM(importe_total) as totalMes
+       FROM pedidos
+       WHERE id_proyecto = ?
+       GROUP BY DATE_FORMAT(fecha_aprobacion, '%Y-%m')
+       ORDER BY mes ASC`,
+      [proyectoId]
+    );
+
+    // Últimos pedidos
+    const ultimosPedidosRows = await queryAsync(
+      `SELECT id, concepto, proveedor, importe_total as importe, fecha_aprobacion as fecha, 'pendiente' as estatusPago
+       FROM pedidos
+       WHERE id_proyecto = ?
+       ORDER BY fecha_aprobacion DESC
+       LIMIT 10`,
+      [proyectoId]
+    );
+
+    res.json({
+      proyecto: {
+        id: proyectoId,
+        nombre: proyecto.nombre,
+        estado: proyecto.estado === 'completado' ? 'Completado' : 'En Progreso',
+        fechaProyecto: fechaProyecto || '',
+        diasTranscurridos
+      },
+      kpis: {
+        presupuestoTotal,
+        totalGastado,
+        presupuestoDisponible,
+        cantidadPedidos,
+        cantidadProveedores
+      },
+      proveedores: (proveedoresRows || []).map(p => ({
+        proveedor: p.proveedor || '',
+        cantidadPedidos: Number(p.cantidadPedidos || 0),
+        totalCompras: Number(p.totalCompras || 0)
+      })),
+      timelinePedidos: (timelineRows || []).map(t => ({
+        mes: t.mes || '',
+        cantidadPedidos: Number(t.cantidadPedidos || 0),
+        totalMes: Number(t.totalMes || 0)
+      })),
+      ultimosPedidos: (ultimosPedidosRows || []).map(p => ({
+        id: p.id,
+        concepto: p.concepto || '',
+        proveedor: p.proveedor || '',
+        importe: Number(p.importe || 0),
+        fecha: p.fecha || '',
+        estatusPago: p.estatusPago || 'pendiente'
+      }))
+    });
+  } catch (err) {
+    console.error("Error en dashboard general:", err);
     res.status(500).json({ success: false, message: "Error interno del servidor" });
   }
 });

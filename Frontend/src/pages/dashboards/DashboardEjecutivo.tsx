@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { DashboardLayout } from './DashboardLayout';
 import { KPICard } from '../../components/charts/KPICard';
 import { BarChart } from '../../components/charts/BarChart';
@@ -9,29 +10,41 @@ import '../../components/styles/charts.css';
 import './dashboards.css';
 
 interface DashboardData {
+  proyecto: {
+    id: number;
+    nombre: string;
+    estado: string;
+    fechaProyecto: string;
+  };
   kpis: {
-    totalProyectos: number;
-    proyectosActivos: number;
     presupuestoTotal: number;
     presupuestoEjecutado: number;
+    presupuestoDisponible: number;
+    porcentajeEjecutado: number;
   };
-  proyectosPorEstado: Array<{ estado: string; cantidad: number }>;
-  tendenciaPresupuesto: Array<{ mes: string; presupuesto: number }>;
-  proyectosCompletados: Array<{ mes: string; cantidad: number }>;
+  distribucionCategoria: Array<{ categoria: string; monto: number }>;
+  gastosMensuales: Array<{ mes: string; gasto: number }>;
+  pedidosPorConcepto: Array<{ concepto: string; cantidad: number; total: number }>;
 }
 
 export const DashboardEjecutivo: React.FC = () => {
+  const { projectId } = useParams();
+  const navigate = useNavigate();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!projectId || isNaN(Number(projectId))) {
+      navigate('/dashboards');
+      return;
+    }
     fetchDashboardData();
-  }, []);
+  }, [projectId, navigate]);
 
   const fetchDashboardData = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:3000/api/dashboard/ejecutivo', {
+      const response = await fetch(`http://localhost:3000/api/dashboard/proyecto/${projectId}/ejecutivo`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -40,12 +53,23 @@ export const DashboardEjecutivo: React.FC = () => {
       if (response.ok) {
         const result = await response.json();
         setData(result);
+      } else if (response.status === 404) {
+        navigate('/dashboards');
       }
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
     } finally {
       setLoading(false);
     }
+  };
+
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('es-MX', {
+      style: 'currency',
+      currency: 'MXN',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(value);
   };
 
   if (loading) {
@@ -64,87 +88,103 @@ export const DashboardEjecutivo: React.FC = () => {
     );
   }
 
+  const porcentajeEjecutado = data.kpis.porcentajeEjecutado;
+
   return (
-    <DashboardLayout>
+    <DashboardLayout projectName={data.proyecto.nombre}>
       <div className="dashboard-container">
-      <div className="dashboard-header">
-        <h1>Dashboard Ejecutivo</h1>
-        <p className="dashboard-subtitle">Vista general del sistema de proyectos</p>
-      </div>
-
-      <div className="kpi-grid">
-        <KPICard
-          title="Total de Proyectos"
-          value={data.kpis.totalProyectos}
-          color="#3b82f6"
-        />
-        <KPICard
-          title="Proyectos Activos"
-          value={data.kpis.proyectosActivos}
-          color="#10b981"
-        />
-        <KPICard
-          title="Presupuesto Total"
-          value={`$${data.kpis.presupuestoTotal.toLocaleString()}`}
-          color="#f59e0b"
-        />
-      </div>
-
-      <div className="charts-grid">
-        <div className="chart-item">
-          <PieChart
-            data={data.proyectosPorEstado}
-            dataKey="cantidad"
-            nameKey="estado"
-            title="Distribución de Proyectos por Estado"
-            height={350}
-          />
+        <div className="dashboard-header">
+          <h1>Dashboard Ejecutivo</h1>
+          <p className="dashboard-subtitle">
+            Vista general del proyecto - Estado: <span className={`status-badge ${data.proyecto.estado === 'En Progreso' ? 'en-progreso' : 'completado'}`}>{data.proyecto.estado}</span>
+          </p>
         </div>
 
-        <div className="chart-item">
-          <BarChart
-            data={data.proyectosCompletados}
-            dataKey="cantidad"
-            xAxisKey="mes"
-            title="Proyectos Completados por Mes"
-            color="#10b981"
-            height={350}
-          />
-        </div>
-
-        <div className="chart-item chart-full-width">
-          <LineChart
-            data={data.tendenciaPresupuesto}
-            dataKey="presupuesto"
-            xAxisKey="mes"
-            title="Tendencia de Presupuesto Mensual"
+        <div className="kpi-grid">
+          <KPICard
+            title="Presupuesto Total"
+            value={formatCurrency(data.kpis.presupuestoTotal)}
             color="#3b82f6"
-            height={350}
+          />
+          <KPICard
+            title="Presupuesto Ejecutado"
+            value={formatCurrency(data.kpis.presupuestoEjecutado)}
+            subtitle={`${porcentajeEjecutado.toFixed(1)}% del total`}
+            color="#f59e0b"
+          />
+          <KPICard
+            title="Presupuesto Disponible"
+            value={formatCurrency(data.kpis.presupuestoDisponible)}
+            color={data.kpis.presupuestoDisponible < 0 ? '#ef4444' : '#10b981'}
           />
         </div>
-      </div>
 
-      <div className="dashboard-alerts">
-        <h3>Alertas y Notificaciones</h3>
-        <div className="alerts-container">
-          {data.kpis.presupuestoTotal > 0 && (data.kpis.presupuestoEjecutado / data.kpis.presupuestoTotal) > 0.8 && (
-            <div className="alert alert-warning">
-              El presupuesto ejecutado ha superado el 80% del presupuesto total
+        <div className="charts-grid">
+          {data.distribucionCategoria.length > 0 && (
+            <div className="chart-item">
+              <PieChart
+                data={data.distribucionCategoria}
+                dataKey="monto"
+                nameKey="categoria"
+                title="Distribución por Categoría"
+                height={350}
+              />
             </div>
           )}
-          {data.kpis.proyectosActivos === 0 && (
-            <div className="alert alert-info">
-              No hay proyectos activos en este momento
+
+          {data.pedidosPorConcepto.length > 0 && (
+            <div className="chart-item">
+              <BarChart
+                data={data.pedidosPorConcepto}
+                dataKey="total"
+                xAxisKey="concepto"
+                title="Gastos por Concepto"
+                color="#10b981"
+                height={350}
+              />
             </div>
           )}
-          {data.kpis.proyectosActivos > 10 && (
-            <div className="alert alert-success">
-              Hay {data.kpis.proyectosActivos} proyectos activos en curso
+
+          {data.gastosMensuales.length > 0 && (
+            <div className="chart-item chart-full-width">
+              <LineChart
+                data={data.gastosMensuales}
+                dataKey="gasto"
+                xAxisKey="mes"
+                title="Tendencia de Gastos Mensuales"
+                color="#3b82f6"
+                height={350}
+              />
             </div>
           )}
         </div>
+
+        <div className="dashboard-alerts">
+          <h3>Alertas y Notificaciones</h3>
+          <div className="alerts-container">
+            {porcentajeEjecutado > 100 && (
+              <div className="alert alert-danger">
+                El presupuesto ejecutado ha superado el 100% del presupuesto asignado
+              </div>
+            )}
+            {porcentajeEjecutado > 80 && porcentajeEjecutado <= 100 && (
+              <div className="alert alert-warning">
+                El presupuesto ejecutado ha superado el 80% del presupuesto total
+              </div>
+            )}
+            {porcentajeEjecutado <= 50 && (
+              <div className="alert alert-success">
+                El proyecto tiene un buen margen de presupuesto disponible
+              </div>
+            )}
+            {data.kpis.presupuestoDisponible < 0 && (
+              <div className="alert alert-danger">
+                El proyecto tiene un déficit de {formatCurrency(Math.abs(data.kpis.presupuestoDisponible))}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
-    </div>
     </DashboardLayout>
   );
 };
