@@ -1,0 +1,94 @@
+/* ========================================
+   HEG Formatos - Sistema de Diseño Global
+   ======================================== */
+
+:root {
+  /* --- Tipografía --- */
+  --font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+  --font-mono: 'Courier New', monospace;
+
+  /* --- Colores Primarios --- */
+  --color-primary: #224c84;
+  --color-primary-hover: #1a3d6e;
+  --color-primary-light: #e8f0ff;
+  --color-primary-dark: #0b2f4a;
+
+  /* --- Colores de Acento --- */
+  --color-accent: #3b82f6;
+  --color-accent-hover: #2563eb;
+  --color-accent-light: #dbeafe;
+
+  /* --- Fondos --- */
+  --color-bg: #f5f5f5;
+  --color-bg-alt: #f8fafc;
+  --color-surface: #ffffff;
+
+  /* --- Texto --- */
+  --color-text: #0b2f4a;
+  --color-text-secondary: #475569;
+  --color-text-muted: #64748b;
+  --color-text-placeholder: #94a3b8;
+
+  /* --- Bordes --- */
+  --color-border: #e2e8f0;
+  --color-border-light: #f1f5f9;
+  --color-border-input: #d1d5db;
+
+  /* --- Estado: Éxito --- */
+  --color-success: #16a34a;
+  --color-success-bg: #f0fdf4;
+  --color-success-border: #4ade80;
+  --color-success-text: #1b5e20;
+
+  /* --- Estado: Advertencia --- */
+  --color-warning: #f59e0b;
+  --color-warning-bg: #fffbeb;
+  --color-warning-border: #fb923c;
+  --color-warning-text: #ea580c;
+
+  /* --- Estado: Error / Peligro --- */
+  --color-danger: #dc2626;
+  --color-danger-bg: #fee2e2;
+  --color-danger-border: #ef4444;
+  --color-danger-text: #991b1b;
+
+  /* --- Estado: Info --- */
+  --color-info: #3b82f6;
+  --color-info-bg: #dbeafe;
+  --color-info-text: #1e40af;
+
+  /* --- Sombras --- */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1);
+  --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 10px 24px rgba(0, 0, 0, 0.15);
+
+  /* --- Border Radius --- */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 14px;
+  --radius-pill: 999px;
+
+  /* --- Tabla Encabezado Oscuro --- */
+  --color-table-header: #224c84;
+  --color-table-header-dark: #1a3d6e;
+  --color-table-header-text: #ffffff;
+  --color-table-stripe: #f8fafc;
+  --color-table-hover: #eef2ff;
+}
+
+/* --- Reset base de tipografía --- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-family);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color: var(--color-text);
+  background-color: var(--color-bg);
+}

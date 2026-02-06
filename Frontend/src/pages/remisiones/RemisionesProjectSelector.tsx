@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import './ProjectSelector.css';
+import '../dashboards/ProjectSelector.css';
 
 interface Proyecto {
   id_proyecto: number;
@@ -12,7 +12,7 @@ interface Proyecto {
   total_pedidos?: number;
 }
 
-export const ProjectSelector: React.FC = () => {
+export function RemisionesProjectSelector() {
   const navigate = useNavigate();
   const [proyectos, setProyectos] = useState<Proyecto[]>([]);
   const [loading, setLoading] = useState(true);
@@ -20,26 +20,24 @@ export const ProjectSelector: React.FC = () => {
   const [filtroEstado, setFiltroEstado] = useState<'todos' | 'en_progreso' | 'completado'>('todos');
 
   useEffect(() => {
-    cargarProyectos();
+    cargarDatos();
   }, []);
 
-  const cargarProyectos = async () => {
+  const cargarDatos = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:3000/proyectos', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
+      const headers = { 'Authorization': `Bearer ${token}` };
 
-      if (response.ok) {
-        const result = await response.json();
+      const proyectosRes = await fetch('http://localhost:3000/proyectos', { headers });
+
+      if (proyectosRes.ok) {
+        const result = await proyectosRes.json();
         if (result.success && Array.isArray(result.data)) {
           setProyectos(result.data);
         }
       }
     } catch (error) {
-      console.error('Error al cargar proyectos:', error);
+      console.error('Error al cargar datos:', error);
     } finally {
       setLoading(false);
     }
@@ -51,27 +49,39 @@ export const ProjectSelector: React.FC = () => {
     return coincideBusqueda && coincideEstado;
   });
 
-  const formatearFecha = (fecha: string) => {
-    return new Date(fecha).toLocaleDateString('es-MX', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
-  };
-
-  const formatearMoneda = (valor: number) => {
-    return new Intl.NumberFormat('es-MX', {
-      style: 'currency',
-      currency: 'MXN',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0
-    }).format(valor);
-  };
+  const formatearFecha = (fecha: string) =>
+    new Date(fecha).toLocaleDateString('es-MX', { year: 'numeric', month: 'short', day: 'numeric' });
 
   const seleccionarProyecto = (proyecto: Proyecto) => {
-    navigate(`/dashboards/${proyecto.id_proyecto}/ejecutivo`, {
+    navigate(`/remisiones/${proyecto.id_proyecto}`, {
       state: { nombreProyecto: proyecto.nombre }
     });
+  };
+
+  const irAVistaGeneral = () => {
+    navigate('/remisiones/general');
+  };
+
+  const exportarGeneral = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch('http://localhost:3000/remisiones/export', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!response.ok) return;
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `remisiones_general_${new Date().toISOString().split('T')[0]}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error exportando:', error);
+    }
   };
 
   if (loading) {
@@ -86,7 +96,8 @@ export const ProjectSelector: React.FC = () => {
     <div className="project-selector-container">
       <div className="project-selector-header">
         <div className="ps-titulo-bloque">
-          <h1 className="ps-titulo">Seleccionar Proyecto</h1>
+          <h1 className="ps-titulo">Control de Remisiones y Existencias</h1>
+          <p className="ps-subtitulo">Programa de Entregas - ALUBIN</p>
         </div>
         <div className="ps-actions">
           <div className="ps-search-bar">
@@ -106,6 +117,12 @@ export const ProjectSelector: React.FC = () => {
             <option value="en_progreso">En Progreso</option>
             <option value="completado">Completados</option>
           </select>
+          <button className="ps-action-button ps-primary-button" onClick={irAVistaGeneral}>
+            Vista General
+          </button>
+          <button className="ps-action-button ps-success-button" onClick={exportarGeneral}>
+            Exportar Todo
+          </button>
           <button className="ps-action-button ps-secondary-button" onClick={() => navigate('/home')}>
             Volver al Inicio
           </button>
@@ -117,11 +134,6 @@ export const ProjectSelector: React.FC = () => {
           <div className="ps-proyectos-wrapper">
             <ul className="ps-lista-proyectos">
               {proyectosFiltrados.map((proyecto) => {
-                const presupuesto = proyecto.presupuesto_total || proyecto.presupuesto || 0;
-                const gastado = proyecto.total_pedidos || 0;
-                const disponible = presupuesto - gastado;
-                const claseDisponible = disponible < 0 ? "ps-presupuesto-disponible negativo" : "ps-presupuesto-disponible positivo";
-
                 return (
                   <li
                     key={proyecto.id_proyecto}
@@ -132,21 +144,16 @@ export const ProjectSelector: React.FC = () => {
                     <div className="ps-proyecto-info">
                       <span className="ps-nombre">{proyecto.nombre}</span>
                       <span className="ps-fecha">{formatearFecha(proyecto.fecha_proyecto)}</span>
-                      <div className="ps-presupuesto-resumen">
-                        <span>Asignado: {formatearMoneda(presupuesto)}</span>
-                        <span>Gastado: {formatearMoneda(gastado)}</span>
-                        <span className={claseDisponible}>Disponible: {formatearMoneda(disponible)}</span>
-                      </div>
                       <span className={`ps-estado-badge ${proyecto.estado}`}>
                         {proyecto.estado === 'en_progreso' ? 'En Progreso' : 'Completado'}
                       </span>
                     </div>
-                    <span className="ps-card-arrow">Ver Dashboards →</span>
+                    <span className="ps-card-arrow">Ver Remisiones &rarr;</span>
                   </li>
                 );
               })}
               {proyectosFiltrados.length === 0 && (
-                <li>No se encontraron proyectos que coincidan con los filtros</li>
+                <li className="ps-empty-item">No se encontraron proyectos que coincidan con los filtros</li>
               )}
             </ul>
           </div>
@@ -154,4 +161,4 @@ export const ProjectSelector: React.FC = () => {
       </div>
     </div>
   );
-};
+}

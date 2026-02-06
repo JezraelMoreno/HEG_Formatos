@@ -3,13 +3,14 @@
   justify-content: center;
   align-items: center;
   height: 100vh;
-  background: #f0f4f8;
+  background: var(--color-bg);
+  font-family: var(--font-family);
 }
 
 .login-form {
-  background: white;
+  background: var(--color-surface);
   padding: 2rem;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   width: 320px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   display: flex;
@@ -26,7 +27,7 @@
 .login-form h2 {
   text-align: center;
   margin-bottom: 1rem;
-  color: #333;
+  color: var(--color-text);
 }
 
 .login-form label {
@@ -37,31 +38,34 @@
 .login-form input {
   padding: 10px;
   margin-top: 4px;
-  border-radius: 8px;
-  border: 1px solid #ccc;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-input);
   outline: none;
+  font-family: var(--font-family);
 }
 
 .login-form button {
   margin-top: 20px;
   padding: 10px;
-  background-color: #224c84ff;
+  background-color: var(--color-primary);
   color: white;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   cursor: pointer;
-  transition: 0.3s;
+  font-family: var(--font-family);
+  font-weight: 600;
+  transition: background-color 0.3s;
 }
 
 .login-form button:hover {
-  background-color: #224c84ff;
+  background-color: var(--color-primary-hover);
 }
 
 .error {
-  color: #d32f2f;
-  background: #fdecea;
+  color: var(--color-danger);
+  background: var(--color-danger-bg);
   padding: 0.5rem;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   margin-bottom: 10px;
   text-align: center;
 }

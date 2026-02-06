@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import './ProjectSelector.css';
+import '../dashboards/ProjectSelector.css';
 
 interface Proyecto {
   id_proyecto: number;
@@ -12,7 +12,7 @@ interface Proyecto {
   total_pedidos?: number;
 }
 
-export const ProjectSelector: React.FC = () => {
+export function ReportesProjectSelector() {
   const navigate = useNavigate();
   const [proyectos, setProyectos] = useState<Proyecto[]>([]);
   const [loading, setLoading] = useState(true);
@@ -27,11 +27,8 @@ export const ProjectSelector: React.FC = () => {
     try {
       const token = localStorage.getItem('token');
       const response = await fetch('http://localhost:3000/proyectos', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+        headers: { 'Authorization': `Bearer ${token}` }
       });
-
       if (response.ok) {
         const result = await response.json();
         if (result.success && Array.isArray(result.data)) {
@@ -51,25 +48,14 @@ export const ProjectSelector: React.FC = () => {
     return coincideBusqueda && coincideEstado;
   });
 
-  const formatearFecha = (fecha: string) => {
-    return new Date(fecha).toLocaleDateString('es-MX', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
-  };
+  const formatearFecha = (fecha: string) =>
+    new Date(fecha).toLocaleDateString('es-MX', { year: 'numeric', month: 'short', day: 'numeric' });
 
-  const formatearMoneda = (valor: number) => {
-    return new Intl.NumberFormat('es-MX', {
-      style: 'currency',
-      currency: 'MXN',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0
-    }).format(valor);
-  };
+  const formatearMoneda = (valor: number) =>
+    new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(valor);
 
   const seleccionarProyecto = (proyecto: Proyecto) => {
-    navigate(`/dashboards/${proyecto.id_proyecto}/ejecutivo`, {
+    navigate(`/reportes/${proyecto.id_proyecto}`, {
       state: { nombreProyecto: proyecto.nombre }
     });
   };
@@ -86,7 +72,7 @@ export const ProjectSelector: React.FC = () => {
     <div className="project-selector-container">
       <div className="project-selector-header">
         <div className="ps-titulo-bloque">
-          <h1 className="ps-titulo">Seleccionar Proyecto</h1>
+          <h1 className="ps-titulo">Reportes de Existencia y Remisiones</h1>
         </div>
         <div className="ps-actions">
           <div className="ps-search-bar">
@@ -141,7 +127,7 @@ export const ProjectSelector: React.FC = () => {
                         {proyecto.estado === 'en_progreso' ? 'En Progreso' : 'Completado'}
                       </span>
                     </div>
-                    <span className="ps-card-arrow">Ver Dashboards →</span>
+                    <span className="ps-card-arrow">Ver Reportes &rarr;</span>
                   </li>
                 );
               })}
@@ -154,4 +140,4 @@ export const ProjectSelector: React.FC = () => {
       </div>
     </div>
   );
-};
+}

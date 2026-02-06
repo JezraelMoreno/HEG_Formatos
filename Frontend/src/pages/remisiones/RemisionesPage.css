@@ -1,0 +1,727 @@
+/* ========================================
+   RemisionesPage - Control de Remisiones y Existencias
+   ======================================== */
+
+.remisiones-page {
+  min-height: 100vh;
+  background-color: var(--color-bg);
+  font-family: var(--font-family);
+}
+
+/* --- Navbar --- */
+.rem-navbar {
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  padding: 14px 24px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  flex-wrap: wrap;
+}
+
+.rem-nav-back {
+  background: var(--color-border);
+  color: var(--color-primary-dark);
+  border: 1px solid var(--color-border-input);
+  border-radius: var(--radius-md);
+  padding: 8px 14px;
+  font-size: 0.85rem;
+  font-family: var(--font-family);
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.rem-nav-back:hover {
+  background: var(--color-border-input);
+}
+
+.rem-nav-project {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.rem-project-label {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+.rem-project-title {
+  color: var(--color-primary-dark);
+  font-weight: 700;
+  font-size: 1rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 260px;
+}
+
+.rem-nav-tabs {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.rem-tab {
+  background: transparent;
+  border: none;
+  padding: 8px 16px;
+  font-size: 0.85rem;
+  font-family: var(--font-family);
+  font-weight: 600;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: background 0.15s, color 0.15s;
+}
+.rem-tab:hover {
+  background: var(--color-border-light);
+  color: var(--color-primary-dark);
+}
+.rem-tab.active {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+/* Colores por prioridad en tabs */
+.rem-tab.prioridad-A {
+  border-left: 3px solid #ef4444;
+}
+.rem-tab.prioridad-A.active {
+  background: #ef4444;
+}
+.rem-tab.prioridad-B {
+  border-left: 3px solid #f59e0b;
+}
+.rem-tab.prioridad-B.active {
+  background: #f59e0b;
+}
+.rem-tab.prioridad-C {
+  border-left: 3px solid #22c55e;
+}
+.rem-tab.prioridad-C.active {
+  background: #22c55e;
+}
+
+/* Material tabs */
+.rem-material-tabs {
+  margin-left: 0;
+  border-left: 1px solid var(--color-border-input);
+  padding-left: 8px;
+}
+
+.rem-tab.material-tab.active {
+  background: #6366f1;
+  color: #fff;
+}
+
+/* Tipo material cell */
+.rem-tabla td.tipo-material-cell {
+  font-weight: 700;
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+}
+.rem-tabla td.tipo-aluminio {
+  background: #dbeafe;
+  color: #1e40af;
+}
+.rem-tabla td.tipo-cristal {
+  background: #f3e8ff;
+  color: #7c3aed;
+}
+
+.rem-export-btn {
+  background: var(--color-success);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-md);
+  padding: 8px 16px;
+  font-size: 0.85rem;
+  font-family: var(--font-family);
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.rem-export-btn:hover {
+  background: #059669;
+}
+
+/* --- Filtros --- */
+.rem-filtros {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 14px 24px;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  align-items: flex-end;
+}
+
+.rem-filtro-search,
+.rem-filtro-select {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.rem-filtro-search label,
+.rem-filtro-select label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.rem-filtro-search input,
+.rem-filtro-select select {
+  padding: 7px 10px;
+  border: 1px solid var(--color-border-input);
+  border-radius: var(--radius-md);
+  font-size: 0.82rem;
+  font-family: var(--font-family);
+  background: var(--color-surface);
+  min-width: 180px;
+}
+.rem-filtro-search input:focus,
+.rem-filtro-select select:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.rem-filtro-reset {
+  background: var(--color-border-light);
+  border: 1px solid var(--color-border-input);
+  border-radius: var(--radius-md);
+  padding: 7px 14px;
+  font-size: 0.82rem;
+  font-family: var(--font-family);
+  font-weight: 600;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+.rem-filtro-reset:hover {
+  background: var(--color-border);
+  color: var(--color-primary-dark);
+}
+
+.rem-filtro-stats {
+  margin-left: auto;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  font-size: 0.82rem;
+  color: var(--color-text-muted);
+}
+.rem-stat-separator {
+  color: var(--color-border-input);
+}
+.rem-stat-saldo {
+  color: var(--color-warning);
+  font-weight: 600;
+}
+
+/* --- Leyenda --- */
+.rem-leyenda {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 10px 24px;
+  background: var(--color-bg-alt);
+  border-bottom: 1px solid var(--color-border);
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.rem-leyenda-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rem-leyenda-color {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+}
+.rem-leyenda-color.prioridad-A {
+  background: #fecaca;
+  border: 1px solid #ef4444;
+}
+.rem-leyenda-color.prioridad-B {
+  background: #fef3c7;
+  border: 1px solid #f59e0b;
+}
+.rem-leyenda-color.prioridad-C {
+  background: #dcfce7;
+  border: 1px solid #22c55e;
+}
+
+.rem-leyenda-item.editable {
+  margin-left: auto;
+  font-style: italic;
+  color: var(--color-accent);
+}
+
+/* --- Tabla --- */
+.rem-tabla-container {
+  padding: 16px 24px;
+  overflow-x: auto;
+}
+
+.rem-tabla {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--color-surface);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  font-size: 0.78rem;
+}
+
+.rem-tabla th {
+  background: var(--color-table-header);
+  color: var(--color-table-header-text);
+  font-weight: 600;
+  padding: 8px 6px;
+  text-align: center;
+  white-space: nowrap;
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+  border: 1px solid var(--color-table-header-dark);
+  user-select: none;
+}
+
+.rem-tabla th.sortable {
+  cursor: pointer;
+}
+.rem-tabla th.sortable:hover {
+  background: var(--color-table-header-dark);
+}
+
+.rem-th-group.control-entregas {
+  background: #3b82f6;
+  color: #fff;
+}
+
+.rem-subheader th {
+  background: #e0e7ff;
+  color: #4338ca;
+  font-size: 0.68rem;
+  padding: 4px 6px;
+}
+.rem-subheader th.editable-header {
+  background: #c7d2fe;
+}
+
+.rem-tabla td {
+  padding: 6px;
+  border: 1px solid var(--color-border);
+  text-align: center;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+/* Celdas específicas */
+.rem-tabla td.desc-cell {
+  text-align: left;
+  white-space: normal;
+  max-width: 200px;
+  min-width: 150px;
+  word-break: break-word;
+  font-size: 0.72rem;
+}
+.rem-tabla th.desc-header {
+  min-width: 150px;
+}
+
+.rem-tabla td.proyecto-cell {
+  text-align: left;
+  font-weight: 500;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rem-tabla td.perfil-cell {
+  font-family: monospace;
+  font-weight: 500;
+}
+
+.rem-tabla td.acabado-cell {
+  text-align: left;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.7rem;
+}
+.rem-tabla th.acabado-header {
+  min-width: 100px;
+}
+
+.rem-tabla td.kg-cell,
+.rem-tabla td.kg-saldo-cell {
+  font-weight: 500;
+}
+
+.rem-tabla td.fecha-cell {
+  font-size: 0.7rem;
+  white-space: nowrap;
+}
+
+.rem-tabla td.saldo-cell {
+  background: #fef9c3;
+  font-weight: 600;
+  color: #92400e;
+}
+
+.rem-tabla td.pct-cell {
+  font-weight: 500;
+}
+.rem-tabla td.pct-cell.completo {
+  background: #dcfce7;
+  color: #166534;
+}
+.rem-tabla td.pct-cell.parcial {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.rem-tabla td.prioridad-cell {
+  font-weight: 700;
+  font-size: 0.8rem;
+}
+.rem-tabla td.prioridad-cell.prioridad-A {
+  background: #fecaca;
+  color: #991b1b;
+}
+.rem-tabla td.prioridad-cell.prioridad-B {
+  background: #fef3c7;
+  color: #92400e;
+}
+.rem-tabla td.prioridad-cell.prioridad-C {
+  background: #dcfce7;
+  color: #166534;
+}
+
+/* Filas por prioridad */
+.rem-tabla tbody tr.prioridad-row-A {
+  background: #fef2f2;
+}
+.rem-tabla tbody tr.prioridad-row-A:hover {
+  background: #fee2e2;
+}
+.rem-tabla tbody tr.prioridad-row-B {
+  background: #fffbeb;
+}
+.rem-tabla tbody tr.prioridad-row-B:hover {
+  background: #fef3c7;
+}
+.rem-tabla tbody tr.prioridad-row-C {
+  background: #f0fdf4;
+}
+.rem-tabla tbody tr.prioridad-row-C:hover {
+  background: #dcfce7;
+}
+
+/* Celdas editables */
+.rem-tabla td.editable-cell {
+  background: #f0f9ff;
+  cursor: pointer;
+  position: relative;
+}
+.rem-tabla td.editable-cell:hover {
+  background: #e0f2fe;
+}
+.rem-tabla td.editable-cell.saving {
+  opacity: 0.6;
+}
+
+.rem-cell-editable {
+  display: block;
+  padding: 2px 4px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.rem-cell-editable:hover {
+  background: #bae6fd;
+}
+
+.rem-cell-input {
+  width: 60px;
+  padding: 2px 4px;
+  border: 2px solid var(--color-accent);
+  border-radius: 3px;
+  font-size: 0.78rem;
+  font-family: var(--font-family);
+  text-align: center;
+  background: #fff;
+}
+.rem-cell-input:focus {
+  outline: none;
+}
+
+.rem-cell-readonly {
+  color: var(--color-text-muted);
+}
+
+/* Fila de totales */
+.rem-totals-row {
+  background: var(--color-border-light) !important;
+  border-top: 2px solid var(--color-table-header);
+}
+.rem-totals-row td {
+  font-weight: 700;
+  color: var(--color-primary-dark);
+  padding: 10px 6px;
+}
+
+.rem-empty {
+  text-align: center !important;
+  color: var(--color-text-placeholder);
+  padding: 40px 16px !important;
+  font-size: 0.9rem;
+}
+
+.rem-loading {
+  text-align: center;
+  padding: 60px 16px;
+  color: var(--color-text-muted);
+  font-size: 0.95rem;
+}
+
+/* --- Responsive --- */
+@media (max-width: 1200px) {
+  .rem-navbar {
+    padding: 12px 16px;
+    gap: 12px;
+  }
+  .rem-nav-tabs {
+    margin-left: 0;
+    width: 100%;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  .rem-filtros {
+    padding: 12px 16px;
+  }
+  .rem-tabla-container {
+    padding: 12px 8px;
+  }
+  .rem-leyenda {
+    padding: 8px 16px;
+  }
+}
+
+/* --- Estilos para ProjectSelector de remisiones --- */
+.ps-subtitulo {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  font-weight: 400;
+  margin-top: 4px;
+}
+
+.ps-success-button {
+  background: var(--color-success) !important;
+  color: #fff !important;
+}
+.ps-success-button:hover {
+  background: #059669 !important;
+}
+
+.ps-primary-button {
+  background: var(--color-primary) !important;
+  color: #fff !important;
+}
+.ps-primary-button:hover {
+  background: var(--color-primary-dark) !important;
+}
+
+.ps-empty-item {
+  text-align: center;
+  color: var(--color-text-placeholder);
+  padding: 40px 16px;
+}
+
+/* Resumen de prioridades */
+.ps-resumen-prioridades {
+  padding: 16px 24px;
+  background: var(--color-bg-alt);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.ps-resumen-cards {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.ps-resumen-card {
+  background: var(--color-surface);
+  border-radius: var(--radius-md);
+  padding: 14px 18px;
+  min-width: 180px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  border-left: 4px solid var(--color-border);
+}
+
+.ps-resumen-card.prioridad-A {
+  border-left-color: #ef4444;
+  background: #fef2f2;
+}
+.ps-resumen-card.prioridad-B {
+  border-left-color: #f59e0b;
+  background: #fffbeb;
+}
+.ps-resumen-card.prioridad-C {
+  border-left-color: #22c55e;
+  background: #f0fdf4;
+}
+.ps-resumen-card.total {
+  border-left-color: var(--color-primary);
+  background: #eff6ff;
+}
+
+.ps-resumen-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.ps-resumen-prioridad {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--color-primary-dark);
+}
+
+.ps-resumen-items {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  background: var(--color-border-light);
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.ps-resumen-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ps-resumen-stat {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.ps-resumen-label {
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+}
+
+.ps-resumen-value {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.ps-resumen-value.saldo {
+  color: var(--color-warning);
+}
+
+/* ========================================
+   Tabla Cristal - Layout específico
+   ======================================== */
+
+/* Header grupo PIEZAS */
+.rem-th-group.piezas-group {
+  background: #7c3aed;
+  color: #fff;
+}
+
+/* Subheader faltante */
+.rem-subheader th.faltante-header {
+  background: #ede9fe;
+  color: #5b21b6;
+}
+
+/* Celda FALTANTE */
+.rem-tabla td.faltante-cell {
+  font-weight: 700;
+  text-align: center;
+}
+.rem-tabla td.faltante-pendiente {
+  background: #fecaca;
+  color: #991b1b;
+}
+.rem-tabla td.faltante-completo {
+  background: #dcfce7;
+  color: #166534;
+}
+
+/* Filas con faltantes en tabla cristal */
+.rem-tabla-cristal tbody tr.faltante-row {
+  background: #fff;
+}
+.rem-tabla-cristal tbody tr.faltante-row:hover {
+  background: #faf5ff;
+}
+.rem-tabla-cristal tbody tr:hover {
+  background: #faf5ff;
+}
+
+/* Celda ENTREGAR EN */
+.rem-tabla td.entregar-cell {
+  font-weight: 600;
+  color: var(--color-primary-dark);
+  text-align: center;
+}
+
+/* Fecha de entrega pactada - header rojo */
+.rem-tabla th.fecha-pactada-header {
+  background: #dc2626;
+  color: #fff;
+}
+.rem-tabla th.fecha-pactada-header:hover {
+  background: #b91c1c;
+}
+
+/* Fecha de entrega pactada - celda con valor rojo */
+.rem-tabla td.fecha-pactada-cell {
+  font-weight: 700;
+}
+.fecha-pactada-value {
+  color: #dc2626;
+  font-weight: 700;
+}
+
+/* Editable date cell input */
+.rem-cell-date-input {
+  width: 130px;
+  padding: 2px 4px;
+  border: 2px solid var(--color-accent);
+  border-radius: 3px;
+  font-size: 0.75rem;
+  font-family: var(--font-family);
+  text-align: center;
+  background: #fff;
+}
+.rem-cell-date-input:focus {
+  outline: none;
+}
+
+.rem-date-editable {
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+/* Cristal table - ZONA/descripcion más ancha */
+.rem-tabla-cristal td.desc-cell {
+  min-width: 200px;
+  max-width: 300px;
+}

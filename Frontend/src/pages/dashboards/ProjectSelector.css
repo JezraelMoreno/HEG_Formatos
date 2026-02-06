@@ -1,7 +1,10 @@
 .project-selector-container {
   min-height: 100vh;
-  background: #f8fafc;
-  padding: 24px;
+  width: 100%;
+  background-color: var(--color-bg);
+  font-family: var(--font-family);
+  padding: 28px 20px 24px;
+  box-sizing: border-box;
 }
 
 .project-selector-loading {
@@ -9,235 +12,215 @@
   justify-content: center;
   align-items: center;
   min-height: 400px;
-  font-size: 1.125rem;
-  color: #64748b;
+  font-size: 14px;
+  color: var(--color-text-secondary);
 }
 
 .project-selector-header {
-  max-width: 1400px;
-  margin: 0 auto 24px;
-}
-
-.project-selector-header .back-button {
-  background: none;
-  border: none;
-  color: #3b82f6;
-  font-size: 1rem;
-  cursor: pointer;
-  padding: 8px 0;
-  margin-bottom: 16px;
   display: flex;
   align-items: center;
-  gap: 4px;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: nowrap;
+  max-width: 1240px;
+  margin: 0 auto 20px;
 }
 
-.project-selector-header .back-button:hover {
-  color: #2563eb;
+.ps-titulo-bloque {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
-.project-selector-header h1 {
-  font-size: 2rem;
-  font-weight: 700;
-  color: #1e293b;
-  margin: 0 0 8px 0;
-}
-
-.project-selector-header p {
-  color: #64748b;
-  font-size: 1rem;
+.ps-titulo {
+  font-size: 26px;
+  color: var(--color-primary-dark);
   margin: 0;
 }
 
-.project-selector-filters {
-  max-width: 1400px;
-  margin: 0 auto 24px;
+.ps-actions {
   display: flex;
-  gap: 16px;
-  align-items: center;
+  gap: 10px;
   flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
 }
 
-.project-search-input {
+.ps-search-bar {
+  width: 320px;
+  max-width: 420px;
+  display: flex;
+  align-items: center;
+  padding: 10px 16px;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--color-border-input);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-md);
+}
+
+.ps-search-bar input {
   flex: 1;
-  min-width: 250px;
-  padding: 12px 16px;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  font-size: 1rem;
-  background: white;
-}
-
-.project-search-input:focus {
+  border: none;
   outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  font-size: 14px;
+  font-family: var(--font-family);
+  color: var(--color-text);
+  background: transparent;
 }
 
-.project-filter-select {
-  padding: 12px 16px;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  font-size: 1rem;
-  background: white;
+.ps-search-bar input::placeholder {
+  color: var(--color-text-placeholder);
+}
+
+.ps-filter-select {
+  padding: 10px 16px;
+  border: 1px solid var(--color-border-input);
+  border-radius: var(--radius-xl);
+  font-size: 14px;
+  font-family: var(--font-family);
+  background: var(--color-surface);
   cursor: pointer;
-  min-width: 180px;
+  box-shadow: var(--shadow-md);
 }
 
-.project-filter-select:focus {
+.ps-filter-select:focus {
   outline: none;
-  border-color: #3b82f6;
+  border-color: var(--color-accent);
 }
 
-.project-count {
-  color: #64748b;
-  font-size: 0.875rem;
-  padding: 8px 16px;
-  background: white;
-  border-radius: 20px;
-  border: 1px solid #e2e8f0;
+.ps-action-button {
+  padding: 10px 16px;
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  color: #fff;
+  font-family: var(--font-family);
+  font-weight: 600;
 }
 
-.project-selector-grid {
-  max-width: 1400px;
+.ps-secondary-button {
+  background: var(--color-border);
+  color: var(--color-primary-dark);
+  border: 1px solid var(--color-border-input);
+}
+
+.ps-secondary-button:hover {
+  background: var(--color-border-input);
+}
+
+.ps-contenido {
+  width: 100%;
+  max-width: 1240px;
   margin: 0 auto;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  display: flex;
+  flex-direction: column;
   gap: 20px;
 }
 
-.project-card {
-  background: white;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  padding: 20px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  text-align: left;
+.ps-panel {
+  flex: 1 1 600px;
+}
+
+.ps-proyectos-wrapper {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 6px;
 }
 
-.project-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
-  border-color: #3b82f6;
+.ps-lista-proyectos {
+  list-style: none;
+  padding: 0;
+  margin: 10px 0 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
 }
 
-.project-card-header {
+.ps-item-proyecto {
+  background: var(--color-surface);
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  width: 100%;
+  max-width: 820px;
+  margin: 10px 0;
+  transition: background 0.12s ease;
 }
 
-.project-status {
-  padding: 4px 12px;
-  border-radius: 20px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
+.ps-item-proyecto:hover {
+  background: var(--color-bg-alt);
 }
 
-.project-status.en_progreso {
-  background: #dbeafe;
-  color: #1d4ed8;
-}
-
-.project-status.completado {
-  background: #dcfce7;
-  color: #15803d;
-}
-
-.project-date {
-  font-size: 0.875rem;
-  color: #94a3b8;
-}
-
-.project-name {
-  font-size: 1.25rem;
-  font-weight: 600;
-  color: #1e293b;
-  margin: 0;
-  line-height: 1.3;
-}
-
-.project-budget-info {
-  background: #f8fafc;
-  border-radius: 8px;
-  padding: 12px;
-}
-
-.budget-row {
+.ps-proyecto-info {
   display: flex;
-  justify-content: space-between;
-  margin-bottom: 4px;
+  flex-direction: column;
+  gap: 4px;
 }
 
-.budget-label {
-  color: #64748b;
-  font-size: 0.875rem;
-}
-
-.budget-value {
+.ps-nombre {
   font-weight: 600;
-  color: #1e293b;
-  font-size: 0.875rem;
+  color: var(--color-primary-dark);
 }
 
-.budget-value.spent {
-  color: #3b82f6;
+.ps-fecha {
+  color: var(--color-text-secondary);
+  font-size: 14px;
 }
 
-.budget-progress {
-  height: 6px;
-  background: #e2e8f0;
-  border-radius: 3px;
-  margin: 8px 0 4px;
-  overflow: hidden;
+.ps-presupuesto-resumen {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--color-primary-dark);
 }
 
-.budget-progress-bar {
-  height: 100%;
-  background: #3b82f6;
-  border-radius: 3px;
-  transition: width 0.3s ease;
+.ps-presupuesto-disponible {
+  font-weight: 600;
 }
 
-.budget-progress-bar.warning {
-  background: #f59e0b;
+.ps-presupuesto-disponible.positivo {
+  color: var(--color-success-text);
 }
 
-.budget-progress-bar.danger {
-  background: #ef4444;
+.ps-presupuesto-disponible.negativo {
+  color: var(--color-danger);
 }
 
-.budget-percentage {
-  font-size: 0.75rem;
-  color: #64748b;
+.ps-estado-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  margin-top: 4px;
 }
 
-.project-card-arrow {
-  color: #3b82f6;
-  font-weight: 500;
-  font-size: 0.875rem;
-  margin-top: auto;
-  padding-top: 8px;
-  border-top: 1px solid #f1f5f9;
+.ps-estado-badge.en_progreso {
+  background: var(--color-warning-bg);
+  border: 1px solid var(--color-warning-border);
+  color: var(--color-warning-text);
 }
 
-.project-card:hover .project-card-arrow {
-  color: #2563eb;
+.ps-estado-badge.completado {
+  background: var(--color-success-bg);
+  border: 1px solid var(--color-success-border);
+  color: var(--color-success);
 }
 
-.no-projects {
-  text-align: center;
-  padding: 48px 24px;
-  color: #64748b;
-  font-size: 1rem;
-  background: white;
-  border-radius: 12px;
-  max-width: 1400px;
-  margin: 0 auto;
+.ps-card-arrow {
+  color: var(--color-primary);
+  font-weight: 600;
+  font-size: 13px;
+  white-space: nowrap;
 }
 
 @media (max-width: 768px) {
@@ -245,16 +228,17 @@
     padding: 16px;
   }
 
-  .project-selector-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .project-selector-filters {
+  .project-selector-header {
     flex-direction: column;
-    align-items: stretch;
+    align-items: flex-start;
   }
 
-  .project-search-input {
-    min-width: auto;
+  .ps-search-bar {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .ps-item-proyecto {
+    max-width: 100%;
   }
 }

@@ -5,6 +5,8 @@ import "./mainPage.css";
 import { authHeader, clearToken, getRole, getToken, isTokenValid } from "../auth";
 import { parsePedidosCsv } from "../utils/pedidosCsv";
 import type { PedidoCsv } from "../utils/pedidosCsv";
+import dashboardImg from "../../assets/dashboards.png"; 
+import remisionesIMG from "../../assets/remisiones.png";
 import pedidosImg from "../../assets/proyectos.png";
 import contabilidadImg from "../../assets/contabilidad.png";
 import viaticosImg from "../../assets/viaticos.png";
@@ -33,7 +35,7 @@ type PedidoResumen = {
 
 type DateInputWithPicker = HTMLInputElement & { showPicker?: () => void };
 
-type ModuleKey = "pedidos" | "contabilidad" | "viaticos" | "dashboards";
+type ModuleKey = "pedidos" | "contabilidad" | "viaticos" | "dashboards" | "remisiones";
 
 const getTodayISO = () => {
   const now = new Date();
@@ -145,13 +147,19 @@ export function MainPage() {
       key: "dashboards",
       titulo: "Módulo de Dashboards",
       descripcion: "Visualiza métricas y análisis de proyectos, presupuestos y materiales.",
-      imagen: contabilidadImg,
+      imagen: dashboardImg,
+    },
+    {
+      key: "remisiones",
+      titulo: "Control de Remisiones",
+      descripcion: "Programa de entregas, control de existencias y seguimiento de recepciones.",
+      imagen: remisionesIMG,
     },
   ];
   const moduloActivo = moduloSeleccionado ? modulos.find((m) => m.key === moduloSeleccionado) : null;
   const esModuloContabilidad = moduloSeleccionado === "contabilidad";
-  const mostrarBuscador = Boolean(moduloSeleccionado) && moduloSeleccionado !== "dashboards";
-  const mostrarProyectos = Boolean(moduloSeleccionado) && moduloSeleccionado !== "dashboards";
+  const mostrarBuscador = Boolean(moduloSeleccionado) && moduloSeleccionado !== "dashboards" && moduloSeleccionado !== "remisiones";
+  const mostrarProyectos = Boolean(moduloSeleccionado) && moduloSeleccionado !== "dashboards" && moduloSeleccionado !== "remisiones";
 
   const handleLogout = () => {
     clearToken();
@@ -161,6 +169,10 @@ export function MainPage() {
   const seleccionarModulo = (key: ModuleKey) => {
     if (key === "dashboards") {
       navigate("/dashboards");
+      return;
+    }
+    if (key === "remisiones") {
+      navigate("/remisiones");
       return;
     }
     setModuloSeleccionado(key);

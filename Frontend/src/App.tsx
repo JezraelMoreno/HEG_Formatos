@@ -9,6 +9,10 @@ import { DashboardPresupuestos } from "./pages/dashboards/DashboardPresupuestos"
 import { DashboardGeneral } from "./pages/dashboards/DashboardGeneral";
 import { DashboardMateriales } from "./pages/dashboards/DashboardMateriales";
 import { DashboardCobranza } from "./pages/dashboards/DashboardCobranza";
+import { ReportesProjectSelector } from "./pages/reportes/ReportesProjectSelector";
+import { ReportePage } from "./pages/reportes/ReportePage";
+import { RemisionesProjectSelector } from "./pages/remisiones/RemisionesProjectSelector";
+import { RemisionesPage } from "./pages/remisiones/RemisionesPage";
 import { PrivateRoute } from "./components/PrivateRoute";
 
 function App() {
@@ -84,6 +88,47 @@ function App() {
         element={
           <PrivateRoute>
             <DashboardCobranza />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/reportes"
+        element={
+          <PrivateRoute>
+            <ReportesProjectSelector />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/reportes/:projectId"
+        element={
+          <PrivateRoute>
+            <ReportePage />
+          </PrivateRoute>
+        }
+      />
+      {/* Rutas de Remisiones */}
+      <Route
+        path="/remisiones"
+        element={
+          <PrivateRoute>
+            <RemisionesProjectSelector />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/remisiones/general"
+        element={
+          <PrivateRoute>
+            <RemisionesPage isGeneral={true} />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/remisiones/:projectId"
+        element={
+          <PrivateRoute>
+            <RemisionesPage />
           </PrivateRoute>
         }
       />
