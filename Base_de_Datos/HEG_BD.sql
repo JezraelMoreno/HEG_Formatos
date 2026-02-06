@@ -186,7 +186,6 @@ CREATE TABLE IF NOT EXISTS pedidos_detalles_cristal (
   precio_unitario DECIMAL(15,2) DEFAULT 0.00,
   importe DECIMAL(15,2) DEFAULT 0.00,
 
-
   fecha_registro DATE DEFAULT (CURRENT_DATE()),
 
   FOREIGN KEY (id_pedido) REFERENCES pedidos(id)
@@ -527,3 +526,71 @@ END;
 //
 
 DELIMITER ;
+
+------------------------------------------------------------
+-- MÓDULO DE REMISIONES Y EXISTENCIAS
+------------------------------------------------------------
+
+------------------------------------------------------------
+-- Tabla remisiones_control
+-- Almacena los datos editables de control de entregas
+-- Se vincula a pedidos_detalles_aluminio o pedidos_detalles_cristal
+-- Los datos del pedido (perfil, descripción, medida, etc.) se leen
+-- directamente de las tablas de detalles existentes.
+------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS remisiones_control (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  id_detalle INT NOT NULL,                           -- FK a pedidos_detalles_aluminio.id_detalle o pedidos_detalles_cristal.id_detalle
+  tipo_material ENUM('aluminio', 'cristal') NOT NULL,
+
+  -- Control de entregas (EDITABLE desde el módulo de remisiones)
+  cantidad_pedida INT DEFAULT 0,                     -- PEDIDO (tramos/piezas pedidas)
+  cantidad_recibida INT DEFAULT 0,                   -- RECIBIDO
+  cantidad_extruido INT DEFAULT 0,                   -- EXTRUIDO (solo aplica para aluminio)
+  cantidad_pintado INT DEFAULT 0,                    -- PINTADO (solo aplica para aluminio)
+
+  -- Prioridad y fechas
+  prioridad ENUM('A', 'B', 'C') DEFAULT 'C',
+  fecha_liberacion DATE,
+  fecha_entrega DATE,
+  fecha_entrega_desfazada DATE,                        -- FECHA DE ENTREGA DESFAZADA (solo cristal)
+
+  -- Observaciones
+  observaciones_proveedor TEXT,
+  observaciones_heg TEXT,
+
+  -- Auditoría
+  fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP,
+  fecha_actualizacion DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+  -- Clave única: un registro de control por cada detalle
+  UNIQUE KEY uk_detalle_material (id_detalle, tipo_material),
+
+  INDEX idx_prioridad (prioridad),
+  INDEX idx_tipo_material (tipo_material)
+);
+
+
+------------------------------------------------------------
+-- PARA BASES DE DATOS EXISTENTES:
+-- Ejecutar este comando para crear la tabla remisiones_control
+------------------------------------------------------------
+-- CREATE TABLE IF NOT EXISTS remisiones_control (
+--   id INT AUTO_INCREMENT PRIMARY KEY,
+--   id_detalle INT NOT NULL,
+--   tipo_material ENUM('aluminio', 'cristal') NOT NULL,
+--   cantidad_pedida INT DEFAULT 0,
+--   cantidad_recibida INT DEFAULT 0,
+--   cantidad_extruido INT DEFAULT 0,
+--   cantidad_pintado INT DEFAULT 0,
+--   prioridad ENUM('A', 'B', 'C') DEFAULT 'C',
+--   fecha_liberacion DATE,
+--   fecha_entrega DATE,
+--   observaciones_proveedor TEXT,
+--   observaciones_heg TEXT,
+--   fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP,
+--   fecha_actualizacion DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+--   UNIQUE KEY uk_detalle_material (id_detalle, tipo_material),
+--   INDEX idx_prioridad (prioridad),
+--   INDEX idx_tipo_material (tipo_material)
+-- );
