@@ -24,6 +24,7 @@ dist-ssr
 *.sw?
 # Ignorar dependencias
 node_modules/
+Documentacion/
 
 # Archivos de entorno
 .env
