@@ -4678,7 +4678,7 @@ app.get("/proyectos/:id/remisiones", authenticateToken, async (req, res) => {
           THEN COALESCE(rc.cantidad_recibida, 0) / COALESCE(rc.cantidad_pedida, da.total_tramos, 1)
           ELSE 0 END as porcentaje_avance,
         ped.proveedor,
-        rc.fecha_liberacion,
+        COALESCE(rc.fecha_liberacion, ped.fecha_aprobacion) as fecha_liberacion,
         rc.fecha_entrega,
         NULL as fecha_entrega_desfazada,
         NULL as fecha_ultima_recepcion,
@@ -4720,7 +4720,7 @@ app.get("/proyectos/:id/remisiones", authenticateToken, async (req, res) => {
           THEN COALESCE(rc.cantidad_recibida, 0) / COALESCE(rc.cantidad_pedida, dc.piezas, 1)
           ELSE 0 END as porcentaje_avance,
         ped.proveedor,
-        rc.fecha_liberacion,
+        COALESCE(rc.fecha_liberacion, ped.fecha_aprobacion) as fecha_liberacion,
         rc.fecha_entrega,
         rc.fecha_entrega_desfazada,
         NULL as fecha_ultima_recepcion,
@@ -4821,6 +4821,8 @@ app.get("/remisiones", authenticateToken, async (req, res) => {
           THEN COALESCE(rc.cantidad_recibida, 0) / COALESCE(rc.cantidad_pedida, da.total_tramos, 1)
           ELSE 0 END as porcentaje_avance,
         ped.proveedor,
+        COALESCE(rc.fecha_liberacion, ped.fecha_aprobacion) as fecha_liberacion,
+        rc.fecha_entrega,
         COALESCE(rc.prioridad, 'C') as prioridad,
         'aluminio' as tipo_material
       FROM pedidos_detalles_aluminio da
@@ -4854,6 +4856,8 @@ app.get("/remisiones", authenticateToken, async (req, res) => {
           THEN COALESCE(rc.cantidad_recibida, 0) / COALESCE(rc.cantidad_pedida, dc.piezas, 1)
           ELSE 0 END as porcentaje_avance,
         ped.proveedor,
+        COALESCE(rc.fecha_liberacion, ped.fecha_aprobacion) as fecha_liberacion,
+        rc.fecha_entrega,
         COALESCE(rc.prioridad, 'C') as prioridad,
         'cristal' as tipo_material
       FROM pedidos_detalles_cristal dc
@@ -5097,7 +5101,7 @@ app.get("/proyectos/:id/remisiones/export", authenticateToken, async (req, res) 
           CASE WHEN COALESCE(rc.cantidad_pedida, da.total_tramos, 0) > 0
             THEN COALESCE(rc.cantidad_recibida, 0) / COALESCE(rc.cantidad_pedida, da.total_tramos, 1)
             ELSE 0 END as porcentaje_avance,
-          rc.fecha_liberacion,
+          COALESCE(rc.fecha_liberacion, ped.fecha_aprobacion) as fecha_liberacion,
           rc.fecha_entrega,
           NULL as fecha_entrega_desfazada,
           COALESCE(rc.prioridad, 'C') as prioridad,
@@ -5142,7 +5146,7 @@ app.get("/proyectos/:id/remisiones/export", authenticateToken, async (req, res) 
           CASE WHEN COALESCE(rc.cantidad_pedida, dc.piezas, 0) > 0
             THEN COALESCE(rc.cantidad_recibida, 0) / COALESCE(rc.cantidad_pedida, dc.piezas, 1)
             ELSE 0 END as porcentaje_avance,
-          rc.fecha_liberacion,
+          COALESCE(rc.fecha_liberacion, ped.fecha_aprobacion) as fecha_liberacion,
           rc.fecha_entrega,
           rc.fecha_entrega_desfazada,
           COALESCE(rc.prioridad, 'C') as prioridad,
@@ -5475,6 +5479,247 @@ app.get("/remisiones/export", authenticateToken, async (req, res) => {
   } catch (err) {
     console.error("Error exportando remisiones:", err);
     res.status(500).json({ success: false, message: "Error generando archivo" });
+  }
+});
+
+// ============================================================================
+// NUEVAS RUTAS DE REMISIONES - AGREGAR REMISIÓN Y HISTORIAL
+// ============================================================================
+
+// Buscar pedidos para agregar remisión
+app.get("/remisiones/buscar-pedidos", authenticateToken, async (req, res) => {
+  try {
+    const { tipo, search } = req.query;
+    console.log(`[DEBUG] Buscando pedidos - Tipo: ${tipo}, Search: ${search}`);
+
+    if (!tipo || !['aluminio', 'cristal'].includes(tipo)) {
+      return res.status(400).json({ success: false, message: "Tipo de material requerido (aluminio o cristal)" });
+    }
+
+    let query;
+    const params = [];
+
+    // Mapeo de búsqueda de familias
+    let familiaMatch = [];
+    if (tipo === 'aluminio') {
+      familiaMatch = ['AL', 'MQAL', 'aluminio'];
+    } else if (tipo === 'cristal') {
+      familiaMatch = ['CR', 'cristal'];
+    }
+
+    query = `
+      SELECT DISTINCT
+        ped.id,
+        ped.pedido as numero_pedido,
+        pr.nombre as nombre_proyecto,
+        ped.proveedor,
+        ped.familia
+      FROM pedidos ped
+      JOIN proyectos pr ON pr.id_proyecto = ped.id_proyecto
+      WHERE (LOWER(ped.familia) IN (${familiaMatch.map(() => '?').join(',')}) OR LOWER(ped.familia) LIKE ?)
+    `;
+    params.push(...familiaMatch.map(f => f.toLowerCase()), `%${tipo}%`);
+
+    if (search) {
+      query += ` AND (ped.pedido LIKE ? OR pr.nombre LIKE ? OR ped.proveedor LIKE ?)`;
+      params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+    }
+
+    query += ` ORDER BY ped.pedido DESC LIMIT 50`;
+
+    const rows = await queryAsync(query, params);
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    console.error("Error buscando pedidos:", err);
+    res.status(500).json({ success: false, message: "Error interno del servidor" });
+  }
+});
+
+// Obtener detalles de un pedido para agregar remisión
+app.get("/remisiones/detalles-pedido/:pedidoId", authenticateToken, async (req, res) => {
+  try {
+    const { pedidoId } = req.params;
+    const { tipo } = req.query;
+
+    if (!tipo || !['aluminio', 'cristal'].includes(tipo)) {
+      return res.status(400).json({ success: false, message: "Tipo de material requerido" });
+    }
+
+    let query;
+    if (tipo === 'aluminio') {
+      query = `
+        SELECT
+          da.id_detalle,
+          da.numero_perfil,
+          NULL as clave_modelo,
+          da.descripcion,
+          COALESCE(da.total_tramos, 0) as cantidad_disponible,
+          COALESCE(rc.cantidad_pedida, da.total_tramos, 0) as cantidad_pedida,
+          COALESCE(rc.cantidad_recibida, 0) as cantidad_recibida,
+          'aluminio' as tipo_material
+        FROM pedidos_detalles_aluminio da
+        LEFT JOIN remisiones_control rc ON rc.id_detalle = da.id_detalle AND rc.tipo_material = 'aluminio'
+        WHERE da.id_pedido = ?
+          AND LOWER(da.descripcion) NOT LIKE '%traspaso%'
+        ORDER BY da.id_detalle ASC
+      `;
+    } else {
+      query = `
+        SELECT
+          dc.id_detalle,
+          NULL as numero_perfil,
+          dc.clave_modelo,
+          dc.descripcion,
+          COALESCE(dc.piezas, 0) as cantidad_disponible,
+          COALESCE(rc.cantidad_pedida, dc.piezas, 0) as cantidad_pedida,
+          COALESCE(rc.cantidad_recibida, 0) as cantidad_recibida,
+          'cristal' as tipo_material
+        FROM pedidos_detalles_cristal dc
+        LEFT JOIN remisiones_control rc ON rc.id_detalle = dc.id_detalle AND rc.tipo_material = 'cristal'
+        WHERE dc.id_pedido = ?
+          AND LOWER(dc.descripcion) NOT LIKE '%traspaso%'
+        ORDER BY dc.id_detalle ASC
+      `;
+    }
+
+    const rows = await queryAsync(query, [pedidoId]);
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    console.error("Error obteniendo detalles de pedido:", err);
+    res.status(500).json({ success: false, message: "Error interno del servidor" });
+  }
+});
+
+// Registrar una entrega
+app.post("/remisiones/registrar-entrega", authenticateToken, async (req, res) => {
+  try {
+    const { id_pedido, tipo_material, entregas, observaciones } = req.body;
+    const usuario = req.user?.username || 'sistema';
+
+    if (!id_pedido || !tipo_material || !entregas || !Array.isArray(entregas) || entregas.length === 0) {
+      return res.status(400).json({ success: false, message: "Datos incompletos" });
+    }
+
+    // Obtener datos del pedido
+    const [pedido] = await queryAsync(
+      `SELECT ped.pedido, pr.nombre as nombre_proyecto
+       FROM pedidos ped
+       JOIN proyectos pr ON pr.id_proyecto = ped.id_proyecto
+       WHERE ped.id = ?`,
+      [id_pedido]
+    );
+
+    if (!pedido) {
+      return res.status(404).json({ success: false, message: "Pedido no encontrado" });
+    }
+
+    // Registrar historial de entrega
+    const historialResult = await queryAsync(
+      `INSERT INTO remisiones_historial_entregas (id_pedido, numero_pedido, nombre_proyecto, tipo_material, total_items, total_piezas, observaciones, usuario)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id_pedido,
+        pedido.pedido,
+        pedido.nombre_proyecto,
+        tipo_material,
+        entregas.length,
+        entregas.reduce((acc, e) => acc + e.cantidad_entrega, 0),
+        observaciones || null,
+        usuario
+      ]
+    );
+
+    const id_entrega = historialResult.insertId;
+
+    // Actualizar cantidades en remisiones_control usando UPSERT
+    for (const entrega of entregas) {
+      if (entrega.cantidad_entrega > 0) {
+        // Primero verificar/crear el registro en remisiones_control
+        await queryAsync(`
+          INSERT INTO remisiones_control (id_detalle, tipo_material, cantidad_pedida, cantidad_recibida)
+          VALUES (?, ?, ?, ?)
+          ON DUPLICATE KEY UPDATE
+            cantidad_recibida = cantidad_recibida + VALUES(cantidad_recibida)
+        `, [entrega.id_detalle, tipo_material, entrega.cantidad_pedida, entrega.cantidad_entrega]);
+
+        // Registrar detalle de la entrega
+        await queryAsync(`
+          INSERT INTO remisiones_historial_entregas_detalle (id_entrega, id_detalle, cantidad_entregada, descripcion)
+          VALUES (?, ?, ?, ?)
+        `, [id_entrega, entrega.id_detalle, entrega.cantidad_entrega, entrega.descripcion || '']);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: "Entrega registrada exitosamente",
+      id_entrega
+    });
+  } catch (err) {
+    console.error("Error registrando entrega:", err);
+    res.status(500).json({ success: false, message: "Error al registrar entrega" });
+  }
+});
+
+// Obtener historial de entregas
+app.get("/remisiones/historial-entregas", authenticateToken, async (req, res) => {
+  try {
+    const { id_proyecto, limit = 100 } = req.query;
+
+    let query = `
+      SELECT
+        id_entrega,
+        fecha_entrega,
+        numero_pedido,
+        nombre_proyecto,
+        tipo_material,
+        total_items,
+        total_piezas,
+        observaciones,
+        usuario
+      FROM remisiones_historial_entregas
+    `;
+    const params = [];
+
+    if (id_proyecto) {
+      query += ` WHERE id_pedido IN (SELECT id FROM pedidos WHERE id_proyecto = ?)`;
+      params.push(id_proyecto);
+    }
+
+    query += ` ORDER BY fecha_entrega DESC LIMIT ?`;
+    params.push(parseInt(limit, 10));
+
+    const rows = await queryAsync(query, params);
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    console.error("Error obteniendo historial de entregas:", err);
+    res.status(500).json({ success: false, message: "Error interno del servidor" });
+  }
+});
+
+// Obtener detalles de una entrega específica
+app.get("/remisiones/historial-entregas/:id", authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const [entrega] = await queryAsync(
+      `SELECT * FROM remisiones_historial_entregas WHERE id_entrega = ?`,
+      [id]
+    );
+
+    if (!entrega) {
+      return res.status(404).json({ success: false, message: "Entrega no encontrada" });
+    }
+
+    const detalles = await queryAsync(
+      `SELECT * FROM remisiones_historial_entregas_detalle WHERE id_entrega = ?`,
+      [id]
+    );
+
+    res.json({ success: true, data: { ...entrega, detalles } });
+  } catch (err) {
+    console.error("Error obteniendo detalle de entrega:", err);
+    res.status(500).json({ success: false, message: "Error interno del servidor" });
   }
 });
 

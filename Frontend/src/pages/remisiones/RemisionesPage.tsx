@@ -616,8 +616,18 @@ export function RemisionesPage({ isGeneral = false }: RemisionesPageProps) {
                       max={row.cantidad_extruido}
                     />
                   </td>
-                  <td className="fecha-cell">{fmtDate(row.fecha_liberacion)}</td>
-                  <td className="fecha-cell">{fmtDate(row.fecha_entrega)}</td>
+                  <td className={`editable-cell ${saving === row.id_programacion ? 'saving' : ''}`}>
+                    <EditableDateCell
+                      value={row.fecha_liberacion}
+                      onSave={(val) => actualizarFecha(row.id_programacion, 'fecha_liberacion', val, row.tipo_material)}
+                    />
+                  </td>
+                  <td className={`editable-cell ${saving === row.id_programacion ? 'saving' : ''}`}>
+                    <EditableDateCell
+                      value={row.fecha_entrega}
+                      onSave={(val) => actualizarFecha(row.id_programacion, 'fecha_entrega', val, row.tipo_material)}
+                    />
+                  </td>
                   <td className={`pct-cell ${row.porcentaje_avance >= 1 ? 'completo' : row.porcentaje_avance > 0 ? 'parcial' : ''}`}>
                     {fmtPct(row.porcentaje_avance)}
                   </td>

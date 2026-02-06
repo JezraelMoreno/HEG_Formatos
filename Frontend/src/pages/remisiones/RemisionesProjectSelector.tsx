@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import '../dashboards/ProjectSelector.css';
+import { AgregarRemisionModal } from './AgregarRemisionModal';
+import { HistorialEntregas } from './HistorialEntregas';
 
 interface Proyecto {
   id_proyecto: number;
@@ -18,6 +20,10 @@ export function RemisionesProjectSelector() {
   const [loading, setLoading] = useState(true);
   const [busqueda, setBusqueda] = useState('');
   const [filtroEstado, setFiltroEstado] = useState<'todos' | 'en_progreso' | 'completado'>('todos');
+
+  // Modal states
+  const [showAgregarRemision, setShowAgregarRemision] = useState(false);
+  const [showHistorial, setShowHistorial] = useState(false);
 
   useEffect(() => {
     cargarDatos();
@@ -117,6 +123,12 @@ export function RemisionesProjectSelector() {
             <option value="en_progreso">En Progreso</option>
             <option value="completado">Completados</option>
           </select>
+          <button className="ps-action-button ps-add-remision-button" onClick={() => setShowAgregarRemision(true)}>
+            + Agregar Remisión
+          </button>
+          <button className="ps-action-button ps-historial-button" onClick={() => setShowHistorial(true)}>
+            Historial Entregas
+          </button>
           <button className="ps-action-button ps-primary-button" onClick={irAVistaGeneral}>
             Vista General
           </button>
@@ -159,6 +171,19 @@ export function RemisionesProjectSelector() {
           </div>
         </section>
       </div>
+
+      {/* Modals */}
+      <AgregarRemisionModal
+        isOpen={showAgregarRemision}
+        onClose={() => setShowAgregarRemision(false)}
+        onSuccess={() => {
+          cargarDatos();
+        }}
+      />
+
+      {showHistorial && (
+        <HistorialEntregas onClose={() => setShowHistorial(false)} />
+      )}
     </div>
   );
 }

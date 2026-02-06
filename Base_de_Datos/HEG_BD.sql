@@ -59,25 +59,6 @@ CREATE TABLE IF NOT EXISTS explosion_insumos (
     ON UPDATE CASCADE
 );
 
--- Para bases ya existentes, agregar columnas de presupuesto por familia:
--- ALTER TABLE proyectos ADD COLUMN presupuesto_cristal DECIMAL(15,2) NOT NULL DEFAULT 0.00;
--- ALTER TABLE proyectos ADD COLUMN presupuesto_aluminio DECIMAL(15,2) NOT NULL DEFAULT 0.00;
--- ALTER TABLE proyectos ADD COLUMN presupuesto_miscelaneos DECIMAL(15,2) NOT NULL DEFAULT 0.00;
--- ALTER TABLE proyectos ADD COLUMN presupuesto_total DECIMAL(15,2) NOT NULL DEFAULT 0.00;
--- UPDATE proyectos SET presupuesto_total = presupuesto_cristal + presupuesto_aluminio + presupuesto_miscelaneos WHERE presupuesto_total = 0;
--- Historial (si ya existe la tabla, saltará; si no, crearla):
--- CREATE TABLE proyectos_presupuestos_historial (
---   id_historial INT AUTO_INCREMENT PRIMARY KEY,
---   id_proyecto INT NOT NULL,
---   fecha_presupuesto DATE NOT NULL,
---   presupuesto_cristal DECIMAL(15,2) NOT NULL DEFAULT 0.00,
---   presupuesto_aluminio DECIMAL(15,2) NOT NULL DEFAULT 0.00,
---   presupuesto_miscelaneos DECIMAL(15,2) NOT NULL DEFAULT 0.00,
---   presupuesto_total DECIMAL(15,2) NOT NULL DEFAULT 0.00,
---   FOREIGN KEY (id_proyecto) REFERENCES proyectos(id_proyecto)
---     ON DELETE CASCADE
---     ON UPDATE CASCADE
--- );
 
 ------------------------------------------------------------
 -- Tabla de pedidos
@@ -527,17 +508,10 @@ END;
 
 DELIMITER ;
 
-------------------------------------------------------------
--- MÓDULO DE REMISIONES Y EXISTENCIAS
-------------------------------------------------------------
 
-------------------------------------------------------------
--- Tabla remisiones_control
--- Almacena los datos editables de control de entregas
--- Se vincula a pedidos_detalles_aluminio o pedidos_detalles_cristal
--- Los datos del pedido (perfil, descripción, medida, etc.) se leen
--- directamente de las tablas de detalles existentes.
-------------------------------------------------------------
+
+
+-- Remisiones
 CREATE TABLE IF NOT EXISTS remisiones_control (
   id INT AUTO_INCREMENT PRIMARY KEY,
   id_detalle INT NOT NULL,                           -- FK a pedidos_detalles_aluminio.id_detalle o pedidos_detalles_cristal.id_detalle
@@ -572,25 +546,41 @@ CREATE TABLE IF NOT EXISTS remisiones_control (
 
 
 ------------------------------------------------------------
--- PARA BASES DE DATOS EXISTENTES:
--- Ejecutar este comando para crear la tabla remisiones_control
+-- Tabla remisiones_historial_entregas
+-- Registra cada entrega realizada (cabecera)
 ------------------------------------------------------------
--- CREATE TABLE IF NOT EXISTS remisiones_control (
---   id INT AUTO_INCREMENT PRIMARY KEY,
---   id_detalle INT NOT NULL,
---   tipo_material ENUM('aluminio', 'cristal') NOT NULL,
---   cantidad_pedida INT DEFAULT 0,
---   cantidad_recibida INT DEFAULT 0,
---   cantidad_extruido INT DEFAULT 0,
---   cantidad_pintado INT DEFAULT 0,
---   prioridad ENUM('A', 'B', 'C') DEFAULT 'C',
---   fecha_liberacion DATE,
---   fecha_entrega DATE,
---   observaciones_proveedor TEXT,
---   observaciones_heg TEXT,
---   fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP,
---   fecha_actualizacion DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
---   UNIQUE KEY uk_detalle_material (id_detalle, tipo_material),
---   INDEX idx_prioridad (prioridad),
---   INDEX idx_tipo_material (tipo_material)
--- );
+CREATE TABLE IF NOT EXISTS remisiones_historial_entregas (
+  id_entrega INT AUTO_INCREMENT PRIMARY KEY,
+  id_pedido INT NOT NULL,
+  numero_pedido VARCHAR(20) NOT NULL,
+  nombre_proyecto VARCHAR(100) NOT NULL,
+  tipo_material ENUM('aluminio', 'cristal') NOT NULL,
+  total_items INT NOT NULL DEFAULT 0,
+  total_piezas INT NOT NULL DEFAULT 0,
+  observaciones TEXT,
+  usuario VARCHAR(50) NOT NULL,
+  fecha_entrega DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+  INDEX idx_fecha (fecha_entrega),
+  INDEX idx_pedido (id_pedido),
+  INDEX idx_tipo_material (tipo_material),
+  
+  FOREIGN KEY (id_pedido) REFERENCES pedidos(id)
+    ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+------------------------------------------------------------
+-- Tabla remisiones_historial_entregas_detalle
+-- Registra el detalle de cada entrega (líneas)
+------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS remisiones_historial_entregas_detalle (
+  id_detalle_entrega INT AUTO_INCREMENT PRIMARY KEY,
+  id_entrega INT NOT NULL,
+  id_detalle INT NOT NULL,
+  cantidad_entregada INT NOT NULL DEFAULT 0,
+  descripcion VARCHAR(255),
+  
+  FOREIGN KEY (id_entrega) REFERENCES remisiones_historial_entregas(id_entrega)
+    ON DELETE CASCADE ON UPDATE CASCADE
+);
+
