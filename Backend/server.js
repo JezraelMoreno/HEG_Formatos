@@ -4691,6 +4691,7 @@ app.get("/proyectos/:id/remisiones", authenticateToken, async (req, res) => {
       JOIN proyectos pr ON pr.id_proyecto = ped.id_proyecto
       LEFT JOIN remisiones_control rc ON rc.id_detalle = da.id_detalle AND rc.tipo_material = 'aluminio'
       WHERE ped.id_proyecto = ?
+        AND LOWER(da.descripcion) NOT LIKE '%traspaso%'
     `;
 
     // Query para CRISTAL - LEFT JOIN con remisiones_control
@@ -4732,6 +4733,7 @@ app.get("/proyectos/:id/remisiones", authenticateToken, async (req, res) => {
       JOIN proyectos pr ON pr.id_proyecto = ped.id_proyecto
       LEFT JOIN remisiones_control rc ON rc.id_detalle = dc.id_detalle AND rc.tipo_material = 'cristal'
       WHERE ped.id_proyecto = ?
+        AND LOWER(dc.descripcion) NOT LIKE '%traspaso%'
     `;
 
     const params = [id];
@@ -4826,6 +4828,7 @@ app.get("/remisiones", authenticateToken, async (req, res) => {
       JOIN proyectos pr ON pr.id_proyecto = ped.id_proyecto
       LEFT JOIN remisiones_control rc ON rc.id_detalle = da.id_detalle AND rc.tipo_material = 'aluminio'
       WHERE 1=1
+        AND LOWER(da.descripcion) NOT LIKE '%traspaso%'
     `;
 
     let queryCristal = `
@@ -4858,6 +4861,7 @@ app.get("/remisiones", authenticateToken, async (req, res) => {
       JOIN proyectos pr ON pr.id_proyecto = ped.id_proyecto
       LEFT JOIN remisiones_control rc ON rc.id_detalle = dc.id_detalle AND rc.tipo_material = 'cristal'
       WHERE 1=1
+        AND LOWER(dc.descripcion) NOT LIKE '%traspaso%'
     `;
 
     let rows = [];
@@ -4932,6 +4936,7 @@ app.get("/remisiones/resumen", authenticateToken, async (req, res) => {
         SUM((COALESCE(rc.cantidad_pedida, da.total_tramos, 0) - COALESCE(rc.cantidad_recibida, 0)) * COALESCE(da.medida_tramo, 0) * COALESCE(da.peso_kg_ml, 0)) AS kg_saldo
       FROM pedidos_detalles_aluminio da
       LEFT JOIN remisiones_control rc ON rc.id_detalle = da.id_detalle AND rc.tipo_material = 'aluminio'
+      WHERE LOWER(da.descripcion) NOT LIKE '%traspaso%'
       GROUP BY COALESCE(rc.prioridad, 'C')
     `;
 
@@ -4947,6 +4952,7 @@ app.get("/remisiones/resumen", authenticateToken, async (req, res) => {
         SUM(COALESCE(rc.cantidad_pedida, dc.piezas, 0) - COALESCE(rc.cantidad_recibida, 0)) AS kg_saldo
       FROM pedidos_detalles_cristal dc
       LEFT JOIN remisiones_control rc ON rc.id_detalle = dc.id_detalle AND rc.tipo_material = 'cristal'
+      WHERE LOWER(dc.descripcion) NOT LIKE '%traspaso%'
       GROUP BY COALESCE(rc.prioridad, 'C')
     `;
 
@@ -5103,6 +5109,7 @@ app.get("/proyectos/:id/remisiones/export", authenticateToken, async (req, res) 
         JOIN proyectos pr ON pr.id_proyecto = ped.id_proyecto
         LEFT JOIN remisiones_control rc ON rc.id_detalle = da.id_detalle AND rc.tipo_material = 'aluminio'
         WHERE ped.id_proyecto = ?
+          AND LOWER(da.descripcion) NOT LIKE '%traspaso%'
       `;
       const pAlu = [id];
       if (prioridad && prioridad !== 'TODAS') {
@@ -5147,6 +5154,7 @@ app.get("/proyectos/:id/remisiones/export", authenticateToken, async (req, res) 
         JOIN proyectos pr ON pr.id_proyecto = ped.id_proyecto
         LEFT JOIN remisiones_control rc ON rc.id_detalle = dc.id_detalle AND rc.tipo_material = 'cristal'
         WHERE ped.id_proyecto = ?
+          AND LOWER(dc.descripcion) NOT LIKE '%traspaso%'
       `;
       const pCri = [id];
       if (prioridad && prioridad !== 'TODAS') {
@@ -5320,6 +5328,7 @@ app.get("/remisiones/export", authenticateToken, async (req, res) => {
         JOIN proyectos pr ON pr.id_proyecto = ped.id_proyecto
         LEFT JOIN remisiones_control rc ON rc.id_detalle = da.id_detalle AND rc.tipo_material = 'aluminio'
         WHERE 1=1
+          AND LOWER(da.descripcion) NOT LIKE '%traspaso%'
       `;
       const pAlu = [];
       if (prioridad && prioridad !== 'TODAS') {
@@ -5364,6 +5373,7 @@ app.get("/remisiones/export", authenticateToken, async (req, res) => {
         JOIN proyectos pr ON pr.id_proyecto = ped.id_proyecto
         LEFT JOIN remisiones_control rc ON rc.id_detalle = dc.id_detalle AND rc.tipo_material = 'cristal'
         WHERE 1=1
+          AND LOWER(dc.descripcion) NOT LIKE '%traspaso%'
       `;
       const pCri = [];
       if (prioridad && prioridad !== 'TODAS') {
