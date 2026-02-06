@@ -2239,7 +2239,7 @@ function requireRole(...roles) {
   };
 }
 
-// ==================== ENDPOINTS DE DASHBOARDS ====================
+// Endpoints de Dashboards
 
 // Dashboard Ejecutivo
 app.get("/api/dashboard/ejecutivo", authenticateToken, async (req, res) => {
@@ -2788,7 +2788,7 @@ app.get("/api/dashboard/proyecto/:id/ejecutivo", authenticateToken, async (req, 
 });
 
 // Dashboard Presupuestos por Proyecto
-// NOTA: Endpoints de dashboards movidos al final del archivo (l�neas 4128+)
+// NOTA: Endpoints de dashboards movidos al final del archivo (l�neas 4128+)
 // Dashboard Materiales por Proyecto
 app.get("/api/dashboard/proyecto/:id/materiales", authenticateToken, async (req, res) => {
   const proyectoId = Number(req.params.id);
@@ -4103,6 +4103,1368 @@ app.get("/api/dashboard/proyecto/:id/general", authenticateToken, async (req, re
   } catch (err) {
     console.error("Error en dashboard general:", err);
     res.status(500).json({ success: false, message: "Error interno del servidor" });
+  }
+});
+
+// =============================================
+// REPORTES DE EXISTENCIA Y REMISIONES
+// =============================================
+
+// Reporte Cristal - datos agregados de detalles cristal por proyecto
+app.get("/proyectos/:id/reportes/cristal", authenticateToken, async (req, res) => {
+  try {
+    const proyectoId = Number(req.params.id);
+    if (!Number.isInteger(proyectoId) || proyectoId <= 0) {
+      return res.status(400).json({ success: false, message: "Proyecto inválido" });
+    }
+
+    // Obtener filtros disponibles
+    const filtrosRows = await queryAsync(
+      `SELECT DISTINCT p.proveedor, p.clan, p.concepto, p.pedido
+       FROM pedidos p
+       INNER JOIN pedidos_detalles_cristal dc ON dc.id_pedido = p.id
+       WHERE p.id_proyecto = ?`,
+      [proyectoId]
+    );
+    const filtros_disponibles = {
+      proveedores: [...new Set((filtrosRows || []).map(r => r.proveedor).filter(Boolean))].sort(),
+      clanes: [...new Set((filtrosRows || []).map(r => r.clan).filter(Boolean))].sort(),
+      conceptos: [...new Set((filtrosRows || []).map(r => r.concepto).filter(Boolean))].sort(),
+      pedidos: [...new Set((filtrosRows || []).map(r => r.pedido).filter(Boolean))].sort((a, b) => {
+        const na = parseInt(a) || 0;
+        const nb = parseInt(b) || 0;
+        return na - nb;
+      }),
+    };
+
+    let query = `
+      SELECT dc.id_detalle, p.id AS id_pedido, p.pedido, p.proveedor, p.clan, p.concepto,
+             DATE_FORMAT(p.fecha_aprobacion, '%Y-%m-%d') AS fecha_aprobacion,
+             dc.descripcion, dc.clave_modelo, dc.ancho, dc.largo, dc.m2_corte,
+             dc.piezas, dc.m2_pedido, dc.precio_unitario, dc.importe
+      FROM pedidos p
+      INNER JOIN pedidos_detalles_cristal dc ON dc.id_pedido = p.id
+      WHERE p.id_proyecto = ?
+    `;
+    const params = [proyectoId];
+
+    const toList = (v) => Array.isArray(v) ? v : (typeof v === 'string' ? v.split(',').map(s => s.trim()).filter(Boolean) : []);
+    const addMulti = (field, values) => {
+      const list = toList(values);
+      if (list.length === 1) { query += ` AND ${field} = ?`; params.push(list[0]); }
+      else if (list.length > 1) { query += ` AND ${field} IN (${list.map(() => '?').join(',')})`; params.push(...list); }
+    };
+
+    const { proveedor, clan, concepto, pedido, fecha_desde, fecha_hasta, clave_modelo } = req.query;
+    addMulti('p.proveedor', proveedor);
+    addMulti('p.clan', clan);
+    addMulti('p.pedido', pedido);
+    if (concepto && String(concepto).trim()) {
+      query += " AND p.concepto = ?";
+      params.push(String(concepto));
+    }
+    if (fecha_desde && String(fecha_desde).trim()) {
+      query += " AND p.fecha_aprobacion >= ?";
+      params.push(String(fecha_desde));
+    }
+    if (fecha_hasta && String(fecha_hasta).trim()) {
+      query += " AND p.fecha_aprobacion <= ?";
+      params.push(String(fecha_hasta));
+    }
+    if (clave_modelo && String(clave_modelo).trim()) {
+      query += " AND dc.clave_modelo LIKE ?";
+      params.push(`%${String(clave_modelo).trim()}%`);
+    }
+
+    query += " ORDER BY CAST(p.pedido AS UNSIGNED) ASC, dc.id_detalle ASC";
+
+    const rows = await queryAsync(query, params);
+    const data = (rows || []).map(r => ({
+      id_detalle: r.id_detalle,
+      id_pedido: r.id_pedido,
+      pedido: r.pedido,
+      proveedor: r.proveedor,
+      clan: r.clan,
+      concepto: r.concepto,
+      fecha_aprobacion: r.fecha_aprobacion,
+      descripcion: r.descripcion,
+      clave_modelo: r.clave_modelo || null,
+      ancho: r.ancho != null ? Number(r.ancho) : null,
+      largo: r.largo != null ? Number(r.largo) : null,
+      m2_corte: r.m2_corte != null ? Number(r.m2_corte) : null,
+      piezas: Number(r.piezas || 0),
+      m2_pedido: r.m2_pedido != null ? Number(r.m2_pedido) : null,
+      precio_unitario: Number(r.precio_unitario || 0),
+      importe: Number(r.importe || 0),
+    }));
+
+    const totals = {
+      total_piezas: data.reduce((sum, r) => sum + r.piezas, 0),
+      total_m2_pedido: Number(data.reduce((sum, r) => sum + Number(r.m2_pedido || 0), 0).toFixed(3)),
+      total_importe: Number(data.reduce((sum, r) => sum + r.importe, 0).toFixed(2)),
+    };
+
+    res.json({ success: true, data, totals, filtros_disponibles });
+  } catch (err) {
+    console.error("Error en reporte cristal:", err);
+    res.status(500).json({ success: false, message: "Error interno del servidor" });
+  }
+});
+
+// Reporte Aluminio - datos agregados de detalles aluminio por proyecto
+app.get("/proyectos/:id/reportes/aluminio", authenticateToken, async (req, res) => {
+  try {
+    const proyectoId = Number(req.params.id);
+    if (!Number.isInteger(proyectoId) || proyectoId <= 0) {
+      return res.status(400).json({ success: false, message: "Proyecto inválido" });
+    }
+
+    // Obtener filtros disponibles (incluye acabados)
+    const filtrosRows = await queryAsync(
+      `SELECT DISTINCT p.proveedor, p.clan, p.concepto, p.pedido, da.acabado
+       FROM pedidos p
+       INNER JOIN pedidos_detalles_aluminio da ON da.id_pedido = p.id
+       WHERE p.id_proyecto = ?`,
+      [proyectoId]
+    );
+    const filtros_disponibles = {
+      proveedores: [...new Set((filtrosRows || []).map(r => r.proveedor).filter(Boolean))].sort(),
+      clanes: [...new Set((filtrosRows || []).map(r => r.clan).filter(Boolean))].sort(),
+      conceptos: [...new Set((filtrosRows || []).map(r => r.concepto).filter(Boolean))].sort(),
+      pedidos: [...new Set((filtrosRows || []).map(r => r.pedido).filter(Boolean))].sort((a, b) => {
+        const na = parseInt(a) || 0;
+        const nb = parseInt(b) || 0;
+        return na - nb;
+      }),
+      acabados: [...new Set((filtrosRows || []).map(r => r.acabado).filter(Boolean))].sort(),
+    };
+
+    let query = `
+      SELECT da.id_detalle, p.id AS id_pedido, p.pedido, p.proveedor, p.clan, p.concepto,
+             DATE_FORMAT(p.fecha_aprobacion, '%Y-%m-%d') AS fecha_aprobacion,
+             da.descripcion, da.numero_perfil, da.medida_tramo, da.unidad,
+             da.peso_kg_ml, da.perimetro_m2_ml, da.acabado, da.total_tramos,
+             da.ml, da.kg, da.m2, da.importe
+      FROM pedidos p
+      INNER JOIN pedidos_detalles_aluminio da ON da.id_pedido = p.id
+      WHERE p.id_proyecto = ?
+    `;
+    const params = [proyectoId];
+
+    const toList = (v) => Array.isArray(v) ? v : (typeof v === 'string' ? v.split(',').map(s => s.trim()).filter(Boolean) : []);
+    const addMulti = (field, values) => {
+      const list = toList(values);
+      if (list.length === 1) { query += ` AND ${field} = ?`; params.push(list[0]); }
+      else if (list.length > 1) { query += ` AND ${field} IN (${list.map(() => '?').join(',')})`; params.push(...list); }
+    };
+
+    const { proveedor, clan, concepto, pedido, fecha_desde, fecha_hasta, acabado } = req.query;
+    addMulti('p.proveedor', proveedor);
+    addMulti('p.clan', clan);
+    addMulti('p.pedido', pedido);
+    addMulti('da.acabado', acabado);
+    if (concepto && String(concepto).trim()) {
+      query += " AND p.concepto = ?";
+      params.push(String(concepto));
+    }
+    if (fecha_desde && String(fecha_desde).trim()) {
+      query += " AND p.fecha_aprobacion >= ?";
+      params.push(String(fecha_desde));
+    }
+    if (fecha_hasta && String(fecha_hasta).trim()) {
+      query += " AND p.fecha_aprobacion <= ?";
+      params.push(String(fecha_hasta));
+    }
+
+    query += " ORDER BY CAST(p.pedido AS UNSIGNED) ASC, da.id_detalle ASC";
+
+    const rows = await queryAsync(query, params);
+    const data = (rows || []).map(r => ({
+      id_detalle: r.id_detalle,
+      id_pedido: r.id_pedido,
+      pedido: r.pedido,
+      proveedor: r.proveedor,
+      clan: r.clan,
+      concepto: r.concepto,
+      fecha_aprobacion: r.fecha_aprobacion,
+      descripcion: r.descripcion,
+      numero_perfil: r.numero_perfil || null,
+      medida_tramo: r.medida_tramo != null ? Number(r.medida_tramo) : null,
+      unidad: r.unidad || null,
+      peso_kg_ml: r.peso_kg_ml != null ? Number(r.peso_kg_ml) : null,
+      perimetro_m2_ml: r.perimetro_m2_ml != null ? Number(r.perimetro_m2_ml) : null,
+      acabado: r.acabado || null,
+      total_tramos: r.total_tramos != null ? Number(r.total_tramos) : null,
+      ml: r.ml != null ? Number(r.ml) : null,
+      kg: r.kg != null ? Number(r.kg) : null,
+      m2: r.m2 != null ? Number(r.m2) : null,
+      importe: Number(r.importe || 0),
+    }));
+
+    const totals = {
+      total_tramos: data.reduce((sum, r) => sum + Number(r.total_tramos || 0), 0),
+      total_ml: Number(data.reduce((sum, r) => sum + Number(r.ml || 0), 0).toFixed(3)),
+      total_kg: Number(data.reduce((sum, r) => sum + Number(r.kg || 0), 0).toFixed(3)),
+      total_m2: Number(data.reduce((sum, r) => sum + Number(r.m2 || 0), 0).toFixed(3)),
+      total_importe: Number(data.reduce((sum, r) => sum + r.importe, 0).toFixed(2)),
+    };
+
+    res.json({ success: true, data, totals, filtros_disponibles });
+  } catch (err) {
+    console.error("Error en reporte aluminio:", err);
+    res.status(500).json({ success: false, message: "Error interno del servidor" });
+  }
+});
+
+// Exportar Reporte Cristal a Excel
+app.get("/proyectos/:id/reportes/cristal/export", authenticateToken, async (req, res) => {
+  try {
+    const proyectoId = Number(req.params.id);
+    if (!Number.isInteger(proyectoId) || proyectoId <= 0) {
+      return res.status(400).json({ success: false, message: "Proyecto inválido" });
+    }
+
+    // Obtener nombre del proyecto
+    const proyectoRows = await queryAsync("SELECT nombre FROM proyectos WHERE id_proyecto = ?", [proyectoId]);
+    const nombreProyecto = (proyectoRows && proyectoRows[0] && proyectoRows[0].nombre) || `Proyecto ${proyectoId}`;
+
+    // Construir query con filtros
+    let query = `
+      SELECT dc.id_detalle, p.pedido, p.proveedor, p.clan, p.concepto,
+             DATE_FORMAT(p.fecha_aprobacion, '%Y-%m-%d') AS fecha_aprobacion,
+             dc.descripcion, dc.clave_modelo, dc.ancho, dc.largo, dc.m2_corte,
+             dc.piezas, dc.m2_pedido, dc.precio_unitario, dc.importe
+      FROM pedidos p
+      INNER JOIN pedidos_detalles_cristal dc ON dc.id_pedido = p.id
+      WHERE p.id_proyecto = ?
+    `;
+    const params = [proyectoId];
+    const toList = (v) => Array.isArray(v) ? v : (typeof v === 'string' ? v.split(',').map(s => s.trim()).filter(Boolean) : []);
+    const addMulti = (field, values) => {
+      const list = toList(values);
+      if (list.length === 1) { query += ` AND ${field} = ?`; params.push(list[0]); }
+      else if (list.length > 1) { query += ` AND ${field} IN (${list.map(() => '?').join(',')})`; params.push(...list); }
+    };
+
+    const { proveedor, clan, concepto, pedido, fecha_desde, fecha_hasta, clave_modelo } = req.query;
+    addMulti('p.proveedor', proveedor);
+    addMulti('p.clan', clan);
+    addMulti('p.pedido', pedido);
+    if (concepto && String(concepto).trim()) { query += " AND p.concepto = ?"; params.push(String(concepto)); }
+    if (fecha_desde && String(fecha_desde).trim()) { query += " AND p.fecha_aprobacion >= ?"; params.push(String(fecha_desde)); }
+    if (fecha_hasta && String(fecha_hasta).trim()) { query += " AND p.fecha_aprobacion <= ?"; params.push(String(fecha_hasta)); }
+    if (clave_modelo && String(clave_modelo).trim()) { query += " AND dc.clave_modelo LIKE ?"; params.push(`%${String(clave_modelo).trim()}%`); }
+
+    query += " ORDER BY CAST(p.pedido AS UNSIGNED) ASC, dc.id_detalle ASC";
+    const rows = await queryAsync(query, params);
+
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("Reporte Cristal");
+
+    try {
+      const logoPath = path.join(__dirname, "assets", "heg_logo.jpg");
+      const imgId = wb.addImage({ filename: logoPath, extension: "jpeg" });
+      ws.addImage(imgId, { tl: { col: 0, row: 0 }, ext: { width: 220, height: 80 } });
+    } catch (imgErr) {
+      console.warn("No se pudo cargar el logo:", imgErr?.message || imgErr);
+    }
+
+    const now = new Date();
+    const fechaGen = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
+    const titleRow = ws.getRow(5);
+    titleRow.getCell(1).value = `Reporte Cristal - ${nombreProyecto} - ${fechaGen}`;
+    titleRow.getCell(1).font = { bold: true, size: 14, color: { argb: "FF333333" } };
+    ws.mergeCells(5, 1, 5, 15);
+
+    const headerRowIndex = 7;
+    ws.columns = [
+      { key: "no", width: 6 },
+      { key: "pedido", width: 10 },
+      { key: "proveedor", width: 20 },
+      { key: "clan", width: 10 },
+      { key: "concepto", width: 18 },
+      { key: "fecha", width: 14 },
+      { key: "clave_modelo", width: 16 },
+      { key: "descripcion", width: 30 },
+      { key: "ancho", width: 10 },
+      { key: "largo", width: 10 },
+      { key: "m2_corte", width: 12 },
+      { key: "piezas", width: 10 },
+      { key: "m2_pedido", width: 12 },
+      { key: "precio_unitario", width: 14 },
+      { key: "importe", width: 14 },
+    ];
+    const headerRow = ws.getRow(headerRowIndex);
+    const headers = ["NO.", "PEDIDO", "PROVEEDOR", "CLAN", "CONCEPTO", "FECHA", "CLAVE/MODELO", "DESCRIPCION", "ANCHO", "LARGO", "M2 CORTE", "PIEZAS", "M2 PEDIDO", "P. UNITARIO", "IMPORTE"];
+    headers.forEach((text, idx) => { headerRow.getCell(idx + 1).value = text; });
+    headerRow.font = { bold: true, color: { argb: "FFFFFFFF" } };
+    headerRow.alignment = { vertical: "middle", horizontal: "center" };
+    headerRow.height = 20;
+    headerRow.eachCell((cell) => {
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF224C84" } };
+      cell.border = {
+        top: { style: "thin", color: { argb: "FFDDDDDD" } },
+        left: { style: "thin", color: { argb: "FFDDDDDD" } },
+        bottom: { style: "thin", color: { argb: "FFDDDDDD" } },
+        right: { style: "thin", color: { argb: "FFDDDDDD" } },
+      };
+    });
+
+    const startDataRow = headerRowIndex + 1;
+    let totalPiezas = 0, totalM2Pedido = 0, totalImporte = 0;
+    (rows || []).forEach((p, i) => {
+      const r = ws.getRow(startDataRow + i);
+      r.getCell(1).value = i + 1;
+      r.getCell(2).value = p.pedido;
+      r.getCell(3).value = p.proveedor;
+      r.getCell(4).value = p.clan;
+      r.getCell(5).value = p.concepto;
+      r.getCell(6).value = p.fecha_aprobacion;
+      r.getCell(7).value = p.clave_modelo || "";
+      r.getCell(8).value = p.descripcion || "";
+      const ancho = p.ancho != null ? Number(p.ancho) : null;
+      const largo = p.largo != null ? Number(p.largo) : null;
+      const m2Corte = p.m2_corte != null ? Number(p.m2_corte) : null;
+      const piezas = Number(p.piezas || 0);
+      const m2Pedido = p.m2_pedido != null ? Number(p.m2_pedido) : null;
+      const pu = Number(p.precio_unitario || 0);
+      const imp = Number(p.importe || 0);
+      r.getCell(9).value = ancho; if (ancho != null) r.getCell(9).numFmt = "0.000";
+      r.getCell(10).value = largo; if (largo != null) r.getCell(10).numFmt = "0.000";
+      r.getCell(11).value = m2Corte; if (m2Corte != null) r.getCell(11).numFmt = "0.000";
+      r.getCell(12).value = piezas;
+      r.getCell(13).value = m2Pedido; if (m2Pedido != null) r.getCell(13).numFmt = "0.000";
+      r.getCell(14).value = pu; r.getCell(14).numFmt = "#,##0.00";
+      r.getCell(15).value = imp; r.getCell(15).numFmt = "#,##0.00";
+      totalPiezas += piezas;
+      totalM2Pedido += Number(m2Pedido || 0);
+      totalImporte += imp;
+    });
+
+    const totalRowIdx = startDataRow + (rows || []).length;
+    const tRow = ws.getRow(totalRowIdx);
+    tRow.getCell(11).value = "TOTALES";
+    tRow.getCell(11).font = { bold: true };
+    tRow.getCell(11).alignment = { horizontal: "right" };
+    tRow.getCell(12).value = totalPiezas;
+    tRow.getCell(12).font = { bold: true };
+    tRow.getCell(13).value = Number(totalM2Pedido.toFixed(3));
+    tRow.getCell(13).numFmt = "0.000";
+    tRow.getCell(13).font = { bold: true };
+    tRow.getCell(15).value = Number(totalImporte.toFixed(2));
+    tRow.getCell(15).numFmt = "#,##0.00";
+    tRow.getCell(15).font = { bold: true };
+    tRow.eachCell((cell) => {
+      cell.border = {
+        top: { style: "thin", color: { argb: "FFDDDDDD" } },
+        left: { style: "thin", color: { argb: "FFDDDDDD" } },
+        bottom: { style: "thin", color: { argb: "FFDDDDDD" } },
+        right: { style: "thin", color: { argb: "FFDDDDDD" } },
+      };
+    });
+
+    ws.views = [{ state: "frozen", ySplit: headerRowIndex }];
+
+    const filename = `reporte_cristal_${proyectoId}_${fechaGen}.xlsx`;
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename=${filename}`);
+    await wb.xlsx.write(res);
+    res.end();
+  } catch (err) {
+    console.error("Error generando XLSX reporte cristal:", err);
+    res.status(500).json({ success: false, message: "Error generando archivo" });
+  }
+});
+
+// Exportar Reporte Aluminio a Excel
+app.get("/proyectos/:id/reportes/aluminio/export", authenticateToken, async (req, res) => {
+  try {
+    const proyectoId = Number(req.params.id);
+    if (!Number.isInteger(proyectoId) || proyectoId <= 0) {
+      return res.status(400).json({ success: false, message: "Proyecto inválido" });
+    }
+
+    const proyectoRows = await queryAsync("SELECT nombre FROM proyectos WHERE id_proyecto = ?", [proyectoId]);
+    const nombreProyecto = (proyectoRows && proyectoRows[0] && proyectoRows[0].nombre) || `Proyecto ${proyectoId}`;
+
+    let query = `
+      SELECT da.id_detalle, p.pedido, p.proveedor, p.clan, p.concepto,
+             DATE_FORMAT(p.fecha_aprobacion, '%Y-%m-%d') AS fecha_aprobacion,
+             da.descripcion, da.numero_perfil, da.medida_tramo, da.unidad,
+             da.peso_kg_ml, da.perimetro_m2_ml, da.acabado, da.total_tramos,
+             da.ml, da.kg, da.m2, da.importe
+      FROM pedidos p
+      INNER JOIN pedidos_detalles_aluminio da ON da.id_pedido = p.id
+      WHERE p.id_proyecto = ?
+    `;
+    const params = [proyectoId];
+    const toList = (v) => Array.isArray(v) ? v : (typeof v === 'string' ? v.split(',').map(s => s.trim()).filter(Boolean) : []);
+    const addMulti = (field, values) => {
+      const list = toList(values);
+      if (list.length === 1) { query += ` AND ${field} = ?`; params.push(list[0]); }
+      else if (list.length > 1) { query += ` AND ${field} IN (${list.map(() => '?').join(',')})`; params.push(...list); }
+    };
+
+    const { proveedor, clan, concepto, pedido, fecha_desde, fecha_hasta, acabado } = req.query;
+    addMulti('p.proveedor', proveedor);
+    addMulti('p.clan', clan);
+    addMulti('p.pedido', pedido);
+    addMulti('da.acabado', acabado);
+    if (concepto && String(concepto).trim()) { query += " AND p.concepto = ?"; params.push(String(concepto)); }
+    if (fecha_desde && String(fecha_desde).trim()) { query += " AND p.fecha_aprobacion >= ?"; params.push(String(fecha_desde)); }
+    if (fecha_hasta && String(fecha_hasta).trim()) { query += " AND p.fecha_aprobacion <= ?"; params.push(String(fecha_hasta)); }
+
+    query += " ORDER BY CAST(p.pedido AS UNSIGNED) ASC, da.id_detalle ASC";
+    const rows = await queryAsync(query, params);
+
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("Reporte Aluminio");
+
+    try {
+      const logoPath = path.join(__dirname, "assets", "heg_logo.jpg");
+      const imgId = wb.addImage({ filename: logoPath, extension: "jpeg" });
+      ws.addImage(imgId, { tl: { col: 0, row: 0 }, ext: { width: 220, height: 80 } });
+    } catch (imgErr) {
+      console.warn("No se pudo cargar el logo:", imgErr?.message || imgErr);
+    }
+
+    const now = new Date();
+    const fechaGen = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
+    const titleRow = ws.getRow(5);
+    titleRow.getCell(1).value = `Reporte Aluminio - ${nombreProyecto} - ${fechaGen}`;
+    titleRow.getCell(1).font = { bold: true, size: 14, color: { argb: "FF333333" } };
+    ws.mergeCells(5, 1, 5, 18);
+
+    const headerRowIndex = 7;
+    ws.columns = [
+      { key: "no", width: 6 },
+      { key: "pedido", width: 10 },
+      { key: "proveedor", width: 20 },
+      { key: "clan", width: 10 },
+      { key: "concepto", width: 18 },
+      { key: "fecha", width: 14 },
+      { key: "descripcion", width: 30 },
+      { key: "numero_perfil", width: 12 },
+      { key: "medida_tramo", width: 14 },
+      { key: "unidad", width: 10 },
+      { key: "peso_kg_ml", width: 12 },
+      { key: "perimetro_m2_ml", width: 14 },
+      { key: "acabado", width: 16 },
+      { key: "total_tramos", width: 14 },
+      { key: "ml", width: 10 },
+      { key: "kg", width: 10 },
+      { key: "m2", width: 10 },
+      { key: "importe", width: 14 },
+    ];
+    const headerRow = ws.getRow(headerRowIndex);
+    const headers = ["NO.", "PEDIDO", "PROVEEDOR", "CLAN", "CONCEPTO", "FECHA", "DESCRIPCION", "N° PERFIL", "MEDIDA(TRAMO)", "UNIDAD", "PESO(KG/ML)", "PERÍM(M2/ML)", "ACABADO", "TOTAL TRAMOS", "ML", "KG", "M2", "IMPORTE"];
+    headers.forEach((text, idx) => { headerRow.getCell(idx + 1).value = text; });
+    headerRow.font = { bold: true, color: { argb: "FFFFFFFF" } };
+    headerRow.alignment = { vertical: "middle", horizontal: "center" };
+    headerRow.height = 20;
+    headerRow.eachCell((cell) => {
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF224C84" } };
+      cell.border = {
+        top: { style: "thin", color: { argb: "FFDDDDDD" } },
+        left: { style: "thin", color: { argb: "FFDDDDDD" } },
+        bottom: { style: "thin", color: { argb: "FFDDDDDD" } },
+        right: { style: "thin", color: { argb: "FFDDDDDD" } },
+      };
+    });
+
+    const startDataRow = headerRowIndex + 1;
+    let totalTramos = 0, totalMl = 0, totalKg = 0, totalM2 = 0, totalImporte = 0;
+    (rows || []).forEach((p, i) => {
+      const r = ws.getRow(startDataRow + i);
+      r.getCell(1).value = i + 1;
+      r.getCell(2).value = p.pedido;
+      r.getCell(3).value = p.proveedor;
+      r.getCell(4).value = p.clan;
+      r.getCell(5).value = p.concepto;
+      r.getCell(6).value = p.fecha_aprobacion;
+      r.getCell(7).value = p.descripcion || "";
+      r.getCell(8).value = p.numero_perfil || "";
+      const medTramo = p.medida_tramo != null ? Number(p.medida_tramo) : null;
+      r.getCell(9).value = medTramo; if (medTramo != null) r.getCell(9).numFmt = "0.000";
+      r.getCell(10).value = p.unidad || "";
+      const pesoKg = p.peso_kg_ml != null ? Number(p.peso_kg_ml) : null;
+      r.getCell(11).value = pesoKg; if (pesoKg != null) r.getCell(11).numFmt = "0.000";
+      const perim = p.perimetro_m2_ml != null ? Number(p.perimetro_m2_ml) : null;
+      r.getCell(12).value = perim; if (perim != null) r.getCell(12).numFmt = "0.000";
+      r.getCell(13).value = p.acabado || "";
+      const tramos = p.total_tramos != null ? Number(p.total_tramos) : null;
+      r.getCell(14).value = tramos;
+      const ml = p.ml != null ? Number(p.ml) : null;
+      r.getCell(15).value = ml; if (ml != null) r.getCell(15).numFmt = "0.000";
+      const kg = p.kg != null ? Number(p.kg) : null;
+      r.getCell(16).value = kg; if (kg != null) r.getCell(16).numFmt = "0.000";
+      const m2 = p.m2 != null ? Number(p.m2) : null;
+      r.getCell(17).value = m2; if (m2 != null) r.getCell(17).numFmt = "0.000";
+      const imp = Number(p.importe || 0);
+      r.getCell(18).value = imp; r.getCell(18).numFmt = "#,##0.00";
+      totalTramos += Number(tramos || 0);
+      totalMl += Number(ml || 0);
+      totalKg += Number(kg || 0);
+      totalM2 += Number(m2 || 0);
+      totalImporte += imp;
+    });
+
+    const totalRowIdx = startDataRow + (rows || []).length;
+    const tRow = ws.getRow(totalRowIdx);
+    tRow.getCell(13).value = "TOTALES";
+    tRow.getCell(13).font = { bold: true };
+    tRow.getCell(13).alignment = { horizontal: "right" };
+    tRow.getCell(14).value = totalTramos; tRow.getCell(14).font = { bold: true };
+    tRow.getCell(15).value = Number(totalMl.toFixed(3)); tRow.getCell(15).numFmt = "0.000"; tRow.getCell(15).font = { bold: true };
+    tRow.getCell(16).value = Number(totalKg.toFixed(3)); tRow.getCell(16).numFmt = "0.000"; tRow.getCell(16).font = { bold: true };
+    tRow.getCell(17).value = Number(totalM2.toFixed(3)); tRow.getCell(17).numFmt = "0.000"; tRow.getCell(17).font = { bold: true };
+    tRow.getCell(18).value = Number(totalImporte.toFixed(2)); tRow.getCell(18).numFmt = "#,##0.00"; tRow.getCell(18).font = { bold: true };
+    tRow.eachCell((cell) => {
+      cell.border = {
+        top: { style: "thin", color: { argb: "FFDDDDDD" } },
+        left: { style: "thin", color: { argb: "FFDDDDDD" } },
+        bottom: { style: "thin", color: { argb: "FFDDDDDD" } },
+        right: { style: "thin", color: { argb: "FFDDDDDD" } },
+      };
+    });
+
+    ws.views = [{ state: "frozen", ySplit: headerRowIndex }];
+
+    const filename = `reporte_aluminio_${proyectoId}_${fechaGen}.xlsx`;
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename=${filename}`);
+    await wb.xlsx.write(res);
+    res.end();
+  } catch (err) {
+    console.error("Error generando XLSX reporte aluminio:", err);
+    res.status(500).json({ success: false, message: "Error generando archivo" });
+  }
+});
+
+// ============================================================
+// MÓDULO DE REMISIONES Y EXISTENCIAS
+// Lee de pedidos_detalles_aluminio y pedidos_detalles_cristal
+// ============================================================
+
+// Listar control de entregas por proyecto (Aluminio + Cristal)
+app.get("/proyectos/:id/remisiones", authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { prioridad, proveedor, search, tipo } = req.query;
+
+    // Query para ALUMINIO - LEFT JOIN con remisiones_control
+    let queryAluminio = `
+      SELECT
+        da.id_detalle as id_programacion,
+        ped.id_proyecto,
+        pr.nombre AS nombre_proyecto,
+        ped.pedido as numero_pedido,
+        '-' as subpedido,
+        da.numero_perfil,
+        da.descripcion,
+        da.medida_tramo,
+        da.peso_kg_ml,
+        da.acabado,
+        COALESCE(rc.cantidad_pedida, da.total_tramos, 0) as cantidad_pedida,
+        COALESCE(rc.cantidad_recibida, 0) as cantidad_recibida,
+        COALESCE(rc.cantidad_pedida, da.total_tramos, 0) - COALESCE(rc.cantidad_recibida, 0) as cantidad_saldo,
+        COALESCE(rc.cantidad_extruido, 0) as cantidad_extruido,
+        COALESCE(rc.cantidad_pintado, 0) as cantidad_pintado,
+        COALESCE(da.kg, 0) as total_kg,
+        (COALESCE(rc.cantidad_pedida, da.total_tramos, 0) - COALESCE(rc.cantidad_recibida, 0)) * COALESCE(da.medida_tramo, 0) * COALESCE(da.peso_kg_ml, 0) as kg_saldo,
+        0 as kg_por_pintar,
+        0 as kg_entrega,
+        CASE WHEN COALESCE(rc.cantidad_pedida, da.total_tramos, 0) > 0
+          THEN COALESCE(rc.cantidad_recibida, 0) / COALESCE(rc.cantidad_pedida, da.total_tramos, 1)
+          ELSE 0 END as porcentaje_avance,
+        ped.proveedor,
+        rc.fecha_liberacion,
+        rc.fecha_entrega,
+        NULL as fecha_entrega_desfazada,
+        NULL as fecha_ultima_recepcion,
+        COALESCE(rc.prioridad, 'C') as prioridad,
+        rc.observaciones_proveedor,
+        rc.observaciones_heg,
+        'aluminio' as tipo_material
+      FROM pedidos_detalles_aluminio da
+      JOIN pedidos ped ON ped.id = da.id_pedido
+      JOIN proyectos pr ON pr.id_proyecto = ped.id_proyecto
+      LEFT JOIN remisiones_control rc ON rc.id_detalle = da.id_detalle AND rc.tipo_material = 'aluminio'
+      WHERE ped.id_proyecto = ?
+    `;
+
+    // Query para CRISTAL - LEFT JOIN con remisiones_control
+    let queryCristal = `
+      SELECT
+        dc.id_detalle as id_programacion,
+        ped.id_proyecto,
+        pr.nombre AS nombre_proyecto,
+        ped.pedido as numero_pedido,
+        '-' as subpedido,
+        dc.clave_modelo as numero_perfil,
+        dc.descripcion,
+        NULL as medida_tramo,
+        NULL as peso_kg_ml,
+        NULL as acabado,
+        COALESCE(rc.cantidad_pedida, dc.piezas, 0) as cantidad_pedida,
+        COALESCE(rc.cantidad_recibida, 0) as cantidad_recibida,
+        COALESCE(rc.cantidad_pedida, dc.piezas, 0) - COALESCE(rc.cantidad_recibida, 0) as cantidad_saldo,
+        0 as cantidad_extruido,
+        0 as cantidad_pintado,
+        COALESCE(dc.m2_pedido, 0) as total_kg,
+        (COALESCE(rc.cantidad_pedida, dc.piezas, 0) - COALESCE(rc.cantidad_recibida, 0)) as kg_saldo,
+        0 as kg_por_pintar,
+        0 as kg_entrega,
+        CASE WHEN COALESCE(rc.cantidad_pedida, dc.piezas, 0) > 0
+          THEN COALESCE(rc.cantidad_recibida, 0) / COALESCE(rc.cantidad_pedida, dc.piezas, 1)
+          ELSE 0 END as porcentaje_avance,
+        ped.proveedor,
+        rc.fecha_liberacion,
+        rc.fecha_entrega,
+        rc.fecha_entrega_desfazada,
+        NULL as fecha_ultima_recepcion,
+        COALESCE(rc.prioridad, 'C') as prioridad,
+        rc.observaciones_proveedor,
+        rc.observaciones_heg,
+        'cristal' as tipo_material
+      FROM pedidos_detalles_cristal dc
+      JOIN pedidos ped ON ped.id = dc.id_pedido
+      JOIN proyectos pr ON pr.id_proyecto = ped.id_proyecto
+      LEFT JOIN remisiones_control rc ON rc.id_detalle = dc.id_detalle AND rc.tipo_material = 'cristal'
+      WHERE ped.id_proyecto = ?
+    `;
+
+    const params = [id];
+    let rows = [];
+
+    if (!tipo || tipo === 'aluminio' || tipo === 'todos') {
+      let qAlu = queryAluminio;
+      const pAlu = [...params];
+
+      if (prioridad && prioridad !== 'TODAS') {
+        qAlu += ` AND COALESCE(rc.prioridad, 'C') = ?`;
+        pAlu.push(prioridad);
+      }
+      if (proveedor) {
+        qAlu += ` AND ped.proveedor LIKE ?`;
+        pAlu.push(`%${proveedor}%`);
+      }
+      if (search) {
+        qAlu += ` AND (da.numero_perfil LIKE ? OR da.descripcion LIKE ? OR ped.pedido LIKE ?)`;
+        pAlu.push(`%${search}%`, `%${search}%`, `%${search}%`);
+      }
+
+      const rowsAluminio = await queryAsync(qAlu, pAlu);
+      rows = rows.concat(rowsAluminio);
+    }
+
+    if (!tipo || tipo === 'cristal' || tipo === 'todos') {
+      let qCri = queryCristal;
+      const pCri = [...params];
+
+      if (prioridad && prioridad !== 'TODAS') {
+        qCri += ` AND COALESCE(rc.prioridad, 'C') = ?`;
+        pCri.push(prioridad);
+      }
+      if (proveedor) {
+        qCri += ` AND ped.proveedor LIKE ?`;
+        pCri.push(`%${proveedor}%`);
+      }
+      if (search) {
+        qCri += ` AND (dc.clave_modelo LIKE ? OR dc.descripcion LIKE ? OR ped.pedido LIKE ?)`;
+        pCri.push(`%${search}%`, `%${search}%`, `%${search}%`);
+      }
+
+      const rowsCristal = await queryAsync(qCri, pCri);
+      rows = rows.concat(rowsCristal);
+    }
+
+    rows.sort((a, b) => {
+      if (a.prioridad !== b.prioridad) return a.prioridad.localeCompare(b.prioridad);
+      return String(a.numero_pedido).localeCompare(String(b.numero_pedido));
+    });
+
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    console.error("Error obteniendo remisiones:", err);
+    res.status(500).json({ success: false, message: "Error interno del servidor" });
+  }
+});
+
+// Listar todas las remisiones (vista general)
+app.get("/remisiones", authenticateToken, async (req, res) => {
+  try {
+    const { prioridad, id_proyecto, search, tipo } = req.query;
+
+    let queryAluminio = `
+      SELECT
+        da.id_detalle as id_programacion,
+        ped.id_proyecto,
+        pr.nombre AS nombre_proyecto,
+        ped.pedido as numero_pedido,
+        '-' as subpedido,
+        da.numero_perfil,
+        da.descripcion,
+        da.medida_tramo,
+        da.peso_kg_ml,
+        da.acabado,
+        COALESCE(rc.cantidad_pedida, da.total_tramos, 0) as cantidad_pedida,
+        COALESCE(rc.cantidad_recibida, 0) as cantidad_recibida,
+        COALESCE(rc.cantidad_pedida, da.total_tramos, 0) - COALESCE(rc.cantidad_recibida, 0) as cantidad_saldo,
+        COALESCE(rc.cantidad_extruido, 0) as cantidad_extruido,
+        COALESCE(rc.cantidad_pintado, 0) as cantidad_pintado,
+        COALESCE(da.kg, 0) as total_kg,
+        (COALESCE(rc.cantidad_pedida, da.total_tramos, 0) - COALESCE(rc.cantidad_recibida, 0)) * COALESCE(da.medida_tramo, 0) * COALESCE(da.peso_kg_ml, 0) as kg_saldo,
+        CASE WHEN COALESCE(rc.cantidad_pedida, da.total_tramos, 0) > 0
+          THEN COALESCE(rc.cantidad_recibida, 0) / COALESCE(rc.cantidad_pedida, da.total_tramos, 1)
+          ELSE 0 END as porcentaje_avance,
+        ped.proveedor,
+        COALESCE(rc.prioridad, 'C') as prioridad,
+        'aluminio' as tipo_material
+      FROM pedidos_detalles_aluminio da
+      JOIN pedidos ped ON ped.id = da.id_pedido
+      JOIN proyectos pr ON pr.id_proyecto = ped.id_proyecto
+      LEFT JOIN remisiones_control rc ON rc.id_detalle = da.id_detalle AND rc.tipo_material = 'aluminio'
+      WHERE 1=1
+    `;
+
+    let queryCristal = `
+      SELECT
+        dc.id_detalle as id_programacion,
+        ped.id_proyecto,
+        pr.nombre AS nombre_proyecto,
+        ped.pedido as numero_pedido,
+        '-' as subpedido,
+        dc.clave_modelo as numero_perfil,
+        dc.descripcion,
+        NULL as medida_tramo,
+        NULL as peso_kg_ml,
+        NULL as acabado,
+        COALESCE(rc.cantidad_pedida, dc.piezas, 0) as cantidad_pedida,
+        COALESCE(rc.cantidad_recibida, 0) as cantidad_recibida,
+        COALESCE(rc.cantidad_pedida, dc.piezas, 0) - COALESCE(rc.cantidad_recibida, 0) as cantidad_saldo,
+        0 as cantidad_extruido,
+        0 as cantidad_pintado,
+        COALESCE(dc.m2_pedido, 0) as total_kg,
+        (COALESCE(rc.cantidad_pedida, dc.piezas, 0) - COALESCE(rc.cantidad_recibida, 0)) as kg_saldo,
+        CASE WHEN COALESCE(rc.cantidad_pedida, dc.piezas, 0) > 0
+          THEN COALESCE(rc.cantidad_recibida, 0) / COALESCE(rc.cantidad_pedida, dc.piezas, 1)
+          ELSE 0 END as porcentaje_avance,
+        ped.proveedor,
+        COALESCE(rc.prioridad, 'C') as prioridad,
+        'cristal' as tipo_material
+      FROM pedidos_detalles_cristal dc
+      JOIN pedidos ped ON ped.id = dc.id_pedido
+      JOIN proyectos pr ON pr.id_proyecto = ped.id_proyecto
+      LEFT JOIN remisiones_control rc ON rc.id_detalle = dc.id_detalle AND rc.tipo_material = 'cristal'
+      WHERE 1=1
+    `;
+
+    let rows = [];
+
+    if (!tipo || tipo === 'aluminio' || tipo === 'todos') {
+      let qAlu = queryAluminio;
+      const pAlu = [];
+
+      if (id_proyecto) {
+        qAlu += ` AND ped.id_proyecto = ?`;
+        pAlu.push(id_proyecto);
+      }
+      if (prioridad && prioridad !== 'TODAS') {
+        qAlu += ` AND COALESCE(rc.prioridad, 'C') = ?`;
+        pAlu.push(prioridad);
+      }
+      if (search) {
+        qAlu += ` AND (da.numero_perfil LIKE ? OR da.descripcion LIKE ? OR ped.pedido LIKE ? OR pr.nombre LIKE ?)`;
+        pAlu.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
+      }
+
+      const rowsAluminio = await queryAsync(qAlu, pAlu);
+      rows = rows.concat(rowsAluminio);
+    }
+
+    if (!tipo || tipo === 'cristal' || tipo === 'todos') {
+      let qCri = queryCristal;
+      const pCri = [];
+
+      if (id_proyecto) {
+        qCri += ` AND ped.id_proyecto = ?`;
+        pCri.push(id_proyecto);
+      }
+      if (prioridad && prioridad !== 'TODAS') {
+        qCri += ` AND COALESCE(rc.prioridad, 'C') = ?`;
+        pCri.push(prioridad);
+      }
+      if (search) {
+        qCri += ` AND (dc.clave_modelo LIKE ? OR dc.descripcion LIKE ? OR ped.pedido LIKE ? OR pr.nombre LIKE ?)`;
+        pCri.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
+      }
+
+      const rowsCristal = await queryAsync(qCri, pCri);
+      rows = rows.concat(rowsCristal);
+    }
+
+    rows.sort((a, b) => {
+      if (a.prioridad !== b.prioridad) return a.prioridad.localeCompare(b.prioridad);
+      if (a.nombre_proyecto !== b.nombre_proyecto) return a.nombre_proyecto.localeCompare(b.nombre_proyecto);
+      return String(a.numero_pedido).localeCompare(String(b.numero_pedido));
+    });
+
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    console.error("Error obteniendo remisiones:", err);
+    res.status(500).json({ success: false, message: "Error interno del servidor" });
+  }
+});
+
+// Obtener resumen de remisiones por prioridad (de ambas tablas)
+app.get("/remisiones/resumen", authenticateToken, async (req, res) => {
+  try {
+    // Resumen de Aluminio con LEFT JOIN a remisiones_control
+    const queryAluminio = `
+      SELECT
+        COALESCE(rc.prioridad, 'C') as prioridad,
+        COUNT(*) AS total_items,
+        SUM(COALESCE(rc.cantidad_pedida, da.total_tramos, 0)) AS total_pedido,
+        SUM(COALESCE(rc.cantidad_recibida, 0)) AS total_recibido,
+        SUM(COALESCE(rc.cantidad_pedida, da.total_tramos, 0) - COALESCE(rc.cantidad_recibida, 0)) AS total_saldo,
+        SUM(COALESCE(da.kg, 0)) AS total_kg,
+        SUM((COALESCE(rc.cantidad_pedida, da.total_tramos, 0) - COALESCE(rc.cantidad_recibida, 0)) * COALESCE(da.medida_tramo, 0) * COALESCE(da.peso_kg_ml, 0)) AS kg_saldo
+      FROM pedidos_detalles_aluminio da
+      LEFT JOIN remisiones_control rc ON rc.id_detalle = da.id_detalle AND rc.tipo_material = 'aluminio'
+      GROUP BY COALESCE(rc.prioridad, 'C')
+    `;
+
+    // Resumen de Cristal con LEFT JOIN a remisiones_control
+    const queryCristal = `
+      SELECT
+        COALESCE(rc.prioridad, 'C') as prioridad,
+        COUNT(*) AS total_items,
+        SUM(COALESCE(rc.cantidad_pedida, dc.piezas, 0)) AS total_pedido,
+        SUM(COALESCE(rc.cantidad_recibida, 0)) AS total_recibido,
+        SUM(COALESCE(rc.cantidad_pedida, dc.piezas, 0) - COALESCE(rc.cantidad_recibida, 0)) AS total_saldo,
+        SUM(COALESCE(dc.m2_pedido, 0)) AS total_kg,
+        SUM(COALESCE(rc.cantidad_pedida, dc.piezas, 0) - COALESCE(rc.cantidad_recibida, 0)) AS kg_saldo
+      FROM pedidos_detalles_cristal dc
+      LEFT JOIN remisiones_control rc ON rc.id_detalle = dc.id_detalle AND rc.tipo_material = 'cristal'
+      GROUP BY COALESCE(rc.prioridad, 'C')
+    `;
+
+    const rowsAluminio = await queryAsync(queryAluminio);
+    const rowsCristal = await queryAsync(queryCristal);
+
+    // Combinar resultados por prioridad
+    const resumenMap = {};
+    for (const r of rowsAluminio) {
+      if (!resumenMap[r.prioridad]) {
+        resumenMap[r.prioridad] = { prioridad: r.prioridad, total_items: 0, total_pedido: 0, total_recibido: 0, total_saldo: 0, total_kg: 0, kg_saldo: 0 };
+      }
+      resumenMap[r.prioridad].total_items += Number(r.total_items) || 0;
+      resumenMap[r.prioridad].total_pedido += Number(r.total_pedido) || 0;
+      resumenMap[r.prioridad].total_recibido += Number(r.total_recibido) || 0;
+      resumenMap[r.prioridad].total_saldo += Number(r.total_saldo) || 0;
+      resumenMap[r.prioridad].total_kg += Number(r.total_kg) || 0;
+      resumenMap[r.prioridad].kg_saldo += Number(r.kg_saldo) || 0;
+    }
+    for (const r of rowsCristal) {
+      if (!resumenMap[r.prioridad]) {
+        resumenMap[r.prioridad] = { prioridad: r.prioridad, total_items: 0, total_pedido: 0, total_recibido: 0, total_saldo: 0, total_kg: 0, kg_saldo: 0 };
+      }
+      resumenMap[r.prioridad].total_items += Number(r.total_items) || 0;
+      resumenMap[r.prioridad].total_pedido += Number(r.total_pedido) || 0;
+      resumenMap[r.prioridad].total_recibido += Number(r.total_recibido) || 0;
+      resumenMap[r.prioridad].total_saldo += Number(r.total_saldo) || 0;
+      resumenMap[r.prioridad].total_kg += Number(r.total_kg) || 0;
+      resumenMap[r.prioridad].kg_saldo += Number(r.kg_saldo) || 0;
+    }
+
+    // Calcular porcentaje promedio
+    const rows = Object.values(resumenMap).map(r => ({
+      ...r,
+      porcentaje_promedio: r.total_pedido > 0 ? Math.round((r.total_recibido / r.total_pedido) * 100 * 100) / 100 : 0
+    }));
+
+    rows.sort((a, b) => a.prioridad.localeCompare(b.prioridad));
+
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    console.error("Error obteniendo resumen de remisiones:", err);
+    res.status(500).json({ success: false, message: "Error interno del servidor" });
+  }
+});
+
+// Actualizar control de entregas (aluminio o cristal)
+app.put("/remisiones/:id", authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      tipo_material,
+      cantidad_pedida,
+      cantidad_recibida,
+      cantidad_extruido,
+      cantidad_pintado,
+      fecha_liberacion,
+      fecha_entrega,
+      fecha_entrega_desfazada,
+      prioridad,
+      observaciones_proveedor,
+      observaciones_heg
+    } = req.body;
+
+    if (!tipo_material || !['aluminio', 'cristal'].includes(tipo_material)) {
+      return res.status(400).json({ success: false, message: "tipo_material requerido (aluminio o cristal)" });
+    }
+
+    // UPSERT en remisiones_control
+    const query = `
+      INSERT INTO remisiones_control (id_detalle, tipo_material, cantidad_pedida, cantidad_recibida, cantidad_extruido, cantidad_pintado, prioridad, fecha_liberacion, fecha_entrega, fecha_entrega_desfazada, observaciones_proveedor, observaciones_heg)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        cantidad_pedida = COALESCE(VALUES(cantidad_pedida), cantidad_pedida),
+        cantidad_recibida = COALESCE(VALUES(cantidad_recibida), cantidad_recibida),
+        cantidad_extruido = COALESCE(VALUES(cantidad_extruido), cantidad_extruido),
+        cantidad_pintado = COALESCE(VALUES(cantidad_pintado), cantidad_pintado),
+        prioridad = COALESCE(VALUES(prioridad), prioridad),
+        fecha_liberacion = COALESCE(VALUES(fecha_liberacion), fecha_liberacion),
+        fecha_entrega = COALESCE(VALUES(fecha_entrega), fecha_entrega),
+        fecha_entrega_desfazada = COALESCE(VALUES(fecha_entrega_desfazada), fecha_entrega_desfazada),
+        observaciones_proveedor = COALESCE(VALUES(observaciones_proveedor), observaciones_proveedor),
+        observaciones_heg = COALESCE(VALUES(observaciones_heg), observaciones_heg)
+    `;
+
+    await queryAsync(query, [
+      id,
+      tipo_material,
+      cantidad_pedida !== undefined ? cantidad_pedida : null,
+      cantidad_recibida !== undefined ? cantidad_recibida : null,
+      cantidad_extruido !== undefined ? cantidad_extruido : null,
+      cantidad_pintado !== undefined ? cantidad_pintado : null,
+      prioridad !== undefined ? prioridad : null,
+      fecha_liberacion !== undefined ? fecha_liberacion : null,
+      fecha_entrega !== undefined ? fecha_entrega : null,
+      fecha_entrega_desfazada !== undefined ? fecha_entrega_desfazada : null,
+      observaciones_proveedor !== undefined ? observaciones_proveedor : null,
+      observaciones_heg !== undefined ? observaciones_heg : null
+    ]);
+
+    res.json({ success: true, message: "Registro actualizado exitosamente" });
+  } catch (err) {
+    console.error("Error actualizando control de entregas:", err);
+    res.status(500).json({ success: false, message: "Error interno del servidor" });
+  }
+});
+
+// Exportar remisiones a Excel
+app.get("/proyectos/:id/remisiones/export", authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { prioridad, tipo } = req.query;
+
+    // Obtener datos del proyecto
+    const [proyecto] = await queryAsync(`SELECT nombre FROM proyectos WHERE id_proyecto = ?`, [id]);
+    if (!proyecto) {
+      return res.status(404).json({ success: false, message: "Proyecto no encontrado" });
+    }
+
+    // Obtener datos de pedidos_detalles
+    let rows = [];
+
+    if (!tipo || tipo === 'aluminio' || tipo === 'todos') {
+      let qAlu = `
+        SELECT
+          da.id_detalle as id_programacion,
+          pr.nombre AS nombre_proyecto,
+          ped.pedido as numero_pedido,
+          '-' as subpedido,
+          da.numero_perfil,
+          da.descripcion,
+          da.medida_tramo,
+          da.peso_kg_ml,
+          da.acabado,
+          COALESCE(rc.cantidad_pedida, da.total_tramos, 0) as cantidad_pedida,
+          COALESCE(rc.cantidad_recibida, 0) as cantidad_recibida,
+          COALESCE(rc.cantidad_pedida, da.total_tramos, 0) - COALESCE(rc.cantidad_recibida, 0) as cantidad_saldo,
+          COALESCE(rc.cantidad_extruido, 0) as cantidad_extruido,
+          COALESCE(rc.cantidad_pintado, 0) as cantidad_pintado,
+          COALESCE(da.kg, 0) as total_kg,
+          (COALESCE(rc.cantidad_pedida, da.total_tramos, 0) - COALESCE(rc.cantidad_recibida, 0)) * COALESCE(da.medida_tramo, 0) * COALESCE(da.peso_kg_ml, 0) as kg_saldo,
+          CASE WHEN COALESCE(rc.cantidad_pedida, da.total_tramos, 0) > 0
+            THEN COALESCE(rc.cantidad_recibida, 0) / COALESCE(rc.cantidad_pedida, da.total_tramos, 1)
+            ELSE 0 END as porcentaje_avance,
+          rc.fecha_liberacion,
+          rc.fecha_entrega,
+          NULL as fecha_entrega_desfazada,
+          COALESCE(rc.prioridad, 'C') as prioridad,
+          rc.observaciones_proveedor,
+          rc.observaciones_heg,
+          'aluminio' as tipo_material
+        FROM pedidos_detalles_aluminio da
+        JOIN pedidos ped ON ped.id = da.id_pedido
+        JOIN proyectos pr ON pr.id_proyecto = ped.id_proyecto
+        LEFT JOIN remisiones_control rc ON rc.id_detalle = da.id_detalle AND rc.tipo_material = 'aluminio'
+        WHERE ped.id_proyecto = ?
+      `;
+      const pAlu = [id];
+      if (prioridad && prioridad !== 'TODAS') {
+        qAlu += ` AND COALESCE(rc.prioridad, 'C') = ?`;
+        pAlu.push(prioridad);
+      }
+      const rowsAlu = await queryAsync(qAlu, pAlu);
+      rows = rows.concat(rowsAlu);
+    }
+
+    if (!tipo || tipo === 'cristal' || tipo === 'todos') {
+      let qCri = `
+        SELECT
+          dc.id_detalle as id_programacion,
+          pr.nombre AS nombre_proyecto,
+          ped.pedido as numero_pedido,
+          '-' as subpedido,
+          dc.clave_modelo as numero_perfil,
+          dc.descripcion,
+          NULL as medida_tramo,
+          NULL as peso_kg_ml,
+          NULL as acabado,
+          COALESCE(rc.cantidad_pedida, dc.piezas, 0) as cantidad_pedida,
+          COALESCE(rc.cantidad_recibida, 0) as cantidad_recibida,
+          COALESCE(rc.cantidad_pedida, dc.piezas, 0) - COALESCE(rc.cantidad_recibida, 0) as cantidad_saldo,
+          0 as cantidad_extruido,
+          0 as cantidad_pintado,
+          COALESCE(dc.m2_pedido, 0) as total_kg,
+          (COALESCE(rc.cantidad_pedida, dc.piezas, 0) - COALESCE(rc.cantidad_recibida, 0)) as kg_saldo,
+          CASE WHEN COALESCE(rc.cantidad_pedida, dc.piezas, 0) > 0
+            THEN COALESCE(rc.cantidad_recibida, 0) / COALESCE(rc.cantidad_pedida, dc.piezas, 1)
+            ELSE 0 END as porcentaje_avance,
+          rc.fecha_liberacion,
+          rc.fecha_entrega,
+          rc.fecha_entrega_desfazada,
+          COALESCE(rc.prioridad, 'C') as prioridad,
+          rc.observaciones_proveedor,
+          rc.observaciones_heg,
+          'cristal' as tipo_material
+        FROM pedidos_detalles_cristal dc
+        JOIN pedidos ped ON ped.id = dc.id_pedido
+        JOIN proyectos pr ON pr.id_proyecto = ped.id_proyecto
+        LEFT JOIN remisiones_control rc ON rc.id_detalle = dc.id_detalle AND rc.tipo_material = 'cristal'
+        WHERE ped.id_proyecto = ?
+      `;
+      const pCri = [id];
+      if (prioridad && prioridad !== 'TODAS') {
+        qCri += ` AND COALESCE(rc.prioridad, 'C') = ?`;
+        pCri.push(prioridad);
+      }
+      const rowsCri = await queryAsync(qCri, pCri);
+      rows = rows.concat(rowsCri);
+    }
+
+    rows.sort((a, b) => {
+      if (a.prioridad !== b.prioridad) return a.prioridad.localeCompare(b.prioridad);
+      return String(a.numero_pedido).localeCompare(String(b.numero_pedido));
+    });
+
+    // Crear workbook
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Programación de Entregas');
+
+    // Encabezados
+    const headerRow1 = ws.addRow(['PROYECTO:', proyecto.nombre]);
+    headerRow1.font = { bold: true };
+    const fechaGen = new Date().toLocaleDateString('es-MX');
+    ws.addRow(['FECHA:', fechaGen]);
+    ws.addRow(['CONCEPTO:', 'PROGRAMA DE ENTREGAS - CONTROL DE REMISIONES']);
+    ws.addRow([]);
+
+    // Headers de columnas
+    const headers = [
+      'NO.', 'PROYECTO', 'PEDIDO', 'SUBPEDIDO', 'PERFIL', 'DESCRIPCIÓN',
+      'MEDIDA', 'PESO', 'TOTAL KG', 'ACABADO',
+      'PEDIDO', 'RECIBIDO', 'SALDO', 'EXTRUIDO', 'PINTADO',
+      'FECHA LIBERACIÓN', 'FECHA ENTREGA', '%', 'PRIORIDAD',
+      'OBS. PROVEEDOR', 'OBS. HEG', 'KG SALDO'
+    ];
+    const headerRowIdx = 6;
+    const hRow = ws.getRow(headerRowIdx);
+    headers.forEach((h, i) => {
+      const cell = hRow.getCell(i + 1);
+      cell.value = h;
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4472C4' } };
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+      cell.border = {
+        top: { style: 'thin' }, bottom: { style: 'thin' },
+        left: { style: 'thin' }, right: { style: 'thin' }
+      };
+    });
+
+    // Datos
+    let totalKg = 0, totalKgSaldo = 0;
+    rows.forEach((r, idx) => {
+      const row = ws.addRow([
+        idx + 1,
+        proyecto.nombre,
+        r.numero_pedido,
+        r.subpedido,
+        r.numero_perfil,
+        r.descripcion,
+        r.medida_tramo,
+        r.peso_kg_ml,
+        r.total_kg,
+        r.acabado,
+        r.cantidad_pedida,
+        r.cantidad_recibida,
+        r.cantidad_saldo,
+        r.cantidad_extruido,
+        r.cantidad_pintado,
+        r.fecha_liberacion ? new Date(r.fecha_liberacion).toLocaleDateString('es-MX') : '',
+        r.fecha_entrega ? new Date(r.fecha_entrega).toLocaleDateString('es-MX') : '',
+        r.porcentaje_avance ? (r.porcentaje_avance * 100).toFixed(1) + '%' : '0%',
+        r.prioridad,
+        r.observaciones_proveedor || '',
+        r.observaciones_heg || '',
+        r.kg_saldo
+      ]);
+
+      // Formato de celdas numéricas
+      row.getCell(7).numFmt = '0.000';
+      row.getCell(8).numFmt = '0.0000';
+      row.getCell(9).numFmt = '#,##0.000';
+      row.getCell(22).numFmt = '#,##0.000';
+
+      // Color por prioridad
+      let bgColor = 'FFFFFFFF';
+      if (r.prioridad === 'A') bgColor = 'FFFFCCCC';
+      else if (r.prioridad === 'B') bgColor = 'FFFFFFCC';
+      else if (r.prioridad === 'C') bgColor = 'FFCCFFCC';
+
+      row.eachCell((cell) => {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgColor } };
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FFDDDDDD' } },
+          bottom: { style: 'thin', color: { argb: 'FFDDDDDD' } },
+          left: { style: 'thin', color: { argb: 'FFDDDDDD' } },
+          right: { style: 'thin', color: { argb: 'FFDDDDDD' } }
+        };
+      });
+
+      totalKg += Number(r.total_kg) || 0;
+      totalKgSaldo += Number(r.kg_saldo) || 0;
+    });
+
+    // Fila de totales
+    const totalRow = ws.addRow([
+      '', '', '', '', '', 'TOTALES', '', '', totalKg, '', '', '', '', '', '',
+      '', '', '', '', '', '', totalKgSaldo
+    ]);
+    totalRow.font = { bold: true };
+    totalRow.getCell(9).numFmt = '#,##0.000';
+    totalRow.getCell(22).numFmt = '#,##0.000';
+
+    // Ajustar anchos de columna
+    ws.columns.forEach((col, i) => {
+      col.width = [5, 15, 10, 10, 12, 35, 8, 8, 12, 25, 8, 8, 8, 8, 8, 15, 15, 8, 8, 30, 30, 12][i] || 10;
+    });
+
+    // Congelar filas
+    ws.views = [{ state: 'frozen', ySplit: headerRowIdx }];
+
+    // Enviar archivo
+    const filename = `remisiones_${proyecto.nombre.replace(/\s+/g, '_')}_${fechaGen.replace(/\//g, '-')}.xlsx`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=${filename}`);
+    await wb.xlsx.write(res);
+    res.end();
+  } catch (err) {
+    console.error("Error exportando remisiones:", err);
+    res.status(500).json({ success: false, message: "Error generando archivo" });
+  }
+});
+
+// Exportar tabla resumen general (todos los proyectos)
+app.get("/remisiones/export", authenticateToken, async (req, res) => {
+  try {
+    const { prioridad, tipo } = req.query;
+
+    let rows = [];
+
+    if (!tipo || tipo === 'aluminio' || tipo === 'todos') {
+      let qAlu = `
+        SELECT
+          da.id_detalle as id_programacion,
+          pr.nombre AS nombre_proyecto,
+          ped.pedido as numero_pedido,
+          '-' as subpedido,
+          da.numero_perfil,
+          da.descripcion,
+          da.medida_tramo,
+          da.peso_kg_ml,
+          da.acabado,
+          COALESCE(rc.cantidad_pedida, da.total_tramos, 0) as cantidad_pedida,
+          COALESCE(rc.cantidad_recibida, 0) as cantidad_recibida,
+          COALESCE(rc.cantidad_pedida, da.total_tramos, 0) - COALESCE(rc.cantidad_recibida, 0) as cantidad_saldo,
+          COALESCE(rc.cantidad_extruido, 0) as cantidad_extruido,
+          COALESCE(rc.cantidad_pintado, 0) as cantidad_pintado,
+          COALESCE(da.kg, 0) as total_kg,
+          (COALESCE(rc.cantidad_pedida, da.total_tramos, 0) - COALESCE(rc.cantidad_recibida, 0)) * COALESCE(da.medida_tramo, 0) * COALESCE(da.peso_kg_ml, 0) as kg_saldo,
+          CASE WHEN COALESCE(rc.cantidad_pedida, da.total_tramos, 0) > 0
+            THEN COALESCE(rc.cantidad_recibida, 0) / COALESCE(rc.cantidad_pedida, da.total_tramos, 1)
+            ELSE 0 END as porcentaje_avance,
+          rc.fecha_liberacion,
+          rc.fecha_entrega,
+          NULL as fecha_entrega_desfazada,
+          COALESCE(rc.prioridad, 'C') as prioridad,
+          rc.observaciones_proveedor,
+          rc.observaciones_heg,
+          'aluminio' as tipo_material
+        FROM pedidos_detalles_aluminio da
+        JOIN pedidos ped ON ped.id = da.id_pedido
+        JOIN proyectos pr ON pr.id_proyecto = ped.id_proyecto
+        LEFT JOIN remisiones_control rc ON rc.id_detalle = da.id_detalle AND rc.tipo_material = 'aluminio'
+        WHERE 1=1
+      `;
+      const pAlu = [];
+      if (prioridad && prioridad !== 'TODAS') {
+        qAlu += ` AND COALESCE(rc.prioridad, 'C') = ?`;
+        pAlu.push(prioridad);
+      }
+      const rowsAlu = await queryAsync(qAlu, pAlu);
+      rows = rows.concat(rowsAlu);
+    }
+
+    if (!tipo || tipo === 'cristal' || tipo === 'todos') {
+      let qCri = `
+        SELECT
+          dc.id_detalle as id_programacion,
+          pr.nombre AS nombre_proyecto,
+          ped.pedido as numero_pedido,
+          '-' as subpedido,
+          dc.clave_modelo as numero_perfil,
+          dc.descripcion,
+          NULL as medida_tramo,
+          NULL as peso_kg_ml,
+          NULL as acabado,
+          COALESCE(rc.cantidad_pedida, dc.piezas, 0) as cantidad_pedida,
+          COALESCE(rc.cantidad_recibida, 0) as cantidad_recibida,
+          COALESCE(rc.cantidad_pedida, dc.piezas, 0) - COALESCE(rc.cantidad_recibida, 0) as cantidad_saldo,
+          0 as cantidad_extruido,
+          0 as cantidad_pintado,
+          COALESCE(dc.m2_pedido, 0) as total_kg,
+          (COALESCE(rc.cantidad_pedida, dc.piezas, 0) - COALESCE(rc.cantidad_recibida, 0)) as kg_saldo,
+          CASE WHEN COALESCE(rc.cantidad_pedida, dc.piezas, 0) > 0
+            THEN COALESCE(rc.cantidad_recibida, 0) / COALESCE(rc.cantidad_pedida, dc.piezas, 1)
+            ELSE 0 END as porcentaje_avance,
+          rc.fecha_liberacion,
+          rc.fecha_entrega,
+          rc.fecha_entrega_desfazada,
+          COALESCE(rc.prioridad, 'C') as prioridad,
+          rc.observaciones_proveedor,
+          rc.observaciones_heg,
+          'cristal' as tipo_material
+        FROM pedidos_detalles_cristal dc
+        JOIN pedidos ped ON ped.id = dc.id_pedido
+        JOIN proyectos pr ON pr.id_proyecto = ped.id_proyecto
+        LEFT JOIN remisiones_control rc ON rc.id_detalle = dc.id_detalle AND rc.tipo_material = 'cristal'
+        WHERE 1=1
+      `;
+      const pCri = [];
+      if (prioridad && prioridad !== 'TODAS') {
+        qCri += ` AND COALESCE(rc.prioridad, 'C') = ?`;
+        pCri.push(prioridad);
+      }
+      const rowsCri = await queryAsync(qCri, pCri);
+      rows = rows.concat(rowsCri);
+    }
+
+    rows.sort((a, b) => {
+      if (a.prioridad !== b.prioridad) return a.prioridad.localeCompare(b.prioridad);
+      if (a.nombre_proyecto !== b.nombre_proyecto) return a.nombre_proyecto.localeCompare(b.nombre_proyecto);
+      return String(a.numero_pedido).localeCompare(String(b.numero_pedido));
+    });
+
+    // Crear workbook
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Tabla Resumen');
+
+    const fechaGen = new Date().toLocaleDateString('es-MX');
+    ws.addRow(['PROYECTO:', 'GENERAL']);
+    ws.addRow(['FECHA:', fechaGen]);
+    ws.addRow(['CONCEPTO:', 'PROGRAMA DE ENTREGAS - TABLA RESUMEN']);
+    ws.addRow([]);
+
+    // Headers
+    const headers = [
+      'NO.', 'PROYECTO', 'PEDIDO', 'SUBPEDIDO', 'PERFIL', 'DESCRIPCIÓN',
+      'MEDIDA', 'PESO', 'TOTAL KG', 'ACABADO',
+      'PEDIDO', 'RECIBIDO', 'SALDO', 'EXTRUIDO', 'PINTADO',
+      'FECHA LIBERACIÓN', 'FECHA ENTREGA', '%', 'PRIORIDAD',
+      'OBS. PROVEEDOR', 'OBS. HEG', 'KG SALDO'
+    ];
+    const headerRowIdx = 5;
+    const hRow = ws.getRow(headerRowIdx);
+    headers.forEach((h, i) => {
+      const cell = hRow.getCell(i + 1);
+      cell.value = h;
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4472C4' } };
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+    });
+
+    let totalKg = 0, totalKgSaldo = 0;
+    rows.forEach((r, idx) => {
+      const row = ws.addRow([
+        idx + 1,
+        r.nombre_proyecto,
+        r.numero_pedido,
+        r.subpedido,
+        r.numero_perfil,
+        r.descripcion,
+        r.medida_tramo,
+        r.peso_kg_ml,
+        r.total_kg,
+        r.acabado,
+        r.cantidad_pedida,
+        r.cantidad_recibida,
+        r.cantidad_saldo,
+        r.cantidad_extruido,
+        r.cantidad_pintado,
+        r.fecha_liberacion ? new Date(r.fecha_liberacion).toLocaleDateString('es-MX') : '',
+        r.fecha_entrega ? new Date(r.fecha_entrega).toLocaleDateString('es-MX') : '',
+        r.porcentaje_avance ? (r.porcentaje_avance * 100).toFixed(1) + '%' : '0%',
+        r.prioridad,
+        r.observaciones_proveedor || '',
+        r.observaciones_heg || '',
+        r.kg_saldo
+      ]);
+
+      let bgColor = 'FFFFFFFF';
+      if (r.prioridad === 'A') bgColor = 'FFFFCCCC';
+      else if (r.prioridad === 'B') bgColor = 'FFFFFFCC';
+      else if (r.prioridad === 'C') bgColor = 'FFCCFFCC';
+
+      row.eachCell((cell) => {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgColor } };
+      });
+
+      totalKg += Number(r.total_kg) || 0;
+      totalKgSaldo += Number(r.kg_saldo) || 0;
+    });
+
+    const totalRow = ws.addRow(['', '', '', '', '', 'TOTALES', '', '', totalKg, '', '', '', '', '', '', '', '', '', '', '', '', totalKgSaldo]);
+    totalRow.font = { bold: true };
+
+    ws.columns.forEach((col, i) => {
+      col.width = [5, 15, 10, 10, 12, 35, 8, 8, 12, 25, 8, 8, 8, 8, 8, 15, 15, 8, 8, 30, 30, 12][i] || 10;
+    });
+
+    ws.views = [{ state: 'frozen', ySplit: headerRowIdx }];
+
+    const filename = `remisiones_general_${fechaGen.replace(/\//g, '-')}.xlsx`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=${filename}`);
+    await wb.xlsx.write(res);
+    res.end();
+  } catch (err) {
+    console.error("Error exportando remisiones:", err);
+    res.status(500).json({ success: false, message: "Error generando archivo" });
   }
 });
 
