@@ -1292,11 +1292,6 @@ export function ProyectoDetalle() {
         <button className="btn btn-secondary" onClick={volver}>&larr; Regresar</button>
         <h2 className="detalle-titulo">{nombreProyecto}</h2>
         <div className="detalle-actions">
-          {mostrarCobranza && !isAdmin && (
-            <button className="btn btn-primary" onClick={() => setFormCobranzaAbierto(v => !v)}>
-              Agregar factura
-            </button>
-          )}
           {isAdmin && (
           <input
             ref={fileInputRef}
@@ -2132,10 +2127,10 @@ export function ProyectoDetalle() {
                 {!isAdmin && (
                   <button
                     className="btn btn-primary"
-                    onClick={() => setFormCobranzaAbierto(v => !v)}
+                    onClick={() => navigate(`/contabilidad/${id}`)}
                     style={{ marginLeft: 'auto' }}
                   >
-                    {formCobranzaAbierto ? 'Cancelar' : '+ Agregar Factura'}
+                    + Agregar Factura
                   </button>
                 )}
               </div>

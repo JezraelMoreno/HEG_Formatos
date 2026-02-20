@@ -13,6 +13,7 @@ import { ReportesProjectSelector } from "./pages/reportes/ReportesProjectSelecto
 import { ReportePage } from "./pages/reportes/ReportePage";
 import { RemisionesProjectSelector } from "./pages/remisiones/RemisionesProjectSelector";
 import { RemisionesPage } from "./pages/remisiones/RemisionesPage";
+import { ContabilidadPage } from "./pages/contabilidad/ContabilidadPage";
 import { PrivateRoute } from "./components/PrivateRoute";
 
 function App() {
@@ -129,6 +130,15 @@ function App() {
         element={
           <PrivateRoute>
             <RemisionesPage />
+          </PrivateRoute>
+        }
+      />
+      {/* Rutas de Contabilidad */}
+      <Route
+        path="/contabilidad/:projectId"
+        element={
+          <PrivateRoute>
+            <ContabilidadPage />
           </PrivateRoute>
         }
       />

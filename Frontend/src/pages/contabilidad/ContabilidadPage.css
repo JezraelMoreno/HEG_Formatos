@@ -1,0 +1,466 @@
+/* ========================================
+   Módulo de Contabilidad - Facturas
+   Prefijo: cnt-
+   ======================================== */
+
+/* Layout principal */
+.cnt-page {
+    min-height: 100vh;
+    background: #f8fafc;
+    padding-bottom: 40px;
+}
+
+.cnt-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 20px 28px;
+    background: #fff;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.cnt-title {
+    flex: 1;
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: #111827;
+    margin: 0;
+}
+
+/* Botones */
+.cnt-btn {
+    padding: 8px 18px;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s, opacity 0.15s;
+}
+
+.cnt-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.cnt-btn-primary {
+    background: #2563eb;
+    color: #fff;
+}
+
+.cnt-btn-primary:hover:not(:disabled) {
+    background: #1d4ed8;
+}
+
+.cnt-btn-secondary {
+    background: #6b7280;
+    color: #fff;
+}
+
+.cnt-btn-secondary:hover:not(:disabled) {
+    background: #4b5563;
+}
+
+/* Cards resumen */
+.cnt-summary {
+    display: flex;
+    gap: 16px;
+    padding: 20px 28px 0;
+    flex-wrap: wrap;
+}
+
+.cnt-summary-card {
+    flex: 1;
+    min-width: 140px;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 18px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.cnt-summary-value {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: #111827;
+    line-height: 1;
+}
+
+.cnt-summary-label {
+    font-size: 0.78rem;
+    color: #6b7280;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.cnt-summary-card--warning .cnt-summary-value {
+    color: #d97706;
+}
+
+/* Filtros */
+.cnt-filters {
+    display: flex;
+    gap: 20px;
+    padding: 16px 28px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.cnt-filter-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.cnt-filter-group label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #374151;
+    white-space: nowrap;
+}
+
+.cnt-filter-group select {
+    padding: 6px 10px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    background: #fff;
+    color: #111827;
+}
+
+/* Tabla */
+.cnt-table-wrapper {
+    overflow-x: auto;
+    padding: 0 28px;
+    margin-top: 4px;
+}
+
+.cnt-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #fff;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.cnt-table th {
+    padding: 10px 14px;
+    background: #f3f4f6;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #374151;
+    text-align: left;
+    border-bottom: 2px solid #e5e7eb;
+    white-space: nowrap;
+}
+
+.cnt-table td {
+    padding: 10px 14px;
+    font-size: 0.875rem;
+    color: #374151;
+    border-bottom: 1px solid #f3f4f6;
+    vertical-align: middle;
+}
+
+.cnt-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.cnt-concepto {
+    max-width: 200px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.cnt-total {
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+/* Colores de fila por estatus */
+.cnt-row--pagada {
+    background: #f0fdf4;
+}
+
+.cnt-row--cancelada {
+    background: #fff1f2;
+    opacity: 0.85;
+}
+
+/* Badges de estatus */
+.cnt-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+}
+
+.cnt-badge--pendiente {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.cnt-badge--pagada {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.cnt-badge--cancelada {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+/* Links de archivos */
+.cnt-files {
+    white-space: nowrap;
+}
+
+.cnt-file-link {
+    display: inline-block;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-decoration: none;
+    margin-right: 4px;
+    transition: opacity 0.15s;
+}
+
+.cnt-file-link:hover {
+    opacity: 0.85;
+}
+
+.cnt-file-link--pdf {
+    background: #ef4444;
+    color: #fff;
+}
+
+.cnt-file-link--xml {
+    background: #16a34a;
+    color: #fff;
+}
+
+/* Acciones */
+.cnt-actions {
+    display: flex;
+    gap: 6px;
+    white-space: nowrap;
+}
+
+.cnt-btn-sm {
+    padding: 4px 10px;
+    border: none;
+    border-radius: 5px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.15s;
+}
+
+.cnt-btn-sm:hover {
+    opacity: 0.8;
+}
+
+.cnt-btn-sm--edit {
+    background: #f59e0b;
+    color: #fff;
+}
+
+.cnt-btn-sm--delete {
+    background: #ef4444;
+    color: #fff;
+}
+
+/* Estados vacíos / carga */
+.cnt-loading,
+.cnt-empty,
+.cnt-error {
+    text-align: center;
+    padding: 60px 20px;
+    color: #6b7280;
+    font-size: 0.95rem;
+    margin: 0 28px;
+}
+
+.cnt-error {
+    color: #dc2626;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+}
+
+/* ========================================
+   Modal compartido
+   ======================================== */
+.cnt-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 16px;
+}
+
+.cnt-modal {
+    background: #fff;
+    border-radius: 12px;
+    width: 100%;
+    max-width: 640px;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+}
+
+.cnt-modal-sm {
+    max-width: 400px;
+}
+
+.cnt-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 24px 16px;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.cnt-modal-header h2 {
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: #111827;
+    margin: 0;
+}
+
+.cnt-close-btn {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    color: #6b7280;
+    cursor: pointer;
+    line-height: 1;
+    padding: 0;
+}
+
+.cnt-close-btn:hover {
+    color: #111827;
+}
+
+/* Formulario */
+.cnt-form {
+    padding: 20px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.cnt-form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+}
+
+.cnt-form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.cnt-form-group label {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #374151;
+}
+
+.cnt-form-group input[type="text"],
+.cnt-form-group input[type="number"],
+.cnt-form-group input[type="date"],
+.cnt-form-group select {
+    padding: 8px 10px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    color: #111827;
+    background: #fff;
+    transition: border-color 0.15s;
+}
+
+.cnt-form-group input:focus,
+.cnt-form-group select:focus {
+    outline: none;
+    border-color: #2563eb;
+}
+
+.cnt-form-group input:disabled {
+    background: #f3f4f6;
+    color: #6b7280;
+}
+
+.cnt-form-group input[type="file"] {
+    padding: 6px;
+    border: 1px dashed #d1d5db;
+    border-radius: 6px;
+    font-size: 0.82rem;
+    cursor: pointer;
+    background: #fafafa;
+}
+
+.cnt-file-selected {
+    font-size: 0.78rem;
+    color: #16a34a;
+    font-weight: 500;
+}
+
+.cnt-form-error {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    color: #dc2626;
+    border-radius: 6px;
+    padding: 10px 14px;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.cnt-modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding-top: 8px;
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+    .cnt-header {
+        flex-wrap: wrap;
+        padding: 14px 16px;
+    }
+
+    .cnt-title {
+        width: 100%;
+        font-size: 1.2rem;
+    }
+
+    .cnt-summary {
+        padding: 16px 16px 0;
+    }
+
+    .cnt-filters {
+        padding: 12px 16px;
+    }
+
+    .cnt-table-wrapper {
+        padding: 0 16px;
+    }
+
+    .cnt-form-row {
+        grid-template-columns: 1fr;
+    }
+}
