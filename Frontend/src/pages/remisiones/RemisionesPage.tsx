@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { authHeader, getToken, isTokenValid } from "../../auth";
+import { AgregarRemisionModal } from "./AgregarRemisionModal";
 import "./RemisionesPage.css";
 
 // --- Types ---
@@ -34,10 +35,10 @@ type RemisionRow = {
   prioridad: 'A' | 'B' | 'C';
   observaciones_proveedor: string | null;
   observaciones_heg: string | null;
-  tipo_material: 'aluminio' | 'cristal';
+  tipo_material: 'aluminio' | 'cristal' | 'miscelaneo';
 };
 
-type MaterialTab = "aluminio" | "cristal";
+type MaterialTab = "aluminio" | "cristal" | "miscelaneo";
 
 // --- Helpers ---
 
@@ -235,6 +236,9 @@ export function RemisionesPage({ isGeneral = false }: RemisionesPageProps) {
   const [ordenColumna, setOrdenColumna] = useState<string | null>(null);
   const [ordenDireccion, setOrdenDireccion] = useState<"asc" | "desc">("asc");
 
+  // Modals
+  const [showAgregarRemision, setShowAgregarRemision] = useState(false);
+
   // Build query params
   const buildQueryParams = useCallback(() => {
     const params: string[] = [];
@@ -414,8 +418,107 @@ export function RemisionesPage({ isGeneral = false }: RemisionesPageProps) {
   }, [datos]);
 
   const isCristal = materialTab === "cristal";
+  const isMiscelaneo = materialTab === "miscelaneo";
 
   // --- Render ---
+
+  // Tabla de misceláneos
+  const renderTablaMiscelaneo = () => {
+    const colCount = isGeneral ? 10 : 9;
+    return (
+      <table className="rem-tabla rem-tabla-cristal">
+        <thead>
+          <tr>
+            <th>NO.</th>
+            {isGeneral && <th className="sortable" onClick={() => manejarOrden("nombre_proyecto")}>PROYECTO{indicadorOrden("nombre_proyecto")}</th>}
+            <th className="sortable" onClick={() => manejarOrden("numero_pedido")}>PEDIDO{indicadorOrden("numero_pedido")}</th>
+            <th className="sortable" onClick={() => manejarOrden("numero_perfil")}>CLAVE{indicadorOrden("numero_perfil")}</th>
+            <th className="sortable desc-header" onClick={() => manejarOrden("descripcion")}>DESCRIPCIÓN{indicadorOrden("descripcion")}</th>
+            <th colSpan={3} className="rem-th-group piezas-group">CANTIDADES</th>
+            <th className="sortable" onClick={() => manejarOrden("fecha_liberacion")}>FECHA DE LIBERACI&Oacute;N{indicadorOrden("fecha_liberacion")}</th>
+            <th className="sortable fecha-pactada-header" onClick={() => manejarOrden("fecha_entrega")}>FECHA DE ENTREGA PACTADA{indicadorOrden("fecha_entrega")}</th>
+            <th className="sortable" onClick={() => manejarOrden("fecha_entrega_desfazada")}>FECHA DE ENTREGA DESFAZADA{indicadorOrden("fecha_entrega_desfazada")}</th>
+          </tr>
+          <tr className="rem-subheader">
+            <th></th>
+            {isGeneral && <th></th>}
+            <th></th>
+            <th></th>
+            <th></th>
+            <th className="editable-header">PEDIDO</th>
+            <th className="editable-header">RECIBIDO</th>
+            <th className="editable-header faltante-header">FALTANTE</th>
+            <th></th>
+            <th></th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {datosOrdenados.length === 0 ? (
+            <tr>
+              <td colSpan={colCount + 1} className="rem-empty">
+                No hay pedidos misceláneos registrados para este proyecto
+              </td>
+            </tr>
+          ) : (
+            <>
+              {datosOrdenados.map((row, idx) => (
+                <tr key={`misc-${row.id_programacion}`} className={row.cantidad_saldo > 0 ? 'faltante-row' : ''}>
+                  <td>{idx + 1}</td>
+                  {isGeneral && <td className="proyecto-cell">{row.nombre_proyecto || nombreProyecto}</td>}
+                  <td>{row.numero_pedido}</td>
+                  <td className="perfil-cell">{row.numero_perfil || "-"}</td>
+                  <td className="desc-cell">{row.descripcion}</td>
+                  <td className={`editable-cell ${saving === row.id_programacion ? 'saving' : ''}`}>
+                    <EditableCell
+                      value={row.cantidad_pedida}
+                      onSave={(val) => actualizarCelda(row.id_programacion, 'cantidad_pedida', val, row.tipo_material)}
+                    />
+                  </td>
+                  <td className={`editable-cell ${saving === row.id_programacion ? 'saving' : ''}`}>
+                    <EditableCell
+                      value={row.cantidad_recibida}
+                      onSave={(val) => actualizarCelda(row.id_programacion, 'cantidad_recibida', val, row.tipo_material)}
+                      max={row.cantidad_pedida}
+                    />
+                  </td>
+                  <td className={`faltante-cell ${row.cantidad_saldo > 0 ? 'faltante-pendiente' : 'faltante-completo'}`}>
+                    {fmtInt(row.cantidad_saldo)}
+                  </td>
+                  <td className={`fecha-cell editable-cell ${saving === row.id_programacion ? 'saving' : ''}`}>
+                    <EditableDateCell
+                      value={row.fecha_liberacion}
+                      onSave={(val) => actualizarFecha(row.id_programacion, 'fecha_liberacion', val, row.tipo_material)}
+                    />
+                  </td>
+                  <td className={`fecha-cell fecha-pactada-cell editable-cell ${saving === row.id_programacion ? 'saving' : ''}`}>
+                    <EditableDateCell
+                      value={row.fecha_entrega}
+                      onSave={(val) => actualizarFecha(row.id_programacion, 'fecha_entrega', val, row.tipo_material)}
+                      className="fecha-pactada-value"
+                    />
+                  </td>
+                  <td className={`fecha-cell editable-cell ${saving === row.id_programacion ? 'saving' : ''}`}>
+                    <EditableDateCell
+                      value={row.fecha_entrega_desfazada}
+                      onSave={(val) => actualizarFecha(row.id_programacion, 'fecha_entrega_desfazada', val, row.tipo_material)}
+                    />
+                  </td>
+                </tr>
+              ))}
+              <tr className="rem-totals-row">
+                <td colSpan={isGeneral ? 6 : 5} style={{ textAlign: "right", fontWeight: 700 }}>TOTALES</td>
+                <td style={{ fontWeight: 700 }}>{fmtInt(totales.cantidad_pedida)}</td>
+                <td style={{ fontWeight: 700 }}>{fmtInt(totales.cantidad_recibida)}</td>
+                <td style={{ fontWeight: 700 }}>{fmtInt(totales.cantidad_saldo)}</td>
+                <td colSpan={3}></td>
+              </tr>
+            </>
+          )}
+        </tbody>
+      </table>
+    );
+  };
 
   // Tabla de cristal
   const renderTablaCristal = () => {
@@ -667,7 +770,7 @@ export function RemisionesPage({ isGeneral = false }: RemisionesPageProps) {
           <span className="rem-project-title">{nombreProyecto}</span>
         </div>
         <div className="rem-nav-tabs">
-          {([["aluminio", "Aluminio"], ["cristal", "Cristal"]] as [MaterialTab, string][]).map(([key, label]) => (
+          {([["aluminio", "Aluminio"], ["cristal", "Cristal"], ["miscelaneo", "Misceláneos"]] as [MaterialTab, string][]).map(([key, label]) => (
             <button
               key={key}
               className={`rem-tab material-tab ${materialTab === key ? 'active' : ''}`}
@@ -677,6 +780,9 @@ export function RemisionesPage({ isGeneral = false }: RemisionesPageProps) {
             </button>
           ))}
         </div>
+        <button className="rem-add-btn" onClick={() => setShowAgregarRemision(true)}>
+          + Agregar Remisión
+        </button>
         <button className="rem-export-btn" onClick={exportarExcel}>
           Exportar Excel
         </button>
@@ -688,12 +794,12 @@ export function RemisionesPage({ isGeneral = false }: RemisionesPageProps) {
           <label>Buscar</label>
           <input
             type="text"
-            placeholder={isCristal ? "Zona, pedido, proyecto..." : "Perfil, descripci\u00F3n, pedido..."}
+            placeholder={isCristal ? "Zona, pedido, proyecto..." : isMiscelaneo ? "Clave, descripci\u00F3n, pedido..." : "Perfil, descripci\u00F3n, pedido..."}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-        {!isCristal && (
+        {!isCristal && !isMiscelaneo && (
           <div className="rem-filtro-select">
             <label>Proveedor</label>
             <select value={proveedorFiltro} onChange={(e) => setProveedorFiltro(e.target.value)}>
@@ -709,7 +815,7 @@ export function RemisionesPage({ isGeneral = false }: RemisionesPageProps) {
         </button>
         <div className="rem-filtro-stats">
           <span>{datosOrdenados.length} registros</span>
-          {!isCristal && (
+          {!isCristal && !isMiscelaneo && (
             <>
               <span className="rem-stat-separator">|</span>
               <span>Total KG: {fmtDec(totales.total_kg, 2)}</span>
@@ -717,10 +823,10 @@ export function RemisionesPage({ isGeneral = false }: RemisionesPageProps) {
               <span className="rem-stat-saldo">KG Saldo: {fmtDec(totales.kg_saldo, 2)}</span>
             </>
           )}
-          {isCristal && (
+          {(isCristal || isMiscelaneo) && (
             <>
               <span className="rem-stat-separator">|</span>
-              <span>Piezas: {fmtInt(totales.cantidad_pedida)}</span>
+              <span>Cantidad: {fmtInt(totales.cantidad_pedida)}</span>
               <span className="rem-stat-separator">|</span>
               <span className="rem-stat-saldo">Faltantes: {fmtInt(totales.cantidad_saldo)}</span>
             </>
@@ -740,9 +846,18 @@ export function RemisionesPage({ isGeneral = false }: RemisionesPageProps) {
         {loading ? (
           <div className="rem-loading">Cargando programaci&oacute;n de entregas...</div>
         ) : (
-          isCristal ? renderTablaCristal() : renderTablaAluminio()
+          isCristal ? renderTablaCristal() : isMiscelaneo ? renderTablaMiscelaneo() : renderTablaAluminio()
         )}
       </div>
+
+      <AgregarRemisionModal
+        isOpen={showAgregarRemision}
+        onClose={() => setShowAgregarRemision(false)}
+        initialProjectId={projectId}
+        onSuccess={() => {
+          cargarDatos();
+        }}
+      />
     </div>
   );
 }

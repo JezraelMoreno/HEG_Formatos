@@ -301,15 +301,21 @@
 }
 
 /* Selected Order */
-.arm-selected-order {
+.arm-selected-order,
+.arm-selected-project-info {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 16px;
-  background: var(--color-bg-alt);
-  border: 1px solid var(--color-border);
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
   border-radius: var(--radius-md);
+  padding: 10px 14px;
   margin-bottom: 20px;
+}
+
+.arm-result-item.selected {
+  border-color: var(--color-primary);
+  background-color: var(--color-primary-light, #eff6ff);
 }
 
 .arm-order-badge {
@@ -575,6 +581,37 @@
 .arm-observaciones textarea:focus {
   outline: none;
   border-color: var(--color-primary);
+}
+
+/* PDF Upload */
+.arm-pdf-upload {
+  margin-top: 16px;
+}
+
+.arm-pdf-upload label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  margin-bottom: 8px;
+}
+
+.arm-pdf-upload input[type="file"] {
+  width: 100%;
+  padding: 8px;
+  border: 1px dashed var(--color-border-input);
+  border-radius: var(--radius-md);
+  font-size: 0.85rem;
+  cursor: pointer;
+  background: #fafafa;
+}
+
+.arm-pdf-name {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 0.8rem;
+  color: #16a34a;
+  font-weight: 500;
 }
 
 /* Footer */

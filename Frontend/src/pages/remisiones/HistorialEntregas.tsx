@@ -7,11 +7,12 @@ interface EntregaHistorial {
     fecha_entrega: string;
     numero_pedido: string;
     nombre_proyecto: string;
-    tipo_material: 'aluminio' | 'cristal';
+    tipo_material: 'aluminio' | 'cristal' | 'miscelaneo';
     total_items: number;
     total_piezas: number;
     observaciones: string | null;
     usuario: string;
+    ruta_pdf?: string | null;
 }
 
 interface HistorialEntregasProps {
@@ -22,7 +23,7 @@ interface HistorialEntregasProps {
 export function HistorialEntregas({ onClose, inline = false }: HistorialEntregasProps) {
     const [entregas, setEntregas] = useState<EntregaHistorial[]>([]);
     const [loading, setLoading] = useState(true);
-    const [filtroMaterial, setFiltroMaterial] = useState<'todos' | 'aluminio' | 'cristal'>('todos');
+    const [filtroMaterial, setFiltroMaterial] = useState<'todos' | 'aluminio' | 'cristal' | 'miscelaneo'>('todos');
     const [busqueda, setBusqueda] = useState('');
 
     useEffect(() => {
@@ -106,6 +107,12 @@ export function HistorialEntregas({ onClose, inline = false }: HistorialEntregas
                     >
                         Cristal
                     </button>
+                    <button
+                        className={`he-filter-tab ${filtroMaterial === 'miscelaneo' ? 'active' : ''}`}
+                        onClick={() => setFiltroMaterial('miscelaneo')}
+                    >
+                        Misceláneos
+                    </button>
                 </div>
             </div>
 
@@ -136,7 +143,7 @@ export function HistorialEntregas({ onClose, inline = false }: HistorialEntregas
                         <div key={e.id_entrega} className="he-item">
                             <div className="he-item-header">
                                 <span className={`he-material-badge ${e.tipo_material}`}>
-                                    {e.tipo_material === 'aluminio' ? 'AL' : 'CR'}
+                                    {e.tipo_material === 'aluminio' ? 'AL' : e.tipo_material === 'cristal' ? 'CR' : 'MI'}
                                 </span>
                                 <span className="he-pedido">Pedido #{e.numero_pedido}</span>
                                 <span className="he-fecha">{formatDate(e.fecha_entrega)}</span>
@@ -160,6 +167,16 @@ export function HistorialEntregas({ onClose, inline = false }: HistorialEntregas
                                             ? e.observaciones.substring(0, 50) + '...'
                                             : e.observaciones}
                                     </span>
+                                )}
+                                {e.ruta_pdf && (
+                                    <a
+                                        href={`http://localhost:3000/uploads/remisiones/${e.ruta_pdf}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="he-pdf-link"
+                                    >
+                                        Ver PDF
+                                    </a>
                                 )}
                             </div>
                         </div>

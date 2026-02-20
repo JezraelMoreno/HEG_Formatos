@@ -2,6 +2,11 @@ import { useState, useEffect, useCallback } from 'react';
 import { authHeader } from '../../auth';
 import './AgregarRemisionModal.css';
 
+interface Proyecto {
+    id_proyecto: number;
+    nombre: string;
+}
+
 interface Pedido {
     id: number;
     numero_pedido: string;
@@ -18,7 +23,7 @@ interface DetallePedido {
     cantidad_disponible: number;
     cantidad_pedida: number;
     cantidad_recibida: number;
-    tipo_material: 'aluminio' | 'cristal';
+    tipo_material: 'aluminio' | 'cristal' | 'miscelaneo';
 }
 
 interface EntregaItem {
@@ -26,24 +31,32 @@ interface EntregaItem {
     descripcion: string;
     cantidad_entrega: number;
     cantidad_pedida: number;
-    tipo_material: 'aluminio' | 'cristal';
+    tipo_material: 'aluminio' | 'cristal' | 'miscelaneo';
 }
 
-type MaterialTab = 'aluminio' | 'cristal';
+type MaterialTab = 'aluminio' | 'cristal' | 'miscelaneo';
 
 interface AgregarRemisionModalProps {
     isOpen: boolean;
     onClose: () => void;
     onSuccess: () => void;
+    initialProjectId?: string;
 }
 
-export function AgregarRemisionModal({ isOpen, onClose, onSuccess }: AgregarRemisionModalProps) {
+export function AgregarRemisionModal({ isOpen, onClose, onSuccess, initialProjectId }: AgregarRemisionModalProps) {
     // Step state
-    const [step, setStep] = useState<1 | 2 | 3>(1);
+    const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
 
-    // Step 1: Material selection and order search
+    // Step 1: Project selection
+    const [proyectos, setProyectos] = useState<Proyecto[]>([]);
+    const [selectedProject, setSelectedProject] = useState<Proyecto | null>(null);
+    const [loadingProyectos, setLoadingProyectos] = useState(false);
+    const [projectSearch, setProjectSearch] = useState('');
+
+    // Step 2: Material selection and order search
     const [materialTab, setMaterialTab] = useState<MaterialTab>('aluminio');
     const [searchTerm, setSearchTerm] = useState('');
+    const [familiaFilter, setFamiliaFilter] = useState('');
     const [pedidos, setPedidos] = useState<Pedido[]>([]);
     const [selectedPedido, setSelectedPedido] = useState<Pedido | null>(null);
     const [loadingPedidos, setLoadingPedidos] = useState(false);
@@ -56,26 +69,61 @@ export function AgregarRemisionModal({ isOpen, onClose, onSuccess }: AgregarRemi
     // Step 3: Confirm
     const [saving, setSaving] = useState(false);
     const [observaciones, setObservaciones] = useState('');
+    const [pdfFile, setPdfFile] = useState<File | null>(null);
 
     // Reset state when modal opens/closes
     useEffect(() => {
         if (isOpen) {
             setStep(1);
+            setProjectSearch('');
+            setSelectedProject(null);
+            setMaterialTab('aluminio');
             setSearchTerm('');
+            setFamiliaFilter('');
             setSelectedPedido(null);
             setDetalles([]);
             setEntregas([]);
             setObservaciones('');
+            setPdfFile(null);
+            cargarProyectos();
         }
     }, [isOpen]);
+
+    // Load projects
+    const cargarProyectos = async () => {
+        setLoadingProyectos(true);
+        try {
+            const res = await fetch('http://localhost:3000/proyectos', { headers: authHeader() });
+            const json = await res.json();
+            if (res.ok && json.success) {
+                const data = json.data || [];
+                setProyectos(data);
+
+                // If initial ID provided, auto-select
+                if (initialProjectId) {
+                    const p = data.find((proj: Proyecto) => proj.id_proyecto === parseInt(initialProjectId));
+                    if (p) {
+                        setSelectedProject(p);
+                        setStep(2);
+                    }
+                }
+            }
+        } catch (err) {
+            console.error('Error cargando proyectos:', err);
+        } finally {
+            setLoadingProyectos(false);
+        }
+    };
 
     // Search pedidos
     const buscarPedidos = useCallback(async () => {
         const searchParam = searchTerm.trim();
         setLoadingPedidos(true);
         try {
+            const projectIdParam = selectedProject ? `&id_proyecto=${selectedProject.id_proyecto}` : '';
+            const familiaParam = familiaFilter.trim() ? `&familia=${encodeURIComponent(familiaFilter.trim())}` : '';
             const res = await fetch(
-                `http://localhost:3000/remisiones/buscar-pedidos?tipo=${materialTab}&search=${encodeURIComponent(searchParam)}`,
+                `http://localhost:3000/remisiones/buscar-pedidos?tipo=${materialTab}&search=${encodeURIComponent(searchParam)}${projectIdParam}${familiaParam}`,
                 { headers: authHeader() }
             );
             const json = await res.json();
@@ -87,7 +135,7 @@ export function AgregarRemisionModal({ isOpen, onClose, onSuccess }: AgregarRemi
         } finally {
             setLoadingPedidos(false);
         }
-    }, [searchTerm, materialTab]);
+    }, [searchTerm, familiaFilter, materialTab]);
 
     // Debounced search
     useEffect(() => {
@@ -118,7 +166,7 @@ export function AgregarRemisionModal({ isOpen, onClose, onSuccess }: AgregarRemi
                         tipo_material: materialTab
                     }))
                 );
-                setStep(2);
+                setStep(3);
             }
         } catch (err) {
             console.error('Error cargando detalles:', err);
@@ -149,18 +197,24 @@ export function AgregarRemisionModal({ isOpen, onClose, onSuccess }: AgregarRemi
             alert('Debe ingresar al menos una entrega');
             return;
         }
+        if (!pdfFile) {
+            alert('Debe adjuntar un PDF para registrar la remisión');
+            return;
+        }
 
         setSaving(true);
         try {
+            const formData = new FormData();
+            formData.append('id_pedido', String(selectedPedido?.id));
+            formData.append('tipo_material', materialTab);
+            formData.append('entregas', JSON.stringify(entregasConCantidad));
+            formData.append('observaciones', observaciones);
+            formData.append('pdf', pdfFile);
+
             const res = await fetch('http://localhost:3000/remisiones/registrar-entrega', {
                 method: 'POST',
-                headers: { ...authHeader(), 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    id_pedido: selectedPedido?.id,
-                    tipo_material: materialTab,
-                    entregas: entregasConCantidad,
-                    observaciones
-                })
+                headers: authHeader(), // SIN Content-Type, FormData lo pone automáticamente
+                body: formData
             });
 
             const json = await res.json();
@@ -186,9 +240,10 @@ export function AgregarRemisionModal({ isOpen, onClose, onSuccess }: AgregarRemi
                 {/* Header */}
                 <div className="arm-header">
                     <h2 className="arm-title">
-                        {step === 1 && 'Agregar Remisión - Buscar Pedido'}
-                        {step === 2 && 'Agregar Remisión - Registrar Entrega'}
-                        {step === 3 && 'Agregar Remisión - Confirmar'}
+                        {step === 1 && 'Agregar Remisión - Seleccionar Proyecto'}
+                        {step === 2 && 'Agregar Remisión - Buscar Pedido'}
+                        {step === 3 && 'Agregar Remisión - Registrar Entrega'}
+                        {step === 4 && 'Agregar Remisión - Confirmar'}
                     </h2>
                     <button className="arm-close-btn" onClick={onClose}>&times;</button>
                 </div>
@@ -197,37 +252,90 @@ export function AgregarRemisionModal({ isOpen, onClose, onSuccess }: AgregarRemi
                 <div className="arm-progress">
                     <div className={`arm-progress-step ${step >= 1 ? 'active' : ''}`}>
                         <span className="arm-step-number">1</span>
-                        <span className="arm-step-label">Buscar Pedido</span>
+                        <span className="arm-step-label">Proyecto</span>
                     </div>
                     <div className="arm-progress-line" />
                     <div className={`arm-progress-step ${step >= 2 ? 'active' : ''}`}>
                         <span className="arm-step-number">2</span>
-                        <span className="arm-step-label">Registrar Entrega</span>
+                        <span className="arm-step-label">Pedido</span>
                     </div>
                     <div className="arm-progress-line" />
                     <div className={`arm-progress-step ${step >= 3 ? 'active' : ''}`}>
                         <span className="arm-step-number">3</span>
+                        <span className="arm-step-label">Entrega</span>
+                    </div>
+                    <div className="arm-progress-line" />
+                    <div className={`arm-progress-step ${step >= 4 ? 'active' : ''}`}>
+                        <span className="arm-step-number">4</span>
                         <span className="arm-step-label">Confirmar</span>
                     </div>
                 </div>
 
                 {/* Content */}
                 <div className="arm-content">
-                    {/* Step 1: Search */}
+                    {/* Step 1: Select Project */}
                     {step === 1 && (
                         <div className="arm-step-content">
+                            <div className="arm-search-box">
+                                <input
+                                    type="text"
+                                    placeholder="Filtrar proyectos por nombre..."
+                                    value={projectSearch}
+                                    onChange={e => setProjectSearch(e.target.value)}
+                                    autoFocus
+                                />
+                                {loadingProyectos && <span className="arm-loading-indicator">Cargando...</span>}
+                            </div>
+                            <div className="arm-results-list">
+                                {proyectos
+                                    .filter(p => p.nombre.toLowerCase().includes(projectSearch.toLowerCase()))
+                                    .map(p => (
+                                        <div
+                                            key={p.id_proyecto}
+                                            className={`arm-result-item ${selectedProject?.id_proyecto === p.id_proyecto ? 'selected' : ''}`}
+                                            onClick={() => {
+                                                setSelectedProject(p);
+                                                setStep(2);
+                                            }}
+                                        >
+                                            <div className="arm-result-main">
+                                                <span className="arm-result-proyecto">{p.nombre}</span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                {proyectos.length === 0 && !loadingProyectos && (
+                                    <p className="arm-no-results">No hay proyectos disponibles</p>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Step 2: Search Order */}
+                    {step === 2 && (
+                        <div className="arm-step-content">
+                            <div className="arm-selected-project-info">
+                                Proyecto seleccionado: <strong>{selectedProject?.nombre}</strong>
+                                <button className="arm-change-btn" onClick={() => setStep(1)}>Cambiar</button>
+                            </div>
+
                             <div className="arm-material-tabs">
                                 <button
                                     className={`arm-material-tab ${materialTab === 'aluminio' ? 'active' : ''}`}
-                                    onClick={() => { setMaterialTab('aluminio'); setPedidos([]); }}
+                                    onClick={() => { setMaterialTab('aluminio'); setPedidos([]); setFamiliaFilter(''); }}
                                 >
                                     Aluminio
                                 </button>
                                 <button
                                     className={`arm-material-tab ${materialTab === 'cristal' ? 'active' : ''}`}
-                                    onClick={() => { setMaterialTab('cristal'); setPedidos([]); }}
+                                    onClick={() => { setMaterialTab('cristal'); setPedidos([]); setFamiliaFilter(''); }}
                                 >
                                     Cristal
+                                </button>
+                                <button
+                                    className={`arm-material-tab ${materialTab === 'miscelaneo' ? 'active' : ''}`}
+                                    onClick={() => { setMaterialTab('miscelaneo'); setPedidos([]); setFamiliaFilter(''); }}
+                                >
+                                    Misceláneos
                                 </button>
                             </div>
 
@@ -240,6 +348,14 @@ export function AgregarRemisionModal({ isOpen, onClose, onSuccess }: AgregarRemi
                                     autoFocus
                                 />
                                 {loadingPedidos && <span className="arm-loading-indicator">Buscando...</span>}
+                            </div>
+                            <div className="arm-search-box">
+                                <input
+                                    type="text"
+                                    placeholder="Filtrar por familia (ej. AL, CR, VN)..."
+                                    value={familiaFilter}
+                                    onChange={e => setFamiliaFilter(e.target.value)}
+                                />
                             </div>
 
                             <div className="arm-results-list">
@@ -266,17 +382,17 @@ export function AgregarRemisionModal({ isOpen, onClose, onSuccess }: AgregarRemi
                         </div>
                     )}
 
-                    {/* Step 2: Register deliveries */}
-                    {step === 2 && (
+                    {/* Step 3: Register deliveries */}
+                    {step === 3 && (
                         <div className="arm-step-content">
                             <div className="arm-selected-order">
-                                <span className="arm-order-badge">{materialTab === 'aluminio' ? 'AL' : 'CR'}</span>
+                                <span className="arm-order-badge">{materialTab === 'aluminio' ? 'AL' : materialTab === 'cristal' ? 'CR' : 'MI'}</span>
                                 <span className="arm-order-info">
                                     Pedido <strong>#{selectedPedido?.numero_pedido}</strong>
                                     {' - '}
-                                    {selectedPedido?.nombre_proyecto}
+                                    {selectedProject?.nombre}
                                 </span>
-                                <button className="arm-change-btn" onClick={() => setStep(1)}>Cambiar</button>
+                                <button className="arm-change-btn" onClick={() => setStep(2)}>Cambiar</button>
                             </div>
 
                             {loadingDetalles ? (
@@ -284,7 +400,7 @@ export function AgregarRemisionModal({ isOpen, onClose, onSuccess }: AgregarRemi
                             ) : detalles.length === 0 ? (
                                 <div className="arm-no-results">
                                     <p>Este pedido no tiene conceptos o partidas registradas para el tipo de material seleccionado.</p>
-                                    <button className="arm-btn arm-btn-secondary" onClick={() => setStep(1)}>
+                                    <button className="arm-btn arm-btn-secondary" onClick={() => setStep(2)}>
                                         Volver a buscar
                                     </button>
                                 </div>
@@ -349,8 +465,8 @@ export function AgregarRemisionModal({ isOpen, onClose, onSuccess }: AgregarRemi
                         </div>
                     )}
 
-                    {/* Step 3: Confirm */}
-                    {step === 3 && (
+                    {/* Step 4: Confirm */}
+                    {step === 4 && (
                         <div className="arm-step-content">
                             <div className="arm-confirm-section">
                                 <h3>Resumen de Entrega</h3>
@@ -382,6 +498,18 @@ export function AgregarRemisionModal({ isOpen, onClose, onSuccess }: AgregarRemi
                                         onChange={e => setObservaciones(e.target.value)}
                                     />
                                 </div>
+
+                                <div className="arm-pdf-upload">
+                                    <label>Adjuntar PDF *</label>
+                                    <input
+                                        type="file"
+                                        accept=".pdf"
+                                        onChange={e => setPdfFile(e.target.files?.[0] || null)}
+                                    />
+                                    {pdfFile && (
+                                        <span className="arm-pdf-name">{pdfFile.name}</span>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     )}
@@ -392,7 +520,7 @@ export function AgregarRemisionModal({ isOpen, onClose, onSuccess }: AgregarRemi
                     {step > 1 && (
                         <button
                             className="arm-btn arm-btn-secondary"
-                            onClick={() => setStep((step - 1) as 1 | 2)}
+                            onClick={() => setStep((step - 1) as 1 | 2 | 3)}
                             disabled={saving}
                         >
                             ← Anterior
@@ -404,20 +532,20 @@ export function AgregarRemisionModal({ isOpen, onClose, onSuccess }: AgregarRemi
                             Cancelar
                         </button>
                     )}
-                    {step === 2 && (
+                    {step === 3 && (
                         <button
                             className="arm-btn arm-btn-primary"
-                            onClick={() => setStep(3)}
+                            onClick={() => setStep(4)}
                             disabled={totalItems === 0}
                         >
                             Continuar →
                         </button>
                     )}
-                    {step === 3 && (
+                    {step === 4 && (
                         <button
                             className="arm-btn arm-btn-success"
                             onClick={guardarEntregas}
-                            disabled={saving}
+                            disabled={saving || !pdfFile}
                         >
                             {saving ? 'Guardando...' : '✓ Confirmar Entrega'}
                         </button>
