@@ -7,8 +7,11 @@ import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import cors from "cors";
 import path from "path";
+import fs from "fs";
 import { fileURLToPath } from "url";
 import ExcelJS from "exceljs";
+import { createUploader } from "./helpers/upload.js";
+import * as FacturasCtrl from "./controllers/facturas.controller.js";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -23,6 +26,12 @@ app.use(express.json({ limit: '10mb' }));
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 app.use("/assets", express.static(path.join(__dirname, "assets")));
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
+// Uploaders multer
+const uploadRemision = createUploader({ subdir: "remisiones", allowedExts: [".pdf"] }).single("pdf");
+const uploadFactura = createUploader({ subdir: "facturas", allowedExts: [".pdf", ".xml"] })
+  .fields([{ name: "pdf", maxCount: 1 }, { name: "xml", maxCount: 1 }]);
 
 // Conexión a MySQL
 const db = mysql.createConnection({
@@ -4781,6 +4790,66 @@ app.get("/proyectos/:id/remisiones", authenticateToken, async (req, res) => {
       rows = rows.concat(rowsCristal);
     }
 
+    if (!tipo || tipo === 'miscelaneo' || tipo === 'todos') {
+      let qMisc = `
+        SELECT
+          dm.id_detalle as id_programacion,
+          ped.id_proyecto,
+          pr.nombre AS nombre_proyecto,
+          ped.pedido as numero_pedido,
+          '-' as subpedido,
+          COALESCE(dm.clave, '') as numero_perfil,
+          dm.descripcion,
+          dm.ml as medida_tramo,
+          dm.precio_x_kg as peso_kg_ml,
+          dm.acabado,
+          COALESCE(rc.cantidad_pedida, dm.cantidad, 0) as cantidad_pedida,
+          COALESCE(rc.cantidad_recibida, 0) as cantidad_recibida,
+          COALESCE(rc.cantidad_pedida, dm.cantidad, 0) - COALESCE(rc.cantidad_recibida, 0) as cantidad_saldo,
+          0 as cantidad_extruido,
+          0 as cantidad_pintado,
+          COALESCE(dm.kg, 0) as total_kg,
+          (COALESCE(rc.cantidad_pedida, dm.cantidad, 0) - COALESCE(rc.cantidad_recibida, 0)) as kg_saldo,
+          0 as kg_por_pintar,
+          0 as kg_entrega,
+          CASE WHEN COALESCE(rc.cantidad_pedida, dm.cantidad, 0) > 0
+            THEN COALESCE(rc.cantidad_recibida, 0) / COALESCE(rc.cantidad_pedida, dm.cantidad, 1)
+            ELSE 0 END as porcentaje_avance,
+          ped.proveedor,
+          COALESCE(rc.fecha_liberacion, ped.fecha_aprobacion) as fecha_liberacion,
+          rc.fecha_entrega,
+          rc.fecha_entrega_desfazada,
+          NULL as fecha_ultima_recepcion,
+          COALESCE(rc.prioridad, 'C') as prioridad,
+          rc.observaciones_proveedor,
+          rc.observaciones_heg,
+          'miscelaneo' as tipo_material
+        FROM pedidos_detalles_miscelaneos dm
+        JOIN pedidos ped ON ped.id = dm.id_pedido
+        JOIN proyectos pr ON pr.id_proyecto = ped.id_proyecto
+        LEFT JOIN remisiones_control rc ON rc.id_detalle = dm.id_detalle AND rc.tipo_material = 'miscelaneo'
+        WHERE ped.id_proyecto = ?
+          AND LOWER(dm.descripcion) NOT LIKE '%traspaso%'
+      `;
+      const pMisc = [...params];
+
+      if (prioridad && prioridad !== 'TODAS') {
+        qMisc += ` AND COALESCE(rc.prioridad, 'C') = ?`;
+        pMisc.push(prioridad);
+      }
+      if (proveedor) {
+        qMisc += ` AND ped.proveedor LIKE ?`;
+        pMisc.push(`%${proveedor}%`);
+      }
+      if (search) {
+        qMisc += ` AND (dm.clave LIKE ? OR dm.descripcion LIKE ? OR ped.pedido LIKE ?)`;
+        pMisc.push(`%${search}%`, `%${search}%`, `%${search}%`);
+      }
+
+      const rowsMisc = await queryAsync(qMisc, pMisc);
+      rows = rows.concat(rowsMisc);
+    }
+
     rows.sort((a, b) => {
       if (a.prioridad !== b.prioridad) return a.prioridad.localeCompare(b.prioridad);
       return String(a.numero_pedido).localeCompare(String(b.numero_pedido));
@@ -4912,6 +4981,60 @@ app.get("/remisiones", authenticateToken, async (req, res) => {
       rows = rows.concat(rowsCristal);
     }
 
+    if (!tipo || tipo === 'miscelaneo' || tipo === 'todos') {
+      let qMisc = `
+        SELECT
+          dm.id_detalle as id_programacion,
+          ped.id_proyecto,
+          pr.nombre AS nombre_proyecto,
+          ped.pedido as numero_pedido,
+          '-' as subpedido,
+          COALESCE(dm.clave, '') as numero_perfil,
+          dm.descripcion,
+          dm.ml as medida_tramo,
+          dm.precio_x_kg as peso_kg_ml,
+          dm.acabado,
+          COALESCE(rc.cantidad_pedida, dm.cantidad, 0) as cantidad_pedida,
+          COALESCE(rc.cantidad_recibida, 0) as cantidad_recibida,
+          COALESCE(rc.cantidad_pedida, dm.cantidad, 0) - COALESCE(rc.cantidad_recibida, 0) as cantidad_saldo,
+          0 as cantidad_extruido,
+          0 as cantidad_pintado,
+          COALESCE(dm.kg, 0) as total_kg,
+          (COALESCE(rc.cantidad_pedida, dm.cantidad, 0) - COALESCE(rc.cantidad_recibida, 0)) as kg_saldo,
+          CASE WHEN COALESCE(rc.cantidad_pedida, dm.cantidad, 0) > 0
+            THEN COALESCE(rc.cantidad_recibida, 0) / COALESCE(rc.cantidad_pedida, dm.cantidad, 1)
+            ELSE 0 END as porcentaje_avance,
+          ped.proveedor,
+          COALESCE(rc.fecha_liberacion, ped.fecha_aprobacion) as fecha_liberacion,
+          rc.fecha_entrega,
+          COALESCE(rc.prioridad, 'C') as prioridad,
+          'miscelaneo' as tipo_material
+        FROM pedidos_detalles_miscelaneos dm
+        JOIN pedidos ped ON ped.id = dm.id_pedido
+        JOIN proyectos pr ON pr.id_proyecto = ped.id_proyecto
+        LEFT JOIN remisiones_control rc ON rc.id_detalle = dm.id_detalle AND rc.tipo_material = 'miscelaneo'
+        WHERE 1=1
+          AND LOWER(dm.descripcion) NOT LIKE '%traspaso%'
+      `;
+      const pMisc = [];
+
+      if (id_proyecto) {
+        qMisc += ` AND ped.id_proyecto = ?`;
+        pMisc.push(id_proyecto);
+      }
+      if (prioridad && prioridad !== 'TODAS') {
+        qMisc += ` AND COALESCE(rc.prioridad, 'C') = ?`;
+        pMisc.push(prioridad);
+      }
+      if (search) {
+        qMisc += ` AND (dm.clave LIKE ? OR dm.descripcion LIKE ? OR ped.pedido LIKE ? OR pr.nombre LIKE ?)`;
+        pMisc.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
+      }
+
+      const rowsMisc = await queryAsync(qMisc, pMisc);
+      rows = rows.concat(rowsMisc);
+    }
+
     rows.sort((a, b) => {
       if (a.prioridad !== b.prioridad) return a.prioridad.localeCompare(b.prioridad);
       if (a.nombre_proyecto !== b.nombre_proyecto) return a.nombre_proyecto.localeCompare(b.nombre_proyecto);
@@ -5021,8 +5144,8 @@ app.put("/remisiones/:id", authenticateToken, async (req, res) => {
       observaciones_heg
     } = req.body;
 
-    if (!tipo_material || !['aluminio', 'cristal'].includes(tipo_material)) {
-      return res.status(400).json({ success: false, message: "tipo_material requerido (aluminio o cristal)" });
+    if (!tipo_material || !['aluminio', 'cristal', 'miscelaneo'].includes(tipo_material)) {
+      return res.status(400).json({ success: false, message: "tipo_material requerido (aluminio, cristal o miscelaneo)" });
     }
 
     // UPSERT en remisiones_control
@@ -5489,40 +5612,57 @@ app.get("/remisiones/export", authenticateToken, async (req, res) => {
 // Buscar pedidos para agregar remisión
 app.get("/remisiones/buscar-pedidos", authenticateToken, async (req, res) => {
   try {
-    const { tipo, search } = req.query;
-    console.log(`[DEBUG] Buscando pedidos - Tipo: ${tipo}, Search: ${search}`);
+    const { tipo, search, familia } = req.query;
+    console.log(`[DEBUG] Buscando pedidos - Tipo: ${tipo}, Search: ${search}, Familia: ${familia}`);
 
-    if (!tipo || !['aluminio', 'cristal'].includes(tipo)) {
-      return res.status(400).json({ success: false, message: "Tipo de material requerido (aluminio o cristal)" });
+    if (!tipo || !['aluminio', 'cristal', 'miscelaneo'].includes(tipo)) {
+      return res.status(400).json({ success: false, message: "Tipo de material requerido (aluminio, cristal o miscelaneo)" });
     }
 
     let query;
     const params = [];
 
-    // Mapeo de búsqueda de familias
-    let familiaMatch = [];
-    if (tipo === 'aluminio') {
-      familiaMatch = ['AL', 'MQAL', 'aluminio'];
-    } else if (tipo === 'cristal') {
-      familiaMatch = ['CR', 'cristal'];
+    if (tipo === 'miscelaneo') {
+      query = `
+        SELECT DISTINCT
+          ped.id,
+          ped.pedido as numero_pedido,
+          pr.nombre as nombre_proyecto,
+          ped.proveedor,
+          ped.familia
+        FROM pedidos ped
+        JOIN proyectos pr ON pr.id_proyecto = ped.id_proyecto
+        WHERE UPPER(ped.familia) NOT IN ('AL', 'MQAL', 'CR')
+      `;
+    } else {
+      let familiaMatch = [];
+      if (tipo === 'aluminio') {
+        familiaMatch = ['AL', 'MQAL', 'aluminio'];
+      } else if (tipo === 'cristal') {
+        familiaMatch = ['CR', 'cristal'];
+      }
+      query = `
+        SELECT DISTINCT
+          ped.id,
+          ped.pedido as numero_pedido,
+          pr.nombre as nombre_proyecto,
+          ped.proveedor,
+          ped.familia
+        FROM pedidos ped
+        JOIN proyectos pr ON pr.id_proyecto = ped.id_proyecto
+        WHERE (LOWER(ped.familia) IN (${familiaMatch.map(() => '?').join(',')}) OR LOWER(ped.familia) LIKE ?)
+      `;
+      params.push(...familiaMatch.map(f => f.toLowerCase()), `%${tipo}%`);
     }
-
-    query = `
-      SELECT DISTINCT
-        ped.id,
-        ped.pedido as numero_pedido,
-        pr.nombre as nombre_proyecto,
-        ped.proveedor,
-        ped.familia
-      FROM pedidos ped
-      JOIN proyectos pr ON pr.id_proyecto = ped.id_proyecto
-      WHERE (LOWER(ped.familia) IN (${familiaMatch.map(() => '?').join(',')}) OR LOWER(ped.familia) LIKE ?)
-    `;
-    params.push(...familiaMatch.map(f => f.toLowerCase()), `%${tipo}%`);
 
     if (search) {
       query += ` AND (ped.pedido LIKE ? OR pr.nombre LIKE ? OR ped.proveedor LIKE ?)`;
       params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+    }
+
+    if (familia) {
+      query += ` AND UPPER(ped.familia) LIKE ?`;
+      params.push(`%${familia.toUpperCase()}%`);
     }
 
     query += ` ORDER BY ped.pedido DESC LIMIT 50`;
@@ -5541,7 +5681,7 @@ app.get("/remisiones/detalles-pedido/:pedidoId", authenticateToken, async (req, 
     const { pedidoId } = req.params;
     const { tipo } = req.query;
 
-    if (!tipo || !['aluminio', 'cristal'].includes(tipo)) {
+    if (!tipo || !['aluminio', 'cristal', 'miscelaneo'].includes(tipo)) {
       return res.status(400).json({ success: false, message: "Tipo de material requerido" });
     }
 
@@ -5563,7 +5703,7 @@ app.get("/remisiones/detalles-pedido/:pedidoId", authenticateToken, async (req, 
           AND LOWER(da.descripcion) NOT LIKE '%traspaso%'
         ORDER BY da.id_detalle ASC
       `;
-    } else {
+    } else if (tipo === 'cristal') {
       query = `
         SELECT
           dc.id_detalle,
@@ -5580,6 +5720,23 @@ app.get("/remisiones/detalles-pedido/:pedidoId", authenticateToken, async (req, 
           AND LOWER(dc.descripcion) NOT LIKE '%traspaso%'
         ORDER BY dc.id_detalle ASC
       `;
+    } else {
+      query = `
+        SELECT
+          dm.id_detalle,
+          dm.clave as numero_perfil,
+          NULL as clave_modelo,
+          dm.descripcion,
+          COALESCE(dm.cantidad, 0) as cantidad_disponible,
+          COALESCE(rc.cantidad_pedida, dm.cantidad, 0) as cantidad_pedida,
+          COALESCE(rc.cantidad_recibida, 0) as cantidad_recibida,
+          'miscelaneo' as tipo_material
+        FROM pedidos_detalles_miscelaneos dm
+        LEFT JOIN remisiones_control rc ON rc.id_detalle = dm.id_detalle AND rc.tipo_material = 'miscelaneo'
+        WHERE dm.id_pedido = ?
+          AND LOWER(dm.descripcion) NOT LIKE '%traspaso%'
+        ORDER BY dm.id_detalle ASC
+      `;
     }
 
     const rows = await queryAsync(query, [pedidoId]);
@@ -5590,13 +5747,33 @@ app.get("/remisiones/detalles-pedido/:pedidoId", authenticateToken, async (req, 
   }
 });
 
-// Registrar una entrega
-app.post("/remisiones/registrar-entrega", authenticateToken, async (req, res) => {
+// Registrar una entrega (acepta multipart/form-data para PDF adjunto opcional)
+app.post("/remisiones/registrar-entrega", authenticateToken, (req, res, next) => {
+  uploadRemision(req, res, (err) => {
+    if (err) return res.status(400).json({ success: false, message: err.message });
+    next();
+  });
+}, async (req, res) => {
+  const pdfFile = req.file || null;
   try {
-    const { id_pedido, tipo_material, entregas, observaciones } = req.body;
+    const id_pedido = req.body.id_pedido;
+    const tipo_material = req.body.tipo_material;
+    const observaciones = req.body.observaciones || null;
+    const ruta_pdf = pdfFile ? pdfFile.filename : null;
+
+    // entregas llega como JSON string desde FormData
+    let entregas;
+    try {
+      entregas = JSON.parse(req.body.entregas);
+    } catch {
+      if (pdfFile) fs.unlinkSync(pdfFile.path);
+      return res.status(400).json({ success: false, message: "El campo entregas no es JSON válido" });
+    }
+
     const usuario = req.user?.username || 'sistema';
 
     if (!id_pedido || !tipo_material || !entregas || !Array.isArray(entregas) || entregas.length === 0) {
+      if (pdfFile) fs.unlinkSync(pdfFile.path);
       return res.status(400).json({ success: false, message: "Datos incompletos" });
     }
 
@@ -5610,13 +5787,14 @@ app.post("/remisiones/registrar-entrega", authenticateToken, async (req, res) =>
     );
 
     if (!pedido) {
+      if (pdfFile) fs.unlinkSync(pdfFile.path);
       return res.status(404).json({ success: false, message: "Pedido no encontrado" });
     }
 
     // Registrar historial de entrega
     const historialResult = await queryAsync(
-      `INSERT INTO remisiones_historial_entregas (id_pedido, numero_pedido, nombre_proyecto, tipo_material, total_items, total_piezas, observaciones, usuario)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO remisiones_historial_entregas (id_pedido, numero_pedido, nombre_proyecto, tipo_material, total_items, total_piezas, observaciones, usuario, ruta_pdf)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id_pedido,
         pedido.pedido,
@@ -5624,8 +5802,9 @@ app.post("/remisiones/registrar-entrega", authenticateToken, async (req, res) =>
         tipo_material,
         entregas.length,
         entregas.reduce((acc, e) => acc + e.cantidad_entrega, 0),
-        observaciones || null,
-        usuario
+        observaciones,
+        usuario,
+        ruta_pdf
       ]
     );
 
@@ -5657,6 +5836,9 @@ app.post("/remisiones/registrar-entrega", authenticateToken, async (req, res) =>
     });
   } catch (err) {
     console.error("Error registrando entrega:", err);
+    if (pdfFile) {
+      try { fs.unlinkSync(pdfFile.path); } catch { /* ignorar */ }
+    }
     res.status(500).json({ success: false, message: "Error al registrar entrega" });
   }
 });
@@ -5676,7 +5858,8 @@ app.get("/remisiones/historial-entregas", authenticateToken, async (req, res) =>
         total_items,
         total_piezas,
         observaciones,
-        usuario
+        usuario,
+        ruta_pdf
       FROM remisiones_historial_entregas
     `;
     const params = [];
@@ -5722,6 +5905,22 @@ app.get("/remisiones/historial-entregas/:id", authenticateToken, async (req, res
     res.status(500).json({ success: false, message: "Error interno del servidor" });
   }
 });
+
+// ---------------------------------------------------------------------------
+// Rutas de Contabilidad (Facturas)
+// ---------------------------------------------------------------------------
+app.get("/facturas", authenticateToken, FacturasCtrl.listar);
+
+app.post("/facturas", authenticateToken, (req, res, next) => {
+  uploadFactura(req, res, (err) => {
+    if (err) return res.status(400).json({ success: false, message: err.message });
+    next();
+  });
+}, FacturasCtrl.crear);
+
+app.put("/facturas/:id", authenticateToken, FacturasCtrl.actualizar);
+
+app.delete("/facturas/:id", authenticateToken, FacturasCtrl.eliminar);
 
 app.listen(PORT, () => {
   console.log(` Servidor corriendo en http://localhost:${PORT}`);
