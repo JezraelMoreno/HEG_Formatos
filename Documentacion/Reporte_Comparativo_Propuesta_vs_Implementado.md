@@ -16,11 +16,11 @@ Este documento presenta una comparativa entre el **alcance original** definido e
 
 | Objetivo Propuesto | Estado | Observaciones |
 |-------------------|--------|---------------|
-| Centralizar información de proyectos entre usuarios | ✅ Cumplido | Sistema multiusuario funcionando |
-| Controlar importe contratado, cobrado, a cobrar, fondo de garantía | ✅ Cumplido | Implementado con campos adicionales |
-| Facilitar colaboración entre diferentes roles | ✅ Cumplido | Sistema de roles activo |
-| Generar reportes en Excel/CSV | ✅ Cumplido | Exportación funcional con filtros |
-| Acceso desde cualquier lugar (aplicación web) | ✅ Cumplido | Sistema desplegado y accesible |
+| Centralizar información de proyectos entre usuarios | Cumplido | Sistema multiusuario funcionando |
+| Controlar importe contratado, cobrado, a cobrar, fondo de garantía | Cumplido | Implementado con campos adicionales |
+| Facilitar colaboración entre diferentes roles | Cumplido | Sistema de roles activo |
+| Generar reportes en Excel/CSV | Cumplido | Exportación funcional con filtros |
+| Acceso desde cualquier lugar (aplicación web) | Cumplido | Sistema desplegado y accesible |
 
 ---
 
@@ -30,34 +30,34 @@ Este documento presenta una comparativa entre el **alcance original** definido e
 
 | Funcionalidad | Propuesta | Implementada | Estado |
 |--------------|-----------|--------------|--------|
-| Crear proyectos nuevos | ✅ | ✅ | Cumplido |
-| Definir datos según especificaciones del cliente | ✅ | ✅ | Cumplido |
-| Llenar secciones según rol del usuario | ✅ | ✅ | Cumplido |
-| Soporte para tres tipos de productos (vidrio, aluminio, misceláneos) | ✅ | ✅ | Cumplido |
+| Crear proyectos nuevos | | | Cumplido |
+| Definir datos según especificaciones del cliente | | | Cumplido |
+| Llenar secciones según rol del usuario | | | Cumplido |
+| Soporte para tres tipos de productos (vidrio, aluminio, misceláneos) | | | Cumplido |
 
 #### Roles de Usuario
 
 | Funcionalidad | Propuesta | Implementada | Estado |
 |--------------|-----------|--------------|--------|
-| Diferentes vistas por usuario | ✅ | ✅ | Cumplido |
-| Permisos diferenciados | ✅ | ✅ | Cumplido |
-| Autenticación segura | ✅ | ✅ | Cumplido |
+| Diferentes vistas por usuario | | | Cumplido |
+| Permisos diferenciados | | | Cumplido |
+| Autenticación segura | | | Cumplido |
 
 #### Reportes
 
 | Funcionalidad | Propuesta | Implementada | Estado |
 |--------------|-----------|--------------|--------|
-| Exportar reportes en Excel/CSV | ✅ | ✅ | Cumplido |
-| Filtrar parámetros para exportación | ✅ | ✅ | Cumplido |
-| Importar datos desde Excel/CSV | ✅ | ✅ | Cumplido |
+| Exportar reportes en Excel/CSV | | | Cumplido |
+| Filtrar parámetros para exportación | | | Cumplido |
+| Importar datos desde Excel/CSV | | | Cumplido |
 
 #### Acceso y Seguridad
 
 | Funcionalidad | Propuesta | Implementada | Estado |
 |--------------|-----------|--------------|--------|
-| Credenciales seguras | ✅ | ✅ | Cumplido |
-| Autenticación por roles | ✅ | ✅ | Cumplido |
-| Acceso desde cualquier computadora | ✅ | ✅ | Cumplido |
+| Credenciales seguras | | | Cumplido |
+| Autenticación por roles | | | Cumplido |
+| Acceso desde cualquier computadora | | | Cumplido |
 
 ---
 
@@ -160,7 +160,7 @@ Se creó una versión instalable del sistema para Windows:
 │  │ • Autenticación segura                                    │  │
 │  │ • Acceso web multiusuario                                 │  │
 │  └───────────────────────────────────────────────────────────┘  │
-│                         100% CUMPLIDO ✅                        │
+│                         100% CUMPLIDO                        │
 └─────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────┐
@@ -177,7 +177,7 @@ Se creó una versión instalable del sistema para Windows:
 │  │ • Estados de Proyecto                                     │  │
 │  │ • Aplicación de Escritorio                                │  │
 │  └───────────────────────────────────────────────────────────┘  │
-│                    ENTREGADO COMO EXTRA ⭐                      │
+│                    ENTREGADO COMO EXTRA                       │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -187,31 +187,31 @@ Se creó una versión instalable del sistema para Windows:
 
 | # | Entregable | Alcance Original | Estado |
 |---|------------|------------------|--------|
-| 1 | Control de Viáticos | ❌ No incluido | ✅ Implementado |
-| 2 | Panel Ejecutivo | ❌ No incluido | ✅ Implementado |
-| 3 | Panel de Presupuestos | ❌ No incluido | ✅ Implementado |
-| 4 | Panel de Proyectos | ❌ No incluido | ✅ Implementado |
-| 5 | Panel de Materiales | ❌ No incluido | ✅ Implementado |
-| 6 | Panel de Cobranza | ❌ No incluido | ✅ Implementado |
-| 7 | Costos Indirectos | ❌ No incluido | ✅ Implementado |
-| 8 | Estados de Proyecto | ❌ No incluido | ✅ Implementado |
-| 9 | Aplicación de Escritorio | ❌ No incluido | ✅ Implementado |
+| 1 | Control de Viáticos |  No incluido | Implementado |
+| 2 | Panel Ejecutivo |  No incluido | Implementado |
+| 3 | Panel de Presupuestos |  No incluido | Implementado |
+| 4 | Panel de Proyectos |  No incluido | Implementado |
+| 5 | Panel de Materiales |  No incluido | Implementado |
+| 6 | Panel de Cobranza |  No incluido | Implementado |
+| 7 | Costos Indirectos |  No incluido | Implementado |
+| 8 | Estados de Proyecto |  No incluido | Implementado |
+| 9 | Aplicación de Escritorio |  No incluido | Implementado |
 
 ---
 
 ## 5. Beneficios Obtenidos
 
 ### Del Alcance Original
-- ✅ Sistema centralizado funcionando
-- ✅ Múltiples usuarios trabajando simultáneamente
-- ✅ Control financiero de proyectos
-- ✅ Reportes automatizados
+- Sistema centralizado funcionando
+- Múltiples usuarios trabajando simultáneamente
+- Control financiero de proyectos
+- Reportes automatizados
 
 ### De las Funcionalidades Adicionales
-- ⭐ Toma de decisiones basada en datos visuales
-- ⭐ Control de gastos operativos detallado
-- ⭐ Mejor seguimiento de cobranza
-- ⭐ Mayor comodidad de acceso para usuarios
+-  Toma de decisiones basada en datos visuales
+-  Control de gastos operativos detallado
+-  Mejor seguimiento de cobranza
+-  Mayor comodidad de acceso para usuarios
 
 ---
 
