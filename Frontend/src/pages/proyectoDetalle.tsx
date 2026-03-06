@@ -3,6 +3,7 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { authHeader, getToken, isTokenValid, getRole } from "../auth";
 import { parsePedidosCsv } from "../utils/pedidosCsv";
 import type { PedidoCsv } from "../utils/pedidosCsv";
+import API_URL from "../config";
 
 import "./proyectoDetalle.css";
 
@@ -123,6 +124,9 @@ type ProyectoInfo = {
   presupuesto_miscelaneos?: number;
   total_pedidos?: number;
   presupuesto_disponible?: number;
+  presupuesto_cristal_total?: number;
+  presupuesto_aluminio_total?: number;
+  presupuesto_miscelaneos_total?: number;
 };
 
 type ProyectoLocationState = {
@@ -456,6 +460,9 @@ export function ProyectoDetalle() {
   const [editandoExplosionId, setEditandoExplosionId] = useState<number | null>(null);
   const [, setPresupuestoMiscelBase] = useState<number>(0);
   const [, setPresupuestoMiscelDisponible] = useState<number>(0);
+  const [modalMiscelDetalle, setModalMiscelDetalle] = useState(false);
+  const [miscelDetalle, setMiscelDetalle] = useState<ExplosionRow[]>([]);
+  const [cargandoMiscelDetalle, setCargandoMiscelDetalle] = useState(false);
 
   const moduloOrigen = useMemo(() => {
     const fromState = (state as ProyectoLocationState | null)?.modulo;
@@ -534,7 +541,7 @@ export function ProyectoDetalle() {
         }
       }
       if (!allParsed.length) { setError("CSV(s) sin filas válidas"); return; }
-      const res = await fetch(`http://localhost:3000/proyectos/${id}/pedidos`, {
+      const res = await fetch(`${API_URL}/proyectos/${id}/pedidos`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeader() },
         body: JSON.stringify({ pedidos: allParsed }),
@@ -585,7 +592,7 @@ export function ProyectoDetalle() {
       if (conceptoFiltro) params.push(`concepto=${encodeURIComponent(conceptoFiltro)}`);
       if (fechaFiltro) params.push(`fecha=${encodeURIComponent(fechaFiltro)}`);
       const qs = params.length ? `?${params.join("&")}` : "";
-      const res = await fetch(`http://localhost:3000/proyectos/${id}/pedidos${qs}`, { headers: { ...authHeader() } });
+      const res = await fetch(`${API_URL}/proyectos/${id}/pedidos${qs}`, { headers: { ...authHeader() } });
       const data = await res.json();
       if (res.ok && data?.success) {
         setPedidos(data.data as Pedido[]);
@@ -604,13 +611,13 @@ export function ProyectoDetalle() {
     setCargandoCobranza(true);
     try {
       // Cargar resumen de cobranza
-      const resResumen = await fetch(`http://localhost:3000/proyectos/${id}/cobranza-resumen`, { headers: { ...authHeader() } });
+      const resResumen = await fetch(`${API_URL}/proyectos/${id}/cobranza-resumen`, { headers: { ...authHeader() } });
       const dataResumen = await resResumen.json();
       if (resResumen.ok && dataResumen?.success) {
         setCobranzaResumen(dataResumen.data as CobranzaResumen);
       }
       // Cargar facturas de cobranza
-      const resFacturas = await fetch(`http://localhost:3000/proyectos/${id}/cobranza-facturas`, { headers: { ...authHeader() } });
+      const resFacturas = await fetch(`${API_URL}/proyectos/${id}/cobranza-facturas`, { headers: { ...authHeader() } });
       const dataFacturas = await resFacturas.json();
       if (resFacturas.ok && dataFacturas?.success) {
         setCobranzaFacturas(dataFacturas.data as CobranzaFactura[]);
@@ -625,7 +632,7 @@ export function ProyectoDetalle() {
     if (!id) return;
     setCargandoProyecto(true);
     try {
-      const res = await fetch(`http://localhost:3000/proyectos/${id}`, { headers: { ...authHeader() } });
+      const res = await fetch(`${API_URL}/proyectos/${id}`, { headers: { ...authHeader() } });
       const data = await res.json();
       if (res.ok && data?.success) {
         const info = data.data as ProyectoInfo;
@@ -650,7 +657,7 @@ export function ProyectoDetalle() {
     if (!id) return;
     setCargandoHistorial(true);
     try {
-      const res = await fetch(`http://localhost:3000/proyectos/${id}/presupuestos/historial`, {
+      const res = await fetch(`${API_URL}/proyectos/${id}/presupuestos/historial`, {
         headers: { ...authHeader() },
       });
       const data = await res.json();
@@ -701,8 +708,8 @@ export function ProyectoDetalle() {
         presupuesto_asignado: monto,
       };
       const url = editandoExplosionId
-        ? `http://localhost:3000/proyectos/${id}/explosion-insumos/${editandoExplosionId}`
-        : `http://localhost:3000/proyectos/${id}/explosion-insumos`;
+        ? `${API_URL}/proyectos/${id}/explosion-insumos/${editandoExplosionId}`
+        : `${API_URL}/proyectos/${id}/explosion-insumos`;
       const method = editandoExplosionId ? "PUT" : "POST";
       const res = await fetch(url, {
         method,
@@ -731,7 +738,7 @@ export function ProyectoDetalle() {
     setGuardandoExplosion(true);
     setErrorExplosion("");
     try {
-      const res = await fetch(`http://localhost:3000/proyectos/${id}/explosion-insumos/${registroId}`, {
+      const res = await fetch(`${API_URL}/proyectos/${id}/explosion-insumos/${registroId}`, {
         method: "DELETE",
         headers: { ...authHeader() },
       });
@@ -755,7 +762,7 @@ export function ProyectoDetalle() {
     setCargandoExplosion(true);
     setErrorExplosion("");
     try {
-      const res = await fetch(`http://localhost:3000/proyectos/${id}/explosion-insumos`, { headers: { ...authHeader() } });
+      const res = await fetch(`${API_URL}/proyectos/${id}/explosion-insumos`, { headers: { ...authHeader() } });
       const data = await res.json().catch(() => ({}));
         if (res.ok && data?.success) {
           const filas: ExplosionRow[] = Array.isArray(data.data)
@@ -787,12 +794,42 @@ export function ProyectoDetalle() {
     }
   }, [id, isAdmin, mostrarPedidosModulo]);
 
+  const cargarMiscelDetalle = useCallback(async () => {
+    if (!id) return;
+    setCargandoMiscelDetalle(true);
+    try {
+      const res = await fetch(`${API_URL}/proyectos/${id}/explosion-insumos`, {
+        headers: { ...authHeader() },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data?.success) {
+        const filas: ExplosionRow[] = Array.isArray(data.data)
+          ? data.data.map((row: any) => ({
+              id: Number(row?.id ?? 0),
+              clan: row?.clan ?? "",
+              familia: row?.familia ?? "",
+              presupuesto_asignado: Number(row?.presupuesto_asignado ?? 0),
+              presupuesto_restante: Number(row?.presupuesto_restante ?? row?.presupuesto_usado ?? 0),
+              gastado: Number(row?.gastado ?? 0),
+            }))
+          : [];
+        setMiscelDetalle(filas);
+      } else {
+        setMiscelDetalle([]);
+      }
+    } catch {
+      setMiscelDetalle([]);
+    } finally {
+      setCargandoMiscelDetalle(false);
+    }
+  }, [id]);
+
   const cargarPresupuestosViaticos = useCallback(async () => {
     if (!id) return;
     try {
       setCargandoPresupuestos(true);
       setErrorPresupuestos("");
-      const res = await fetch(`http://localhost:3000/proyectos/${id}/viaticos-presupuestos`, {
+      const res = await fetch(`${API_URL}/proyectos/${id}/viaticos-presupuestos`, {
         headers: { ...authHeader() },
       });
       const data = await res.json();
@@ -820,7 +857,7 @@ export function ProyectoDetalle() {
       if (fechaHastaFiltro) params.append("fecha_hasta", fechaHastaFiltro);
 
       const query = params.toString();
-      const url = `http://localhost:3000/proyectos/${id}/viaticos-movimientos${query ? `?${query}` : ""}`;
+      const url = `${API_URL}/proyectos/${id}/viaticos-movimientos${query ? `?${query}` : ""}`;
 
       const res = await fetch(url, { headers: { ...authHeader() } });
       const data = await res.json();
@@ -903,7 +940,7 @@ export function ProyectoDetalle() {
       if (concepto) params.push(`concepto=${encodeURIComponent(concepto)}`);
       if (fecha) params.push(`fecha=${encodeURIComponent(fecha)}`);
       const qs = params.length ? `?${params.join("&")}` : "";
-      const res = await fetch(`http://localhost:3000/proyectos/${id}/pedidos/export${qs}`, { headers: { ...authHeader() } });
+      const res = await fetch(`${API_URL}/proyectos/${id}/pedidos/export${qs}`, { headers: { ...authHeader() } });
       if (!res.ok) { setError("No se pudo generar el archivo"); return; }
       const cd = res.headers.get("Content-Disposition") || "";
       let serverFilename = "";
@@ -942,9 +979,9 @@ export function ProyectoDetalle() {
     setMensaje("");
     setError("");
     setFormPresupuesto({
-      cristal: String(presupuestoCristal ?? 0),
-      aluminio: String(presupuestoAluminio ?? 0),
-      miscelaneos: String(presupuestoMiscelaneos ?? 0),
+      cristal: String(proyectoInfo?.presupuesto_cristal_total ?? presupuestoCristal ?? 0),
+      aluminio: String(proyectoInfo?.presupuesto_aluminio_total ?? presupuestoAluminio ?? 0),
+      miscelaneos: String(proyectoInfo?.presupuesto_miscelaneos_total ?? presupuestoMiscelaneos ?? 0),
       fecha: getTodayISO(),
     });
     setModalPresupuestoAbierto(true);
@@ -970,7 +1007,7 @@ export function ProyectoDetalle() {
     }
     setGuardandoPresupuesto(true);
     try {
-      const res = await fetch(`http://localhost:3000/proyectos/${id}/presupuesto`, {
+      const res = await fetch(`${API_URL}/proyectos/${id}/presupuesto`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", ...authHeader() },
         body: JSON.stringify({
@@ -985,22 +1022,9 @@ export function ProyectoDetalle() {
         setError(data?.message || "No se pudo actualizar el presupuesto");
         return;
       }
-      const nuevoTotal = data.data?.presupuesto_total ?? cristalNum + aluminioNum + miscelaneosNum;
-      setProyectoInfo((prev) => ({
-        ...(prev || {
-          id_proyecto: Number(id) || 0,
-          nombre: state?.nombre || "Proyecto",
-          fecha_proyecto: state?.fecha || "",
-        }),
-        presupuesto_cristal: cristalNum,
-        presupuesto_aluminio: aluminioNum,
-        presupuesto_miscelaneos: miscelaneosNum,
-        presupuesto_total: nuevoTotal,
-        presupuesto: nuevoTotal,
-        presupuesto_disponible: nuevoTotal,
-      }));
       setMensaje("Presupuestos actualizados correctamente");
       setModalPresupuestoAbierto(false);
+      await cargarProyecto();
       await cargarHistorialPresupuesto();
       await cargarExplosion();
     } catch {
@@ -1033,7 +1057,7 @@ export function ProyectoDetalle() {
     const cargar = async () => {
       try {
         const endpoint = esCristal ? "detalles-cristal" : esAluminio ? "detalles-aluminio" : "detalles";
-        const res = await fetch(`http://localhost:3000/pedidos/${pedido.id}/${endpoint}`, { headers: { ...authHeader() } });
+        const res = await fetch(`${API_URL}/pedidos/${pedido.id}/${endpoint}`, { headers: { ...authHeader() } });
         const data = await res.json().catch(() => ({}));
         if (res.ok && data?.success) {
           const rows = Array.isArray(data.data) ? data.data : [];
@@ -1203,7 +1227,7 @@ export function ProyectoDetalle() {
         fecha_pago: fechaPago || null,
         periodo: periodoRegistro || null,
       };
-      const res = await fetch(`http://localhost:3000/proyectos/${id}/cobranza-facturas`, {
+      const res = await fetch(`${API_URL}/proyectos/${id}/cobranza-facturas`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeader() },
         body: JSON.stringify(body),
@@ -1239,7 +1263,7 @@ export function ProyectoDetalle() {
         factor_indirectos: factorIndirectosEdit ? Number(factorIndirectosEdit) / 100 : 0.20,
         indirectos_aplicados: indirectosAplicadosEdit ? Number(indirectosAplicadosEdit) : 0,
       };
-      const res = await fetch(`http://localhost:3000/proyectos/${id}/cobranza-resumen`, {
+      const res = await fetch(`${API_URL}/proyectos/${id}/cobranza-resumen`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", ...authHeader() },
         body: JSON.stringify(body),
@@ -1262,7 +1286,7 @@ export function ProyectoDetalle() {
     if (!window.confirm("¿Eliminar esta factura?")) return;
     try {
       setError("");
-      const res = await fetch(`http://localhost:3000/proyectos/${id}/cobranza-facturas/${idFactura}`, {
+      const res = await fetch(`${API_URL}/proyectos/${id}/cobranza-facturas/${idFactura}`, {
         method: "DELETE",
         headers: { ...authHeader() },
       });
@@ -1417,10 +1441,17 @@ export function ProyectoDetalle() {
             <strong className={clasePresupuestoAluminio}>{formatCurrency(presupuestoAluminio)}</strong>
             <small>Pedidos familia AL/MQAL</small>
           </div>
-          <div className={`presupuesto-card ${presupuestoMiscelaneos < 0 ? "presupuesto-alerta" : ""}`}>
+          <div
+            className={`presupuesto-card presupuesto-card-clickable ${presupuestoMiscelaneos < 0 ? "presupuesto-alerta" : ""}`}
+            onClick={() => { cargarMiscelDetalle(); setModalMiscelDetalle(true); }}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { cargarMiscelDetalle(); setModalMiscelDetalle(true); } }}
+            title="Ver detalles por familia"
+          >
             <span>Disponible misceláneos</span>
             <strong className={clasePresupuestoMiscelaneos}>{formatCurrency(presupuestoMiscelaneos)}</strong>
-            <small>Pedidos resto de familias</small>
+            <small>Ver detalles por familia →</small>
           </div>
         </div>
 
@@ -1428,11 +1459,9 @@ export function ProyectoDetalle() {
           <section className="historial-presupuesto">
             <div className="historial-header">
               <h3>Historial de presupuestos</h3>
-              {isAdmin && (
-                <button type="button" className="btn btn-secondary" onClick={abrirModalPresupuesto}>
-                  Ajustar presupuesto
-                </button>
-              )}
+              <button type="button" className="btn btn-secondary" onClick={abrirModalPresupuesto}>
+                Ajustar presupuesto
+              </button>
             </div>
             {cargandoHistorial ? (
               <p>Cargando historial...</p>
@@ -1469,7 +1498,7 @@ export function ProyectoDetalle() {
           <div className="presupuesto-modal-backdrop" onClick={cerrarModalPresupuesto}>
             <div className="presupuesto-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
               <h3>Ajustar presupuestos</h3>
-              <p className="modal-subtitle">Actualiza el disponible por familia y guarda una fecha de referencia.</p>
+              <p className="modal-subtitle">Define el nuevo presupuesto total por categoría. El disponible se calcula descontando lo ya gastado en pedidos.</p>
               <form className="form-presupuesto" onSubmit={guardarPresupuesto}>
                 <label>
                   Presupuesto cristal
@@ -2334,6 +2363,8 @@ export function ProyectoDetalle() {
                       <option value="Mano de Obra">Mano de Obra</option>
                       <option value="Viáticos">Viáticos</option>
                       <option value="Fletes">Fletes</option>
+                      <option value="F.H.">F.H.</option>
+                      <option value="Rentas Casa">Rentas Casa</option>
                     </select>
                   </div>
                   <div className="filtro">
@@ -2374,7 +2405,7 @@ export function ProyectoDetalle() {
                         if (fechaHastaFiltro) params.append("fecha_hasta", fechaHastaFiltro);
 
                         const res = await fetch(
-                          `http://localhost:3000/proyectos/${id}/viaticos-movimientos/export?${params}`,
+                          `${API_URL}/proyectos/${id}/viaticos-movimientos/export?${params}`,
                           { headers: { ...authHeader() } }
                         );
                         if (!res.ok) throw new Error("Error al exportar");
@@ -2446,7 +2477,7 @@ export function ProyectoDetalle() {
                                   if (!confirm("¿Eliminar este movimiento?")) return;
                                   try {
                                     const res = await fetch(
-                                      `http://localhost:3000/proyectos/${id}/viaticos-movimientos/${mov.id_movimiento}`,
+                                      `${API_URL}/proyectos/${id}/viaticos-movimientos/${mov.id_movimiento}`,
                                       { method: "DELETE", headers: { ...authHeader() } }
                                     );
                                     const data = await res.json();
@@ -2479,11 +2510,9 @@ export function ProyectoDetalle() {
               <div className="seccion-presupuestos">
                 <div className="presupuestos-header">
                   <h3>Saldos por Familia</h3>
-                  {isAdmin && (
-                    <button className="action-button create-button" onClick={() => setModalPresupuestoViatico(true)}>
-                      Editar Presupuestos
-                    </button>
-                  )}
+                  <button className="action-button create-button" onClick={() => setModalPresupuestoViatico(true)}>
+                    Editar Presupuestos
+                  </button>
                 </div>
 
                 {errorPresupuestos && <p className="error-text">{errorPresupuestos}</p>}
@@ -2533,21 +2562,19 @@ export function ProyectoDetalle() {
                           <tr>
                             <th rowSpan={2}>N°</th>
                             <th rowSpan={2}>PROYECTO</th>
-                            <th colSpan={3}>MANO DE OBRA</th>
-                            <th colSpan={3}>VIÁTICOS</th>
-                            <th colSpan={3}>FLETES</th>
+                            {presupuestosViaticos.map(p => (
+                              <th key={p.familia} colSpan={3}>{p.familia.toUpperCase()}</th>
+                            ))}
                             <th rowSpan={2}>TOTAL POR EROGAR</th>
                           </tr>
                           <tr>
-                            <th>PRESUPUESTO</th>
-                            <th>EROGADO</th>
-                            <th>POR EROGAR</th>
-                            <th>PRESUPUESTO</th>
-                            <th>EROGADO</th>
-                            <th>POR EROGAR</th>
-                            <th>PRESUPUESTO</th>
-                            <th>EROGADO</th>
-                            <th>POR EROGAR</th>
+                            {presupuestosViaticos.map(p => (
+                              <>
+                                <th key={`${p.familia}-pres`}>PRESUPUESTO</th>
+                                <th key={`${p.familia}-erog`}>EROGADO</th>
+                                <th key={`${p.familia}-rest`}>POR EROGAR</th>
+                              </>
+                            ))}
                           </tr>
                         </thead>
                         <tbody>
@@ -2555,28 +2582,18 @@ export function ProyectoDetalle() {
                             <td>1</td>
                             <td>{nombreProyecto}</td>
                             {(() => {
-                              const manoDeObra = presupuestosViaticos.find(p => p.familia === "Mano de Obra");
-                              const viaticos = presupuestosViaticos.find(p => p.familia === "Viáticos");
-                              const fletes = presupuestosViaticos.find(p => p.familia === "Fletes");
-                              const totalPorErogar = (manoDeObra?.restante || 0) + (viaticos?.restante || 0) + (fletes?.restante || 0);
-
+                              const totalPorErogar = presupuestosViaticos.reduce((sum, p) => sum + (p.restante || 0), 0);
                               return (
                                 <>
-                                  <td className="columna-numero">{formatCurrency(manoDeObra?.presupuesto_asignado || 0)}</td>
-                                  <td className="columna-numero">{formatCurrency(manoDeObra?.gastado || 0)}</td>
-                                  <td className={`columna-numero ${(manoDeObra?.restante || 0) < 0 ? "negativo" : ""}`}>
-                                    {formatCurrency(manoDeObra?.restante || 0)}
-                                  </td>
-                                  <td className="columna-numero">{formatCurrency(viaticos?.presupuesto_asignado || 0)}</td>
-                                  <td className="columna-numero">{formatCurrency(viaticos?.gastado || 0)}</td>
-                                  <td className={`columna-numero ${(viaticos?.restante || 0) < 0 ? "negativo" : ""}`}>
-                                    {formatCurrency(viaticos?.restante || 0)}
-                                  </td>
-                                  <td className="columna-numero">{formatCurrency(fletes?.presupuesto_asignado || 0)}</td>
-                                  <td className="columna-numero">{formatCurrency(fletes?.gastado || 0)}</td>
-                                  <td className={`columna-numero ${(fletes?.restante || 0) < 0 ? "negativo" : ""}`}>
-                                    {formatCurrency(fletes?.restante || 0)}
-                                  </td>
+                                  {presupuestosViaticos.map(p => (
+                                    <>
+                                      <td key={`${p.familia}-p`} className="columna-numero">{formatCurrency(p.presupuesto_asignado || 0)}</td>
+                                      <td key={`${p.familia}-g`} className="columna-numero">{formatCurrency(p.gastado || 0)}</td>
+                                      <td key={`${p.familia}-r`} className={`columna-numero ${(p.restante || 0) < 0 ? "negativo" : ""}`}>
+                                        {formatCurrency(p.restante || 0)}
+                                      </td>
+                                    </>
+                                  ))}
                                   <td className={`columna-numero total-column ${totalPorErogar < 0 ? "negativo" : ""}`}>
                                     {formatCurrency(totalPorErogar)}
                                   </td>
@@ -2617,7 +2634,7 @@ export function ProyectoDetalle() {
                       }
 
                       try {
-                        const res = await fetch(`http://localhost:3000/proyectos/${id}/viaticos-movimientos`, {
+                        const res = await fetch(`${API_URL}/proyectos/${id}/viaticos-movimientos`, {
                           method: "POST",
                           headers: { "Content-Type": "application/json", ...authHeader() },
                           body: JSON.stringify({
@@ -2650,6 +2667,8 @@ export function ProyectoDetalle() {
                       <option value="Mano de Obra">Mano de Obra</option>
                       <option value="Viáticos">Viáticos</option>
                       <option value="Fletes">Fletes</option>
+                      <option value="F.H.">F.H.</option>
+                      <option value="Rentas Casa">Rentas Casa</option>
                     </select>
 
                     <label>Persona</label>
@@ -2701,7 +2720,7 @@ export function ProyectoDetalle() {
                       const form = e.currentTarget;
                       const formData = new FormData(form);
 
-                      const familias = ["Mano de Obra", "Viáticos", "Fletes"];
+                      const familias = ["Mano de Obra", "Viáticos", "Fletes", "F.H.", "Rentas Casa"];
 
                       try {
                         for (const familia of familias) {
@@ -2711,7 +2730,7 @@ export function ProyectoDetalle() {
                             return;
                           }
 
-                          const res = await fetch(`http://localhost:3000/proyectos/${id}/viaticos-presupuestos`, {
+                          const res = await fetch(`${API_URL}/proyectos/${id}/viaticos-presupuestos`, {
                             method: "POST",
                             headers: { "Content-Type": "application/json", ...authHeader() },
                             body: JSON.stringify({ familia, presupuesto_asignado: presupuesto }),
@@ -2731,7 +2750,7 @@ export function ProyectoDetalle() {
                       }
                     }}
                   >
-                    {["Mano de Obra", "Viáticos", "Fletes"].map((familia) => {
+                    {["Mano de Obra", "Viáticos", "Fletes", "F.H.", "Rentas Casa"].map((familia) => {
                       const actual = presupuestosViaticos.find((p) => p.familia === familia);
                       return (
                         <div key={familia} className="presupuesto-input-group">
@@ -2760,6 +2779,57 @@ export function ProyectoDetalle() {
             )}
           </div>
         )}
+      {/* Modal: Desglose de misceláneos por familia */}
+      {modalMiscelDetalle && (
+        <div className="modal-overlay" onClick={() => setModalMiscelDetalle(false)}>
+          <div className="modal modal-miscel-detalle" onClick={(e) => e.stopPropagation()}>
+            <h3>Desglose de misceláneos por familia</h3>
+            {cargandoMiscelDetalle ? (
+              <p>Cargando...</p>
+            ) : miscelDetalle.length === 0 ? (
+              <p>No hay familias registradas para este proyecto.</p>
+            ) : (
+              <table className="tabla-miscel-detalle">
+                <thead>
+                  <tr>
+                    <th>Familia</th>
+                    <th className="columna-numero">Presupuesto</th>
+                    <th className="columna-numero">Gastado</th>
+                    <th className="columna-numero">Restante</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {miscelDetalle.map((row) => (
+                    <tr key={row.id}>
+                      <td>{row.familia || "-"}</td>
+                      <td className="columna-numero">{formatCurrency(row.presupuesto_asignado)}</td>
+                      <td className="columna-numero">{formatCurrency(row.gastado)}</td>
+                      <td className={`columna-numero ${row.presupuesto_restante < 0 ? "monto-negativo" : ""}`}>
+                        {formatCurrency(row.presupuesto_restante)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td><strong>Total</strong></td>
+                    <td className="columna-numero"><strong>{formatCurrency(miscelDetalle.reduce((s, r) => s + r.presupuesto_asignado, 0))}</strong></td>
+                    <td className="columna-numero"><strong>{formatCurrency(miscelDetalle.reduce((s, r) => s + r.gastado, 0))}</strong></td>
+                    <td className={`columna-numero ${miscelDetalle.reduce((s, r) => s + r.presupuesto_restante, 0) < 0 ? "monto-negativo" : ""}`}>
+                      <strong>{formatCurrency(miscelDetalle.reduce((s, r) => s + r.presupuesto_restante, 0))}</strong>
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            )}
+            <div className="modal-actions">
+              <button type="button" className="cancel-button" onClick={() => setModalMiscelDetalle(false)}>
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       </main>
     </div>
   );
