@@ -301,7 +301,7 @@ export async function cargaMasiva(req, res) {
             },
             { includeSubtotal: true }
           );
-          if (calc && Number.isFinite(calc.total)) {
+          if (calc && calc.subtotal > 0 && Number.isFinite(calc.total)) {
             importeFinal = Number(calc.total);
           }
         } catch (calcErr) {
