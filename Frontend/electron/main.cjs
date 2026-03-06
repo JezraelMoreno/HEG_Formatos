@@ -3,10 +3,11 @@ const path = require('path');
 const fs = require('fs');
 
 // Determinar si estamos en desarrollo o producción
-// Solo es desarrollo si NODE_ENV está explícitamente en 'development'
 const isDev = process.env.NODE_ENV === 'development';
 
 let mainWindow;
+
+// ─── Ventana principal ────────────────────────────────────────────────────────
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -21,43 +22,33 @@ function createWindow() {
     },
     icon: path.join(__dirname, '../public/icon.png'),
     title: 'HEG Formatos',
-    show: false // No mostrar hasta que esté listo
+    show: false
   });
 
-  // Cargar la aplicación
   if (isDev) {
-    // En desarrollo, cargar desde el servidor de Vite
     console.log('Modo desarrollo: cargando desde http://localhost:5173');
     mainWindow.loadURL('http://localhost:5173');
-    // Abrir DevTools en desarrollo
     mainWindow.webContents.openDevTools();
   } else {
-    // En producción, cargar desde los archivos construidos
-    // Cuando está empaquetado, __dirname apunta a app.asar/electron
-    // Los archivos dist están en app.asar/dist
     const indexPath = path.join(app.getAppPath(), 'dist', 'index.html');
     console.log('Modo producción: cargando desde', indexPath);
     console.log('Archivo existe:', fs.existsSync(indexPath));
     mainWindow.loadFile(indexPath);
   }
 
-  // Abrir DevTools si hay error de carga
   mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
     console.error('Error al cargar:', errorCode, errorDescription);
     mainWindow.webContents.openDevTools();
   });
 
-  // Mostrar la ventana cuando esté lista
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
   });
 
-  // Manejar el cierre de la ventana
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
 
-  // Crear menú de la aplicación
   const template = [
     {
       label: 'Archivo',
@@ -114,11 +105,11 @@ function createWindow() {
   Menu.setApplicationMenu(menu);
 }
 
-// Cuando Electron esté listo
+// ─── Ciclo de vida de la app ──────────────────────────────────────────────────
+
 app.whenReady().then(() => {
   createWindow();
 
-  // En macOS, recrear la ventana al hacer clic en el dock si no hay ventanas
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
@@ -126,14 +117,12 @@ app.whenReady().then(() => {
   });
 });
 
-// Cerrar la aplicación cuando todas las ventanas estén cerradas (excepto en macOS)
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
   }
 });
 
-// Manejar errores no capturados
 process.on('uncaughtException', (error) => {
   console.error('Error no capturado:', error);
 });
