@@ -28,6 +28,9 @@ const __dirname = path.dirname(__filename);
 app.use("/assets", express.static(path.join(__dirname, "assets")));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
+// Health check para Railway
+app.get('/health', (_req, res) => res.json({ status: 'ok' }));
+
 // Uploaders multer
 const uploadRemision = createUploader({ subdir: "remisiones", allowedExts: [".pdf"] }).single("pdf");
 const uploadFactura = createUploader({ subdir: "facturas", allowedExts: [".pdf", ".xml"] })
@@ -206,6 +209,7 @@ app.post("/proyectos", authenticateToken, async (req, res) => {
       presupuesto_cristal,
       presupuesto_aluminio,
       presupuesto_miscelaneos,
+      miscel_familias,
       presupuesto,
     } = req.body || {};
 
@@ -218,7 +222,20 @@ app.post("/proyectos", authenticateToken, async (req, res) => {
 
     let presupuestoCristal = parseBudget(presupuesto_cristal);
     let presupuestoAluminio = parseBudget(presupuesto_aluminio);
-    let presupuestoMiscelaneos = parseBudget(presupuesto_miscelaneos);
+
+    // Calcular presupuesto de misceláneos desde familias si se proporcionan
+    const familiaRows = Array.isArray(miscel_familias) ? miscel_familias : [];
+    let presupuestoMiscelaneos;
+    if (familiaRows.length > 0) {
+      presupuestoMiscelaneos = Number(
+        familiaRows.reduce((sum, f) => {
+          const n = Number(f.presupuesto);
+          return Number.isFinite(n) && n >= 0 ? sum + n : sum;
+        }, 0).toFixed(2)
+      );
+    } else {
+      presupuestoMiscelaneos = parseBudget(presupuesto_miscelaneos);
+    }
 
     const algunPresupuesto =
       presupuestoCristal !== null || presupuestoAluminio !== null || presupuestoMiscelaneos !== null;
@@ -251,6 +268,23 @@ app.post("/proyectos", authenticateToken, async (req, res) => {
       presupuestoTotal,
     ];
     const result = await queryAsync(query, params);
+
+    // Crear registros de explosion_insumos para cada familia de misceláneos
+    for (const f of familiaRows) {
+      const familia = String(f.familia || "").trim().toUpperCase();
+      const pres = Number(f.presupuesto);
+      if (familia && Number.isFinite(pres) && pres >= 0) {
+        try {
+          await queryAsync(
+            "INSERT INTO explosion_insumos (id_proyecto, clan, familia, presupuesto_asignado) VALUES (?, ?, ?, ?)",
+            [result.insertId, "", familia, pres]
+          );
+        } catch (explErr) {
+          console.error(`No se pudo crear explosion_insumos para familia ${familia}:`, explErr);
+        }
+      }
+    }
+
     try {
       await registrarHistorialPresupuesto(result.insertId, {
         fecha: fecha_proyecto,
@@ -362,6 +396,9 @@ app.get("/proyectos/:id", authenticateToken, async (req, res) => {
           0
         ) AS presupuesto,
         COALESCE(SUM(pe.importe_total), 0) AS total_pedidos,
+        COALESCE(SUM(CASE WHEN pe.familia LIKE 'CR%' THEN pe.importe_total ELSE 0 END), 0) AS gastado_cristal,
+        COALESCE(SUM(CASE WHEN pe.familia = 'MQAL' OR pe.familia LIKE 'AL%' OR pe.familia LIKE '%ALUM%' THEN pe.importe_total ELSE 0 END), 0) AS gastado_aluminio,
+        COALESCE(SUM(CASE WHEN pe.familia IS NOT NULL AND pe.familia NOT LIKE 'CR%' AND pe.familia != 'MQAL' AND pe.familia NOT LIKE 'AL%' AND pe.familia NOT LIKE '%ALUM%' THEN pe.importe_total ELSE 0 END), 0) AS gastado_miscelaneos,
         COALESCE(
           NULLIF(p.presupuesto_total, 0),
           NULLIF(COALESCE(p.presupuesto_cristal, 0) + COALESCE(p.presupuesto_aluminio, 0) + COALESCE(p.presupuesto_miscelaneos, 0), 0),
@@ -386,6 +423,9 @@ app.get("/proyectos/:id", authenticateToken, async (req, res) => {
     if (!Number.isFinite(presupuestoTotal) || presupuestoTotal === 0) {
       presupuestoTotal = Number((presupuestoCristal + presupuestoAluminio + presupuestoMiscelaneos).toFixed(2));
     }
+    const gastadoCristal = Number(proyecto.gastado_cristal || 0);
+    const gastadoAluminio = Number(proyecto.gastado_aluminio || 0);
+    const gastadoMiscelaneos = Number(proyecto.gastado_miscelaneos || 0);
     const baseProyecto = {
       ...proyecto,
       presupuesto_cristal: presupuestoCristal,
@@ -394,6 +434,10 @@ app.get("/proyectos/:id", authenticateToken, async (req, res) => {
       presupuesto_total: presupuestoTotal,
       presupuesto: Number(proyecto.presupuesto ?? presupuestoTotal ?? 0),
       presupuesto_disponible: presupuestoTotal,
+      // Total presupuestado por categoría (restante + gastado) — usado para pre-llenar el modal de ajuste
+      presupuesto_cristal_total: Number((presupuestoCristal + gastadoCristal).toFixed(2)),
+      presupuesto_aluminio_total: Number((presupuestoAluminio + gastadoAluminio).toFixed(2)),
+      presupuesto_miscelaneos_total: Number((presupuestoMiscelaneos + gastadoMiscelaneos).toFixed(2)),
     };
     try {
       const pedidosRows = await queryAsync(
@@ -440,12 +484,36 @@ app.put("/proyectos/:id/presupuesto", authenticateToken, requireRole("administra
       return res.status(404).json({ success: false, message: "Proyecto no encontrado" });
     }
     const actuales = existentes[0];
-    const cristal = parseBudgetValue(presupuesto_cristal) ?? Number(actuales.presupuesto_cristal || 0);
-    const aluminio = parseBudgetValue(presupuesto_aluminio) ?? Number(actuales.presupuesto_aluminio || 0);
-    const miscelaneos = parseBudgetValue(presupuesto_miscelaneos) ?? Number(actuales.presupuesto_miscelaneos || 0);
-    if (![cristal, aluminio, miscelaneos].every((v) => Number.isFinite(v) && v >= 0)) {
+    // Los valores del usuario representan el NUEVO TOTAL de presupuesto (no el saldo restante)
+    const cristalInput = parseBudgetValue(presupuesto_cristal);
+    const aluminioInput = parseBudgetValue(presupuesto_aluminio);
+    const miscelaneosInput = parseBudgetValue(presupuesto_miscelaneos);
+    if ([cristalInput, aluminioInput, miscelaneosInput].some((v) => v !== null && (!Number.isFinite(v) || v < 0))) {
       return res.status(400).json({ success: false, message: "Presupuestos inválidos" });
     }
+    // Obtener lo ya gastado en pedidos para calcular el nuevo saldo restante
+    const gastadoRows = await queryAsync(
+      "SELECT familia, SUM(importe_total) as gastado FROM pedidos WHERE id_proyecto = ? GROUP BY familia",
+      [proyectoId]
+    );
+    let gastadoCristal = 0, gastadoAluminio = 0, gastadoMiscelaneos = 0;
+    for (const row of gastadoRows || []) {
+      const tipo = normalizarFamiliaPresupuesto(row.familia);
+      const g = Number(row.gastado || 0);
+      if (tipo === "cristal") gastadoCristal += g;
+      else if (tipo === "aluminio") gastadoAluminio += g;
+      else if (tipo === "miscelaneos") gastadoMiscelaneos += g;
+    }
+    // Nuevo saldo restante = nuevo total ingresado - ya gastado; conservar actual si no se cambió
+    const cristal = cristalInput !== null
+      ? Number((cristalInput - gastadoCristal).toFixed(2))
+      : Number(actuales.presupuesto_cristal || 0);
+    const aluminio = aluminioInput !== null
+      ? Number((aluminioInput - gastadoAluminio).toFixed(2))
+      : Number(actuales.presupuesto_aluminio || 0);
+    const miscelaneos = miscelaneosInput !== null
+      ? Number((miscelaneosInput - gastadoMiscelaneos).toFixed(2))
+      : Number(actuales.presupuesto_miscelaneos || 0);
     const total = Number((cristal + aluminio + miscelaneos).toFixed(2));
     await queryAsync(
       `UPDATE proyectos
@@ -454,13 +522,17 @@ app.put("/proyectos/:id/presupuesto", authenticateToken, requireRole("administra
        WHERE id_proyecto = ?`,
       [cristal, aluminio, miscelaneos, total, total, proyectoId]
     );
+    // Historial guarda el total presupuestado (lo que el usuario ingresó), no el saldo restante
+    const cristalHist = cristalInput !== null ? cristalInput : Number((actuales.presupuesto_cristal || 0) + gastadoCristal);
+    const aluminioHist = aluminioInput !== null ? aluminioInput : Number((actuales.presupuesto_aluminio || 0) + gastadoAluminio);
+    const miscelaneosHist = miscelaneosInput !== null ? miscelaneosInput : Number((actuales.presupuesto_miscelaneos || 0) + gastadoMiscelaneos);
     try {
       await registrarHistorialPresupuesto(proyectoId, {
         fecha: fecha_presupuesto,
-        presupuesto_cristal: cristal,
-        presupuesto_aluminio: aluminio,
-        presupuesto_miscelaneos: miscelaneos,
-        presupuesto_total: total,
+        presupuesto_cristal: cristalHist,
+        presupuesto_aluminio: aluminioHist,
+        presupuesto_miscelaneos: miscelaneosHist,
+        presupuesto_total: Number((cristalHist + aluminioHist + miscelaneosHist).toFixed(2)),
       });
     } catch (histErr) {
       console.error("No se pudo registrar historial de cambio de presupuesto:", histErr);
@@ -957,7 +1029,7 @@ app.get("/proyectos/:id/pedidos/export", authenticateToken, requireRole("adminis
 });
 
 // Pedidos - explosión de insumos (asignaciones por clan/familia)
-app.get("/proyectos/:id/explosion-insumos", authenticateToken, requireRole("administrador"), async (req, res) => {
+app.get("/proyectos/:id/explosion-insumos", authenticateToken, async (req, res) => {
   try {
     const proyectoId = Number(req.params.id);
     if (!Number.isInteger(proyectoId) || proyectoId <= 0) {

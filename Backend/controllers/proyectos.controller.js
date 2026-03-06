@@ -1,4 +1,5 @@
 import * as ProyectoModel from "../models/proyecto.model.js";
+import * as ExplosionModel from "../models/explosionInsumo.model.js";
 import { calcularImporteDesdeDetalles } from "../models/pedido.model.js";
 import { parseBudgetValue } from "../helpers/utils.js";
 
@@ -20,6 +21,7 @@ export async function crear(req, res) {
       presupuesto_cristal,
       presupuesto_aluminio,
       presupuesto_miscelaneos,
+      miscel_familias,
       presupuesto,
     } = req.body || {};
 
@@ -32,7 +34,20 @@ export async function crear(req, res) {
 
     let presupuestoCristal = parseBudget(presupuesto_cristal);
     let presupuestoAluminio = parseBudget(presupuesto_aluminio);
-    let presupuestoMiscelaneos = parseBudget(presupuesto_miscelaneos);
+
+    // Calcular presupuestoMiscelaneos desde miscel_familias si se proporcionan
+    const familiaRows = Array.isArray(miscel_familias) ? miscel_familias : [];
+    let presupuestoMiscelaneos;
+    if (familiaRows.length > 0) {
+      presupuestoMiscelaneos = Number(
+        familiaRows.reduce((sum, f) => {
+          const n = Number(f.presupuesto);
+          return Number.isFinite(n) && n >= 0 ? sum + n : sum;
+        }, 0).toFixed(2)
+      );
+    } else {
+      presupuestoMiscelaneos = parseBudget(presupuesto_miscelaneos);
+    }
 
     const algunPresupuesto =
       presupuestoCristal !== null || presupuestoAluminio !== null || presupuestoMiscelaneos !== null;
@@ -61,6 +76,20 @@ export async function crear(req, res) {
       presupuestoMiscelaneos,
       presupuestoTotal,
     });
+
+    // Crear registros de explosion_insumos para las familias de misceláneos
+    for (const f of familiaRows) {
+      const familia = String(f.familia || "").trim().toUpperCase();
+      const pres = Number(f.presupuesto);
+      if (familia && Number.isFinite(pres) && pres >= 0) {
+        try {
+          await ExplosionModel.create(result.insertId, "", familia, pres);
+        } catch (explErr) {
+          console.error(`No se pudo crear explosion_insumos para familia ${familia}:`, explErr);
+        }
+      }
+    }
+
     try {
       await ProyectoModel.registrarHistorialPresupuesto(result.insertId, {
         fecha: fecha_proyecto,
@@ -193,21 +222,41 @@ export async function actualizarPresupuesto(req, res) {
     if (!actuales) {
       return res.status(404).json({ success: false, message: "Proyecto no encontrado" });
     }
-    const cristal = parseBudgetValue(presupuesto_cristal) ?? Number(actuales.presupuesto_cristal || 0);
-    const aluminio = parseBudgetValue(presupuesto_aluminio) ?? Number(actuales.presupuesto_aluminio || 0);
-    const miscelaneos = parseBudgetValue(presupuesto_miscelaneos) ?? Number(actuales.presupuesto_miscelaneos || 0);
-    if (![cristal, aluminio, miscelaneos].every((v) => Number.isFinite(v) && v >= 0)) {
+    // Los valores del usuario representan el NUEVO TOTAL de presupuesto (no el restante)
+    const cristalInput = parseBudgetValue(presupuesto_cristal);
+    const aluminioInput = parseBudgetValue(presupuesto_aluminio);
+    const miscelaneosInput = parseBudgetValue(presupuesto_miscelaneos);
+    const inputsProvided = [cristalInput, aluminioInput, miscelaneosInput];
+    if (inputsProvided.some((v) => v !== null && (!Number.isFinite(v) || v < 0))) {
       return res.status(400).json({ success: false, message: "Presupuestos inválidos" });
     }
+    // Obtener lo ya gastado en pedidos para calcular el nuevo saldo restante
+    const { gastadoCristal, gastadoAluminio, gastadoMiscelaneos } =
+      await ProyectoModel.getGastadoPorCategoria(proyectoId);
+    // Nuevo saldo restante = nuevo total ingresado - ya gastado
+    // Si no se provee un valor, se conserva el saldo actual sin cambio
+    const cristal = cristalInput !== null
+      ? Number((cristalInput - gastadoCristal).toFixed(2))
+      : Number(actuales.presupuesto_cristal || 0);
+    const aluminio = aluminioInput !== null
+      ? Number((aluminioInput - gastadoAluminio).toFixed(2))
+      : Number(actuales.presupuesto_aluminio || 0);
+    const miscelaneos = miscelaneosInput !== null
+      ? Number((miscelaneosInput - gastadoMiscelaneos).toFixed(2))
+      : Number(actuales.presupuesto_miscelaneos || 0);
     const total = Number((cristal + aluminio + miscelaneos).toFixed(2));
     await ProyectoModel.updateBudgets(proyectoId, { cristal, aluminio, miscelaneos, total });
+    // Historial guarda el total presupuestado (lo que el usuario ingresó), no el restante
+    const cristalHist = cristalInput !== null ? cristalInput : Number((actuales.presupuesto_cristal || 0) + gastadoCristal);
+    const aluminioHist = aluminioInput !== null ? aluminioInput : Number((actuales.presupuesto_aluminio || 0) + gastadoAluminio);
+    const miscelaneosHist = miscelaneosInput !== null ? miscelaneosInput : Number((actuales.presupuesto_miscelaneos || 0) + gastadoMiscelaneos);
     try {
       await ProyectoModel.registrarHistorialPresupuesto(proyectoId, {
         fecha: fecha_presupuesto,
-        presupuesto_cristal: cristal,
-        presupuesto_aluminio: aluminio,
-        presupuesto_miscelaneos: miscelaneos,
-        presupuesto_total: total,
+        presupuesto_cristal: cristalHist,
+        presupuesto_aluminio: aluminioHist,
+        presupuesto_miscelaneos: miscelaneosHist,
+        presupuesto_total: Number((cristalHist + aluminioHist + miscelaneosHist).toFixed(2)),
       });
     } catch (histErr) {
       console.error("No se pudo registrar historial de cambio de presupuesto:", histErr);

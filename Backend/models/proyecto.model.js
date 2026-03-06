@@ -148,6 +148,22 @@ export async function registrarHistorialPresupuesto(idProyecto, { fecha, presupu
   await queryAsync(sql, [proyectoId, fechaISO, cristal || 0, aluminio || 0, miscelaneos || 0, total]);
 }
 
+export async function getGastadoPorCategoria(proyectoId) {
+  const rows = await queryAsync(
+    `SELECT familia, SUM(importe_total) as gastado FROM pedidos WHERE id_proyecto = ? GROUP BY familia`,
+    [proyectoId]
+  );
+  let gastadoCristal = 0, gastadoAluminio = 0, gastadoMiscelaneos = 0;
+  for (const row of rows || []) {
+    const tipo = normalizarFamiliaPresupuesto(row.familia);
+    const g = Number(row.gastado || 0);
+    if (tipo === "cristal") gastadoCristal += g;
+    else if (tipo === "aluminio") gastadoAluminio += g;
+    else if (tipo === "miscelaneos") gastadoMiscelaneos += g;
+  }
+  return { gastadoCristal, gastadoAluminio, gastadoMiscelaneos };
+}
+
 export async function ajustarPresupuestoProyecto(idProyecto, familia, importe, { revert = false } = {}) {
   const proyectoId = Number(idProyecto);
   const monto = toFiniteNumber(importe);
