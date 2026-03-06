@@ -248,7 +248,7 @@ CREATE TABLE IF NOT EXISTS cobranza_facturas (
 CREATE TABLE IF NOT EXISTS viaticos_presupuestos (
   id_presupuesto INT AUTO_INCREMENT PRIMARY KEY,
   id_proyecto INT NOT NULL,
-  familia ENUM('Mano de Obra', 'Viáticos', 'Fletes') NOT NULL,
+  familia ENUM('Mano de Obra', 'Viáticos', 'Fletes', 'F.H.', 'Rentas Casa') NOT NULL,
   presupuesto_asignado DECIMAL(15,2) NOT NULL DEFAULT 0.00,
   gastado DECIMAL(15,2) NOT NULL DEFAULT 0.00,
   fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -267,7 +267,7 @@ CREATE TABLE IF NOT EXISTS viaticos_presupuestos (
 CREATE TABLE IF NOT EXISTS viaticos_movimientos (
   id_movimiento INT AUTO_INCREMENT PRIMARY KEY,
   id_proyecto INT NOT NULL,
-  familia ENUM('Mano de Obra', 'Viáticos', 'Fletes') NOT NULL,
+  familia ENUM('Mano de Obra', 'Viáticos', 'Fletes', 'F.H.', 'Rentas Casa') NOT NULL,
   persona VARCHAR(255) NOT NULL,
   concepto TEXT NOT NULL,
   clave_referencia VARCHAR(100),
