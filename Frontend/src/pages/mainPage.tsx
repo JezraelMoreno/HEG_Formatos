@@ -3,6 +3,7 @@ import type { ChangeEventHandler, MouseEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import "./mainPage.css";
 import { authHeader, clearToken, getRole, getToken, isTokenValid } from "../auth";
+import API_URL from "../config";
 import { parsePedidosCsv } from "../utils/pedidosCsv";
 import type { PedidoCsv } from "../utils/pedidosCsv";
 import dashboardImg from "../../assets/dashboards.png"; 
@@ -101,7 +102,8 @@ export function MainPage() {
   const [fecha, setFecha] = useState("");
   const [presupuestoCristal, setPresupuestoCristal] = useState("");
   const [presupuestoAluminio, setPresupuestoAluminio] = useState("");
-  const [presupuestoMiscelaneos, setPresupuestoMiscelaneos] = useState("");
+  const [miscelFamilias, setMiscelFamilias] = useState<Array<{ id: number; familia: string; presupuesto: string }>>([]);
+  const [miscelInput, setMiscelInput] = useState({ familia: "", presupuesto: "" });
   const [proyectoAEliminar, setProyectoAEliminar] = useState<Proyecto | null>(null);
   const [confirmacionProyecto, setConfirmacionProyecto] = useState<string>("");
   const [eliminandoProyecto, setEliminandoProyecto] = useState(false);
@@ -117,12 +119,16 @@ export function MainPage() {
   const filtroFechaRef = useRef<HTMLInputElement | null>(null);
   const role = (getRole() || "").toLowerCase();
   const isAdmin = role === "administrador";
-  const presupuestoTotalPreview = [presupuestoCristal, presupuestoAluminio, presupuestoMiscelaneos].reduce(
+  const totalMiscel = miscelFamilias.reduce((sum, f) => {
+    const n = Number(f.presupuesto);
+    return Number.isFinite(n) && n >= 0 ? sum + n : sum;
+  }, 0);
+  const presupuestoTotalPreview = [presupuestoCristal, presupuestoAluminio].reduce(
     (sum, val) => {
       const num = Number(val);
       return Number.isFinite(num) && num >= 0 ? sum + num : sum;
     },
-    0
+    totalMiscel
   );
   const modulos: Array<{ key: ModuleKey; titulo: string; descripcion: string; imagen: string }> = [
     {
@@ -194,7 +200,7 @@ export function MainPage() {
     try {
       setLoading(true);
       setError("");
-      const res = await fetch("http://localhost:3000/proyectos", {
+      const res = await fetch(`${API_URL}/proyectos`, {
         headers: { ...authHeader() },
       });
       const data = await res.json();
@@ -225,7 +231,8 @@ export function MainPage() {
     setFecha("");
     setPresupuestoCristal("");
     setPresupuestoAluminio("");
-    setPresupuestoMiscelaneos("");
+    setMiscelFamilias([]);
+    setMiscelInput({ familia: "", presupuesto: "" });
     setError("");
   };
 
@@ -238,15 +245,13 @@ export function MainPage() {
     };
     const cristalNum = parseBudgetInput(presupuestoCristal);
     const aluminioNum = parseBudgetInput(presupuestoAluminio);
-    const miscelaneosNum = parseBudgetInput(presupuestoMiscelaneos);
-    if (!nombre || !fecha || [cristalNum, aluminioNum, miscelaneosNum].some((n) => Number.isNaN(n))) {
+    if (!nombre || !fecha || [cristalNum, aluminioNum].some((n) => Number.isNaN(n))) {
       setError("Completa nombre, fecha y presupuestos válidos (usa 0 si no aplica)");
       return;
     }
-    const presupuestoTotal = cristalNum + aluminioNum + miscelaneosNum;
     try {
       setError("");
-      const res = await fetch("http://localhost:3000/proyectos", {
+      const res = await fetch(`${API_URL}/proyectos`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeader() },
         body: JSON.stringify({
@@ -254,8 +259,10 @@ export function MainPage() {
           fecha_proyecto: fecha,
           presupuesto_cristal: cristalNum,
           presupuesto_aluminio: aluminioNum,
-          presupuesto_miscelaneos: miscelaneosNum,
-          presupuesto_total: presupuestoTotal,
+          miscel_familias: miscelFamilias.map(f => ({
+            familia: f.familia.trim().toUpperCase(),
+            presupuesto: Number(f.presupuesto),
+          })),
         }),
       });
       const data = await res.json();
@@ -273,7 +280,7 @@ export function MainPage() {
   const generarCobranzaTotal = async () => {
     try {
       setError("");
-      const res = await fetch("http://localhost:3000/cobranza/export", { headers: { ...authHeader() } });
+      const res = await fetch(`${API_URL}/cobranza/export`, { headers: { ...authHeader() } });
       if (!res.ok) { setError("No se pudo generar cobranza total"); return; }
       const cd = res.headers.get("Content-Disposition") || "";
       let filename = "cobranza_total.xlsx";
@@ -315,7 +322,7 @@ export function MainPage() {
     try {
       setEliminandoProyecto(true);
       setError("");
-      const res = await fetch(`http://localhost:3000/proyectos/${proyectoAEliminar.id_proyecto}`, {
+      const res = await fetch(`${API_URL}/proyectos/${proyectoAEliminar.id_proyecto}`, {
         method: "DELETE",
         headers: { ...authHeader() },
       });
@@ -337,7 +344,7 @@ export function MainPage() {
   const cambiarEstadoProyecto = async (idProyecto: number, nuevoEstado: 'en_progreso' | 'completado', event: MouseEvent<HTMLSelectElement>) => {
     event.stopPropagation();
     try {
-      const res = await fetch(`http://localhost:3000/proyectos/${idProyecto}/estado`, {
+      const res = await fetch(`${API_URL}/proyectos/${idProyecto}/estado`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -374,7 +381,7 @@ export function MainPage() {
         if (fechaFiltroPedidos) params.append("fecha", fechaFiltroPedidos);
         if (usuarioFiltro) params.append("usuario", usuarioFiltro);
         const qs = params.toString();
-        const res = await fetch(`http://localhost:3000/pedidos/resumen${qs ? `?${qs}` : ""}`, {
+        const res = await fetch(`${API_URL}/pedidos/resumen${qs ? `?${qs}` : ""}`, {
           headers: { ...authHeader() },
         });
         const data = await res.json();
@@ -481,7 +488,7 @@ export function MainPage() {
               ...pedido,
               nombre_proyecto: proyecto.nombre,
             }));
-            const res = await fetch(`http://localhost:3000/proyectos/${proyecto.id_proyecto}/pedidos`, {
+            const res = await fetch(`${API_URL}/proyectos/${proyecto.id_proyecto}/pedidos`, {
               method: "POST",
               headers: { "Content-Type": "application/json", ...authHeader() },
               body: JSON.stringify({ pedidos: pedidosPorProyecto }),
@@ -884,16 +891,63 @@ export function MainPage() {
                 placeholder="Presupuesto para aluminio"
                 required
               />
-              <label>Presupuesto misceláneos</label>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={presupuestoMiscelaneos}
-                onChange={(e) => setPresupuestoMiscelaneos(e.target.value)}
-                placeholder="Presupuesto para misceláneos"
-                required
-              />
+              <label>Presupuesto misceláneos (por familia)</label>
+              {miscelFamilias.length > 0 && (
+                <div className="miscel-familias-list">
+                  {miscelFamilias.map((f) => (
+                    <div key={f.id} className="miscel-familia-row">
+                      <span className="miscel-familia-nombre">{f.familia}</span>
+                      <span className="miscel-familia-monto">
+                        ${Number(f.presupuesto).toLocaleString("es-MX", { minimumFractionDigits: 2 })}
+                      </span>
+                      <button
+                        type="button"
+                        className="miscel-familia-remove"
+                        onClick={() => setMiscelFamilias((prev) => prev.filter((x) => x.id !== f.id))}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                  <div className="miscel-subtotal">
+                    Total misceláneos: <strong>${totalMiscel.toLocaleString("es-MX", { minimumFractionDigits: 2 })}</strong>
+                  </div>
+                </div>
+              )}
+              <div className="miscel-add-row">
+                <input
+                  type="text"
+                  placeholder="Familia (ej. MI)"
+                  value={miscelInput.familia}
+                  onChange={(e) => setMiscelInput((prev) => ({ ...prev, familia: e.target.value }))}
+                  className="miscel-input-familia"
+                />
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={miscelInput.presupuesto}
+                  onChange={(e) => setMiscelInput((prev) => ({ ...prev, presupuesto: e.target.value }))}
+                  className="miscel-input-monto"
+                />
+                <button
+                  type="button"
+                  className="action-button create-button miscel-btn-agregar"
+                  onClick={() => {
+                    const familia = miscelInput.familia.trim().toUpperCase();
+                    const presupuesto = miscelInput.presupuesto.trim();
+                    if (!familia || !presupuesto || Number(presupuesto) < 0) return;
+                    setMiscelFamilias((prev) => [
+                      ...prev,
+                      { id: Date.now(), familia, presupuesto },
+                    ]);
+                    setMiscelInput({ familia: "", presupuesto: "" });
+                  }}
+                >
+                  Agregar
+                </button>
+              </div>
               <div className="presupuesto-total-preview">
                 Total capturado: <strong>{formatCurrency(presupuestoTotalPreview)}</strong>
               </div>
