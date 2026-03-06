@@ -7,6 +7,7 @@ import { LineChart } from '../../components/charts/LineChart';
 import '../../components/styles/KPICard.css';
 import '../../components/styles/charts.css';
 import './dashboards.css';
+import API_URL from '../../config';
 
 interface GeneralData {
   proyecto: {
@@ -60,7 +61,7 @@ export const DashboardGeneral: React.FC = () => {
   const fetchGeneralData = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`http://localhost:3000/api/dashboard/proyecto/${projectId}/general`, {
+      const response = await fetch(`${API_URL}/api/dashboard/proyecto/${projectId}/general`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }

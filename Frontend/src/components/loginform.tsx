@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./loginform.css";
 import { setToken } from "../auth";
+import API_URL from "../config";
 
 export function LoginForm() {
   const [email, setEmail] = useState("");
@@ -13,7 +14,7 @@ export function LoginForm() {
     e.preventDefault();
 
     try {
-      const res = await fetch("http://localhost:3000/login", {
+      const res = await fetch(`${API_URL}/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ nombre_usuario: email, contrasena: password }),
@@ -39,7 +40,7 @@ export function LoginForm() {
     <div className="login-container">
       <form className="login-form" onSubmit={handleSubmit}>
         <img
-          src="http://localhost:3000/assets/heg_logo.jpg"
+          src={`${API_URL}/assets/heg_logo.jpg`}
           alt="HEG"
           className="login-logo"
         />

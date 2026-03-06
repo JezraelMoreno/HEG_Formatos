@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import '../dashboards/ProjectSelector.css';
+import API_URL from '../../config';
 import { AgregarRemisionModal } from './AgregarRemisionModal';
 import { HistorialEntregas } from './HistorialEntregas';
 
@@ -34,7 +35,7 @@ export function RemisionesProjectSelector() {
       const token = localStorage.getItem('token');
       const headers = { 'Authorization': `Bearer ${token}` };
 
-      const proyectosRes = await fetch('http://localhost:3000/proyectos', { headers });
+      const proyectosRes = await fetch(`${API_URL}/proyectos`, { headers });
 
       if (proyectosRes.ok) {
         const result = await proyectosRes.json();
@@ -71,7 +72,7 @@ export function RemisionesProjectSelector() {
   const exportarGeneral = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:3000/remisiones/export', {
+      const response = await fetch(`${API_URL}/remisiones/export`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (!response.ok) return;

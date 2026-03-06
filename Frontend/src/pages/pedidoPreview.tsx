@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { authHeader } from "../auth";
+import API_URL from "../config";
 import hegLogo from "../../assets/heg_logo.jpg";
 import "./pedidoPreview.css";
 
@@ -146,7 +147,7 @@ export function PedidoPreview() {
       try {
         let pedidoEncontrado = pedido;
         if (needsPedido) {
-          const res = await fetch(`http://localhost:3000/proyectos/${id}/pedidos`, { headers: { ...authHeader() } });
+          const res = await fetch(`${API_URL}/proyectos/${id}/pedidos`, { headers: { ...authHeader() } });
           const data = await res.json().catch(() => ({}));
           if (!res.ok || !data?.success || !Array.isArray(data.data)) {
             throw new Error(data?.message || "No se pudo obtener el pedido");
@@ -160,7 +161,7 @@ export function PedidoPreview() {
         else if (familia === "AL" || familia === "MQAL") setTipoDetalle("aluminio");
         else setTipoDetalle("miscelaneos");
         if (needsDetalles) {
-          const resDetalles = await fetch(`http://localhost:3000/pedidos/${pedidoIdNumero}/${endpoint}`, { headers: { ...authHeader() } });
+          const resDetalles = await fetch(`${API_URL}/pedidos/${pedidoIdNumero}/${endpoint}`, { headers: { ...authHeader() } });
           const dataDetalles = await resDetalles.json().catch(() => ({}));
           if (!resDetalles.ok || !dataDetalles?.success || !Array.isArray(dataDetalles.data)) {
             throw new Error(dataDetalles?.message || "No se pudieron obtener los detalles");

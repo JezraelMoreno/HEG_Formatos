@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { authHeader } from '../../auth';
 import './ContabilidadPage.css';
+import API_URL from '../../config';
 
 interface Factura {
     id_factura: number;
@@ -84,7 +85,7 @@ function AgregarFacturaModal({ projectId, onClose, onSuccess }: AgregarFacturaMo
             formData.append('pdf', pdfFile);
             if (xmlFile) formData.append('xml', xmlFile);
 
-            const res = await fetch('http://localhost:3000/facturas', {
+            const res = await fetch(`${API_URL}/facturas`, {
                 method: 'POST',
                 headers: authHeader(),
                 body: formData,
@@ -256,7 +257,7 @@ function EditarFacturaModal({ factura, onClose, onSuccess }: EditarFacturaModalP
         setError('');
         setSaving(true);
         try {
-            const res = await fetch(`http://localhost:3000/facturas/${factura.id_factura}`, {
+            const res = await fetch(`${API_URL}/facturas/${factura.id_factura}`, {
                 method: 'PUT',
                 headers: { ...authHeader(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({ estatus, fecha_pago: fechaPago || null, metodo_pago: metodoPago || null }),
@@ -345,7 +346,7 @@ export function ContabilidadPage() {
         setLoading(true);
         setError('');
         try {
-            const res = await fetch(`http://localhost:3000/facturas?id_proyecto=${projectId}`, {
+            const res = await fetch(`${API_URL}/facturas?id_proyecto=${projectId}`, {
                 headers: authHeader(),
             });
             const json = await res.json();
@@ -366,7 +367,7 @@ export function ContabilidadPage() {
     const eliminarFactura = async (id_factura: number) => {
         if (!confirm('¿Eliminar esta factura? Esta acción no se puede deshacer.')) return;
         try {
-            const res = await fetch(`http://localhost:3000/facturas/${id_factura}`, {
+            const res = await fetch(`${API_URL}/facturas/${id_factura}`, {
                 method: 'DELETE',
                 headers: authHeader(),
             });
@@ -487,7 +488,7 @@ export function ContabilidadPage() {
                                     <td>{f.metodo_pago || '-'}</td>
                                     <td className="cnt-files">
                                         <a
-                                            href={`http://localhost:3000/uploads/${f.ruta_pdf}`}
+                                            href={`${API_URL}/uploads/${f.ruta_pdf}`}
                                             target="_blank"
                                             rel="noopener noreferrer"
                                             className="cnt-file-link cnt-file-link--pdf"
@@ -496,7 +497,7 @@ export function ContabilidadPage() {
                                         </a>
                                         {f.ruta_xml && (
                                             <a
-                                                href={`http://localhost:3000/uploads/${f.ruta_xml}`}
+                                                href={`${API_URL}/uploads/${f.ruta_xml}`}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
                                                 className="cnt-file-link cnt-file-link--xml"

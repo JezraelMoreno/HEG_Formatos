@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { authHeader, getToken, isTokenValid } from "../../auth";
+import API_URL from "../../config";
 import { AgregarRemisionModal } from "./AgregarRemisionModal";
 import "./RemisionesPage.css";
 
@@ -254,8 +255,8 @@ export function RemisionesPage({ isGeneral = false }: RemisionesPageProps) {
     try {
       const qs = buildQueryParams();
       const endpoint = isGeneral
-        ? `http://localhost:3000/remisiones${qs}`
-        : `http://localhost:3000/proyectos/${projectId}/remisiones${qs}`;
+        ? `${API_URL}/remisiones${qs}`
+        : `${API_URL}/proyectos/${projectId}/remisiones${qs}`;
       const res = await fetch(endpoint, { headers: { ...authHeader() } });
       const json = await res.json();
       if (res.ok && json.success) {
@@ -280,7 +281,7 @@ export function RemisionesPage({ isGeneral = false }: RemisionesPageProps) {
   const actualizarCelda = async (id: number, campo: string, valor: number, tipoMaterial: string) => {
     setSaving(id);
     try {
-      const res = await fetch(`http://localhost:3000/remisiones/${id}`, {
+      const res = await fetch(`${API_URL}/remisiones/${id}`, {
         method: "PUT",
         headers: { ...authHeader(), "Content-Type": "application/json" },
         body: JSON.stringify({ [campo]: valor, tipo_material: tipoMaterial })
@@ -310,7 +311,7 @@ export function RemisionesPage({ isGeneral = false }: RemisionesPageProps) {
   const actualizarFecha = async (id: number, campo: string, valor: string, tipoMaterial: string) => {
     setSaving(id);
     try {
-      const res = await fetch(`http://localhost:3000/remisiones/${id}`, {
+      const res = await fetch(`${API_URL}/remisiones/${id}`, {
         method: "PUT",
         headers: { ...authHeader(), "Content-Type": "application/json" },
         body: JSON.stringify({ [campo]: valor, tipo_material: tipoMaterial })
@@ -335,8 +336,8 @@ export function RemisionesPage({ isGeneral = false }: RemisionesPageProps) {
     try {
       const qs = buildQueryParams();
       const endpoint = isGeneral
-        ? `http://localhost:3000/remisiones/export${qs}`
-        : `http://localhost:3000/proyectos/${projectId}/remisiones/export${qs}`;
+        ? `${API_URL}/remisiones/export${qs}`
+        : `${API_URL}/proyectos/${projectId}/remisiones/export${qs}`;
       const res = await fetch(endpoint, { headers: { ...authHeader() } });
       if (!res.ok) return;
       const cd = res.headers.get("Content-Disposition") || "";

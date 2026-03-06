@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { authHeader, getToken, isTokenValid } from "../../auth";
 import "./ReportePage.css";
+import API_URL from "../../config";
 
 // --- Types ---
 
@@ -250,7 +251,7 @@ export function ReportePage() {
     setLoading(true);
     try {
       const qs = buildQueryParams();
-      const endpoint = `http://localhost:3000/proyectos/${projectId}/reportes/${tabActiva}${qs}`;
+      const endpoint = `${API_URL}/proyectos/${projectId}/reportes/${tabActiva}${qs}`;
       const res = await fetch(endpoint, { headers: { ...authHeader() } });
       const json = await res.json();
       if (res.ok && json.success) {
@@ -283,7 +284,7 @@ export function ReportePage() {
   const exportarExcel = async () => {
     try {
       const qs = buildQueryParams();
-      const endpoint = `http://localhost:3000/proyectos/${projectId}/reportes/${tabActiva}/export${qs}`;
+      const endpoint = `${API_URL}/proyectos/${projectId}/reportes/${tabActiva}/export${qs}`;
       const res = await fetch(endpoint, { headers: { ...authHeader() } });
       if (!res.ok) return;
       const cd = res.headers.get("Content-Disposition") || "";

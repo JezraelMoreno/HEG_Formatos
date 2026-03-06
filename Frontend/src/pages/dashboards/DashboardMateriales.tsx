@@ -7,6 +7,7 @@ import { PieChart } from '../../components/charts/PieChart';
 import '../../components/styles/KPICard.css';
 import '../../components/styles/charts.css';
 import './dashboards.css';
+import API_URL from '../../config';
 
 interface MaterialesData {
   proyecto: {
@@ -58,7 +59,7 @@ export const DashboardMateriales: React.FC = () => {
   const fetchMaterialesData = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`http://localhost:3000/api/dashboard/proyecto/${projectId}/materiales`, {
+      const response = await fetch(`${API_URL}/api/dashboard/proyecto/${projectId}/materiales`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }

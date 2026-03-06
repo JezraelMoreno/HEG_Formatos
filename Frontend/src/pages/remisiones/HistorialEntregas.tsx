@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { authHeader } from '../../auth';
 import './HistorialEntregas.css';
+import API_URL from '../../config';
 
 interface EntregaHistorial {
     id_entrega: number;
@@ -33,7 +34,7 @@ export function HistorialEntregas({ onClose, inline = false }: HistorialEntregas
     const cargarHistorial = async () => {
         setLoading(true);
         try {
-            const res = await fetch('http://localhost:3000/remisiones/historial-entregas', {
+            const res = await fetch(`${API_URL}/remisiones/historial-entregas`, {
                 headers: authHeader()
             });
             const json = await res.json();
@@ -170,7 +171,7 @@ export function HistorialEntregas({ onClose, inline = false }: HistorialEntregas
                                 )}
                                 {e.ruta_pdf && (
                                     <a
-                                        href={`http://localhost:3000/uploads/remisiones/${e.ruta_pdf}`}
+                                        href={`${API_URL}/uploads/remisiones/${e.ruta_pdf}`}
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         className="he-pdf-link"

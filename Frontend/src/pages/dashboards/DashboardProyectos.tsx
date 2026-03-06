@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { DashboardLayout } from './DashboardLayout';
+import API_URL from '../../config';
 import { KPICard } from '../../components/charts/KPICard';
 import { BarChart } from '../../components/charts/BarChart';
 import { PieChart } from '../../components/charts/PieChart';
@@ -38,7 +39,7 @@ export const DashboardProyectos: React.FC = () => {
   const fetchProyectosData = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:3000/api/dashboard/proyectos', {
+      const response = await fetch(`${API_URL}/api/dashboard/proyectos`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }

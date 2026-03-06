@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { DashboardLayout } from './DashboardLayout';
+import API_URL from '../../config';
 import { KPICard } from '../../components/charts/KPICard';
 import { BarChart } from '../../components/charts/BarChart';
 import { LineChart } from '../../components/charts/LineChart';
@@ -44,7 +45,7 @@ export const DashboardEjecutivo: React.FC = () => {
   const fetchDashboardData = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`http://localhost:3000/api/dashboard/proyecto/${projectId}/ejecutivo`, {
+      const response = await fetch(`${API_URL}/api/dashboard/proyecto/${projectId}/ejecutivo`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { authHeader } from '../../auth';
 import './AgregarRemisionModal.css';
+import API_URL from '../../config';
 
 interface Proyecto {
     id_proyecto: number;
@@ -93,7 +94,7 @@ export function AgregarRemisionModal({ isOpen, onClose, onSuccess, initialProjec
     const cargarProyectos = async () => {
         setLoadingProyectos(true);
         try {
-            const res = await fetch('http://localhost:3000/proyectos', { headers: authHeader() });
+            const res = await fetch(`${API_URL}/proyectos`, { headers: authHeader() });
             const json = await res.json();
             if (res.ok && json.success) {
                 const data = json.data || [];
@@ -123,7 +124,7 @@ export function AgregarRemisionModal({ isOpen, onClose, onSuccess, initialProjec
             const projectIdParam = selectedProject ? `&id_proyecto=${selectedProject.id_proyecto}` : '';
             const familiaParam = familiaFilter.trim() ? `&familia=${encodeURIComponent(familiaFilter.trim())}` : '';
             const res = await fetch(
-                `http://localhost:3000/remisiones/buscar-pedidos?tipo=${materialTab}&search=${encodeURIComponent(searchParam)}${projectIdParam}${familiaParam}`,
+                `${API_URL}/remisiones/buscar-pedidos?tipo=${materialTab}&search=${encodeURIComponent(searchParam)}${projectIdParam}${familiaParam}`,
                 { headers: authHeader() }
             );
             const json = await res.json();
@@ -151,7 +152,7 @@ export function AgregarRemisionModal({ isOpen, onClose, onSuccess, initialProjec
         setSelectedPedido(pedido);
         try {
             const res = await fetch(
-                `http://localhost:3000/remisiones/detalles-pedido/${pedido.id}?tipo=${materialTab}`,
+                `${API_URL}/remisiones/detalles-pedido/${pedido.id}?tipo=${materialTab}`,
                 { headers: authHeader() }
             );
             const json = await res.json();
@@ -211,7 +212,7 @@ export function AgregarRemisionModal({ isOpen, onClose, onSuccess, initialProjec
             formData.append('observaciones', observaciones);
             formData.append('pdf', pdfFile);
 
-            const res = await fetch('http://localhost:3000/remisiones/registrar-entrega', {
+            const res = await fetch(`${API_URL}/remisiones/registrar-entrega`, {
                 method: 'POST',
                 headers: authHeader(), // SIN Content-Type, FormData lo pone automáticamente
                 body: formData

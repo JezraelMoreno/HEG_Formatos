@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { DashboardLayout } from './DashboardLayout';
+import API_URL from '../../config';
 import { KPICard } from '../../components/charts/KPICard';
 import { PieChart } from '../../components/charts/PieChart';
 import '../../components/styles/KPICard.css';
@@ -73,12 +74,12 @@ export const DashboardCobranza: React.FC = () => {
       const token = localStorage.getItem('token');
 
       // Fetch resumen de cobranza
-      const resumenResponse = await fetch(`http://localhost:3000/proyectos/${projectId}/cobranza-resumen`, {
+      const resumenResponse = await fetch(`${API_URL}/proyectos/${projectId}/cobranza-resumen`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
 
       // Fetch facturas
-      const facturasResponse = await fetch(`http://localhost:3000/proyectos/${projectId}/cobranza-facturas`, {
+      const facturasResponse = await fetch(`${API_URL}/proyectos/${projectId}/cobranza-facturas`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
 

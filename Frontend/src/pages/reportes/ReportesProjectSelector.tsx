@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import '../dashboards/ProjectSelector.css';
+import API_URL from '../../config';
 
 interface Proyecto {
   id_proyecto: number;
@@ -26,7 +27,7 @@ export function ReportesProjectSelector() {
   const cargarProyectos = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:3000/proyectos', {
+      const response = await fetch(`${API_URL}/proyectos`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (response.ok) {

@@ -2,11 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { DashboardLayout } from './DashboardLayout';
 import { KPICard } from '../../components/charts/KPICard';
-import { BarChart } from '../../components/charts/BarChart';
 import { PieChart } from '../../components/charts/PieChart';
 import '../../components/styles/KPICard.css';
 import '../../components/styles/charts.css';
 import './dashboards.css';
+import API_URL from '../../config';
 
 interface PresupuestoData {
   proyecto: {
@@ -55,7 +55,7 @@ export const DashboardPresupuestos: React.FC = () => {
   const fetchPresupuestoData = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`http://localhost:3000/api/dashboard/proyecto/${projectId}/presupuestos`, {
+      const response = await fetch(`${API_URL}/api/dashboard/proyecto/${projectId}/presupuestos`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
