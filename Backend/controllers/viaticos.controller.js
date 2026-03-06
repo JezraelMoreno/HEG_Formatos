@@ -21,7 +21,7 @@ export async function crearPresupuesto(req, res) {
     const { familia, presupuesto_asignado } = req.body || {};
     const username = req.user?.username || "unknown";
 
-    const validFamilias = ['Mano de Obra', 'Viáticos', 'Fletes'];
+    const validFamilias = ['Mano de Obra', 'Viáticos', 'Fletes', 'F.H.', 'Rentas Casa'];
     if (!validFamilias.includes(familia)) {
       return res.status(400).json({ success: false, message: "Familia inválida" });
     }
@@ -57,7 +57,7 @@ export async function crearMovimiento(req, res) {
     const { familia, persona, concepto, clave_referencia, fecha, ingreso, egreso } = req.body || {};
     const username = req.user?.username || "unknown";
 
-    const validFamilias = ['Mano de Obra', 'Viáticos', 'Fletes'];
+    const validFamilias = ['Mano de Obra', 'Viáticos', 'Fletes', 'F.H.', 'Rentas Casa'];
     if (!validFamilias.includes(familia)) {
       return res.status(400).json({ success: false, message: "Familia inválida" });
     }
@@ -189,58 +189,18 @@ export async function exportarMovimientos(req, res) {
     sheetMovimientos.getColumn(10).width = 15;
     sheetMovimientos.getColumn(11).width = 25;
 
-    // Sheet 2: Desglose de Presupuestos
+    // Sheet 2: Desglose de Presupuestos (dynamic — supports any number of families)
     const sheetPresupuestos = workbook.addWorksheet("Desglose de Presupuestos");
-    sheetPresupuestos.mergeCells("A1:J1");
-    const titleCell2 = sheetPresupuestos.getCell("A1");
-    titleCell2.value = `DESGLOSE DE PRESUPUESTOS - ${nombreProyecto}`;
-    titleCell2.font = { bold: true, size: 14 };
-    titleCell2.alignment = { horizontal: "center", vertical: "middle" };
 
-    const presupuestoHeaders = [
-      "N°", "PROYECTO",
-      "MANO DE OBRA", "", "",
-      "VIATICOS", "", "",
-      "FLETES", "", "",
-      "TOTAL POR EROGAR"
+    // Build family list from presupuestos in canonical order
+    const canonicalOrder = ['Mano de Obra', 'Viáticos', 'Fletes', 'F.H.', 'Rentas Casa'];
+    const familyKeys = [
+      ...canonicalOrder.filter(f => presupuestos.some(p => p.familia === f)),
+      ...presupuestos.map(p => p.familia).filter(f => !canonicalOrder.includes(f))
     ];
-    const presupuestoSubheaders = [
-      "", "",
-      "PRESUPUESTO", "EROGADO", "POR EROGAR",
-      "PRESUPUESTO", "EROGADO", "POR EROGAR",
-      "PRESUPUESTO", "EROGADO", "POR EROGAR",
-      ""
-    ];
-    sheetPresupuestos.getRow(2).values = presupuestoHeaders;
-    sheetPresupuestos.getRow(3).values = presupuestoSubheaders;
 
-    sheetPresupuestos.mergeCells("A2:A3");
-    sheetPresupuestos.mergeCells("B2:B3");
-    sheetPresupuestos.mergeCells("C2:E2");
-    sheetPresupuestos.mergeCells("F2:H2");
-    sheetPresupuestos.mergeCells("I2:K2");
-    sheetPresupuestos.mergeCells("L2:L3");
-
-    ["A2", "B2", "C2", "F2", "I2", "L2"].forEach(cell => {
-      const c = sheetPresupuestos.getCell(cell);
-      c.font = { bold: true };
-      c.alignment = { horizontal: "center", vertical: "middle" };
-      c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD9D9D9" } };
-      c.border = { top: { style: "thin" }, left: { style: "thin" }, right: { style: "thin" }, bottom: { style: "thin" } };
-    });
-    ["C3", "D3", "E3", "F3", "G3", "H3", "I3", "J3", "K3"].forEach(cell => {
-      const c = sheetPresupuestos.getCell(cell);
-      c.font = { bold: true };
-      c.alignment = { horizontal: "center", vertical: "middle" };
-      c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD9D9D9" } };
-      c.border = { top: { style: "thin" }, left: { style: "thin" }, right: { style: "thin" }, bottom: { style: "thin" } };
-    });
-
-    const budgetByFamily = {
-      "Mano de Obra": { presupuesto: 0, erogado: 0, porErogar: 0 },
-      "Viáticos": { presupuesto: 0, erogado: 0, porErogar: 0 },
-      "Fletes": { presupuesto: 0, erogado: 0, porErogar: 0 }
-    };
+    const budgetByFamily = {};
+    familyKeys.forEach(f => { budgetByFamily[f] = { presupuesto: 0, erogado: 0, porErogar: 0 }; });
     presupuestos.forEach(p => {
       if (budgetByFamily[p.familia]) {
         budgetByFamily[p.familia].presupuesto = p.presupuesto_asignado;
@@ -249,40 +209,73 @@ export async function exportarMovimientos(req, res) {
       }
     });
 
-    const totalPorErogar =
-      budgetByFamily["Mano de Obra"].porErogar +
-      budgetByFamily["Viáticos"].porErogar +
-      budgetByFamily["Fletes"].porErogar;
+    // Columns: N°(1), PROYECTO(2), then 3 cols per family, then TOTAL(last)
+    const totalCols = 2 + familyKeys.length * 3 + 1;
+    const lastCol = totalCols;
+    const colLetter = (n) => {
+      let s = "";
+      while (n > 0) { const r = (n - 1) % 26; s = String.fromCharCode(65 + r) + s; n = Math.floor((n - 1) / 26); }
+      return s;
+    };
 
-    const dataRow = sheetPresupuestos.addRow([
-      1, nombreProyecto,
-      budgetByFamily["Mano de Obra"].presupuesto,
-      budgetByFamily["Mano de Obra"].erogado,
-      budgetByFamily["Mano de Obra"].porErogar,
-      budgetByFamily["Viáticos"].presupuesto,
-      budgetByFamily["Viáticos"].erogado,
-      budgetByFamily["Viáticos"].porErogar,
-      budgetByFamily["Fletes"].presupuesto,
-      budgetByFamily["Fletes"].erogado,
-      budgetByFamily["Fletes"].porErogar,
-      totalPorErogar
-    ]);
+    // Title
+    sheetPresupuestos.mergeCells(`A1:${colLetter(lastCol)}1`);
+    const titleCell2 = sheetPresupuestos.getCell("A1");
+    titleCell2.value = `DESGLOSE DE PRESUPUESTOS - ${nombreProyecto}`;
+    titleCell2.font = { bold: true, size: 14 };
+    titleCell2.alignment = { horizontal: "center", vertical: "middle" };
 
-    for (let i = 3; i <= 12; i++) {
+    // Header row 2
+    const headerRow2 = ["N°", "PROYECTO"];
+    familyKeys.forEach(f => { headerRow2.push(f.toUpperCase(), "", ""); });
+    headerRow2.push("TOTAL POR EROGAR");
+    sheetPresupuestos.getRow(2).values = headerRow2;
+
+    // Subheader row 3
+    const headerRow3 = ["", ""];
+    familyKeys.forEach(() => { headerRow3.push("PRESUPUESTO", "EROGADO", "POR EROGAR"); });
+    headerRow3.push("");
+    sheetPresupuestos.getRow(3).values = headerRow3;
+
+    // Merge N°, PROYECTO, and TOTAL vertically
+    sheetPresupuestos.mergeCells("A2:A3");
+    sheetPresupuestos.mergeCells("B2:B3");
+    sheetPresupuestos.mergeCells(`${colLetter(lastCol)}2:${colLetter(lastCol)}3`);
+
+    // Merge each family group horizontally in row 2
+    familyKeys.forEach((_, i) => {
+      const startCol = 3 + i * 3;
+      sheetPresupuestos.mergeCells(`${colLetter(startCol)}2:${colLetter(startCol + 2)}2`);
+    });
+
+    const headerStyle = { font: { bold: true }, alignment: { horizontal: "center", vertical: "middle" }, fill: { type: "pattern", pattern: "solid", fgColor: { argb: "FFD9D9D9" } }, border: { top: { style: "thin" }, left: { style: "thin" }, right: { style: "thin" }, bottom: { style: "thin" } } };
+    ["A2", "B2", `${colLetter(lastCol)}2`].forEach(addr => Object.assign(sheetPresupuestos.getCell(addr), headerStyle));
+    familyKeys.forEach((_, i) => {
+      const startCol = 3 + i * 3;
+      Object.assign(sheetPresupuestos.getCell(`${colLetter(startCol)}2`), headerStyle);
+      [startCol, startCol + 1, startCol + 2].forEach(c => Object.assign(sheetPresupuestos.getCell(`${colLetter(c)}3`), headerStyle));
+    });
+
+    const totalPorErogar = familyKeys.reduce((sum, f) => sum + (budgetByFamily[f]?.porErogar || 0), 0);
+
+    const dataValues = [1, nombreProyecto];
+    familyKeys.forEach(f => {
+      dataValues.push(budgetByFamily[f].presupuesto, budgetByFamily[f].erogado, budgetByFamily[f].porErogar);
+    });
+    dataValues.push(totalPorErogar);
+
+    const dataRow = sheetPresupuestos.addRow(dataValues);
+    for (let i = 3; i <= lastCol; i++) {
       dataRow.getCell(i).numFmt = "$#,##0.00";
+      if (dataRow.getCell(i).value < 0) dataRow.getCell(i).font = { color: { argb: "FFFF0000" } };
     }
-    for (let i = 3; i <= 12; i++) {
-      if (dataRow.getCell(i).value < 0) {
-        dataRow.getCell(i).font = { color: { argb: "FFFF0000" } };
-      }
-    }
-    for (let i = 1; i <= 12; i++) {
+    for (let i = 1; i <= lastCol; i++) {
       dataRow.getCell(i).border = { top: { style: "thin" }, left: { style: "thin" }, right: { style: "thin" }, bottom: { style: "thin" } };
     }
 
     sheetPresupuestos.getColumn(1).width = 8;
     sheetPresupuestos.getColumn(2).width = 30;
-    for (let i = 3; i <= 12; i++) {
+    for (let i = 3; i <= lastCol; i++) {
       sheetPresupuestos.getColumn(i).width = 15;
     }
 

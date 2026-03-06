@@ -10,7 +10,7 @@ export async function getPresupuestos(proyectoId) {
       (presupuesto_asignado - gastado) AS restante
     FROM viaticos_presupuestos
     WHERE id_proyecto = ?
-    ORDER BY FIELD(familia, 'Mano de Obra', 'Viáticos', 'Fletes')
+    ORDER BY FIELD(familia, 'Mano de Obra', 'Viáticos', 'Fletes', 'F.H.', 'Rentas Casa')
   `;
   return queryAsync(sql, [proyectoId]);
 }
