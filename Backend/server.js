@@ -58,11 +58,12 @@ const queryAsync = (sql, params = []) =>
   });
 
 // Migración automática: agregar columnas manuales de cobranza si no existen
-db.query(`ALTER TABLE cobranza_proyecto ADD COLUMN IF NOT EXISTS importe_contratado DECIMAL(15,2) DEFAULT 0.00`, (err) => {
-  if (err && err.code !== 'ER_DUP_FIELDNAME') console.warn("migrate importe_contratado:", err?.message);
+// Usa errno 1060 (ER_DUP_FIELDNAME) para ignorar si la columna ya existe (compatible MySQL 5.7+)
+db.query(`ALTER TABLE cobranza_proyecto ADD COLUMN importe_contratado DECIMAL(15,2) DEFAULT 0.00`, (err) => {
+  if (err && err.errno !== 1060) console.warn("migrate importe_contratado:", err?.message);
 });
-db.query(`ALTER TABLE cobranza_proyecto ADD COLUMN IF NOT EXISTS aplicado DECIMAL(15,2) DEFAULT 0.00`, (err) => {
-  if (err && err.code !== 'ER_DUP_FIELDNAME') console.warn("migrate aplicado:", err?.message);
+db.query(`ALTER TABLE cobranza_proyecto ADD COLUMN aplicado DECIMAL(15,2) DEFAULT 0.00`, (err) => {
+  if (err && err.errno !== 1060) console.warn("migrate aplicado:", err?.message);
 });
 
 // Ruta de login (compatibilidad: acepta hash SHA-256 o texto plano)
