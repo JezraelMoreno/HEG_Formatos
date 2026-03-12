@@ -17,9 +17,11 @@
     "electron:build:win": "npm run build && electron-builder --win",
     "electron:build:mac": "npm run build && electron-builder --mac",
     "electron:build:linux": "npm run build && electron-builder --linux",
-    "generate-icons": "node scripts/generate-icons.cjs"
+    "generate-icons": "node scripts/generate-icons.cjs",
+    "electron:publish": "npm run build && electron-builder --win --publish always"
   },
   "dependencies": {
+    "electron-updater": "^6.3.9",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-router-dom": "^7.9.4",
@@ -49,6 +51,12 @@
   "build": {
     "appId": "com.heg.formatos",
     "productName": "HEG Formatos",
+    "publish": {
+      "provider": "github",
+      "owner": "JezraelMoreno",
+      "repo": "HEG_Formatos",
+      "releaseType": "release"
+    },
     "directories": {
       "output": "dist-electron"
     },

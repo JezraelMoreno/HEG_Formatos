@@ -1,4 +1,5 @@
 import { Routes, Route, Navigate } from "react-router-dom";
+import { UpdateBanner } from "./components/UpdateBanner";
 import { LoginPage } from "./pages/loginPage";
 import { MainPage } from "./pages/mainPage";
 import { ProyectoDetalle } from "./pages/proyectoDetalle";
@@ -18,7 +19,9 @@ import { PrivateRoute } from "./components/PrivateRoute";
 
 function App() {
   return (
-    <Routes>
+    <>
+      <UpdateBanner />
+      <Routes>
       <Route path="/" element={<LoginPage />} />
       <Route
         path="/home"
@@ -145,6 +148,7 @@ function App() {
       {/* Redirige cualquier ruta no existente al login */}
       <Route path="*" element={<Navigate to="/" />} />
     </Routes>
+    </>
   );
 }
 

@@ -1,4 +1,5 @@
-const { app, BrowserWindow, Menu } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain } = require('electron');
+const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs = require('fs');
 
@@ -105,10 +106,51 @@ function createWindow() {
   Menu.setApplicationMenu(menu);
 }
 
+// ─── Auto-updater ─────────────────────────────────────────────────────────────
+
+function setupAutoUpdater() {
+  if (isDev) return;
+
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on('update-available', (info) => {
+    mainWindow.webContents.send('update-available', {
+      version: info.version,
+      releaseNotes: info.releaseNotes || ''
+    });
+  });
+
+  autoUpdater.on('update-not-available', () => {
+    mainWindow.webContents.send('update-not-available');
+  });
+
+  autoUpdater.on('error', (err) => {
+    mainWindow.webContents.send('update-error', { message: err.message });
+  });
+
+  autoUpdater.on('download-progress', (progress) => {
+    mainWindow.webContents.send('update-download-progress', {
+      percent: Math.round(progress.percent)
+    });
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    mainWindow.webContents.send('update-downloaded', { version: info.version });
+  });
+
+  ipcMain.on('check-for-update',  () => autoUpdater.checkForUpdates());
+  ipcMain.on('download-update',   () => autoUpdater.downloadUpdate());
+  ipcMain.on('install-update',    () => autoUpdater.quitAndInstall(false, true));
+
+  setTimeout(() => autoUpdater.checkForUpdates(), 3000);
+}
+
 // ─── Ciclo de vida de la app ──────────────────────────────────────────────────
 
 app.whenReady().then(() => {
   createWindow();
+  setupAutoUpdater();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
