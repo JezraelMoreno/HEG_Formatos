@@ -57,6 +57,14 @@ const queryAsync = (sql, params = []) =>
     });
   });
 
+// Migración automática: agregar columnas manuales de cobranza si no existen
+db.query(`ALTER TABLE cobranza_proyecto ADD COLUMN IF NOT EXISTS importe_contratado DECIMAL(15,2) DEFAULT 0.00`, (err) => {
+  if (err && err.code !== 'ER_DUP_FIELDNAME') console.warn("migrate importe_contratado:", err?.message);
+});
+db.query(`ALTER TABLE cobranza_proyecto ADD COLUMN IF NOT EXISTS aplicado DECIMAL(15,2) DEFAULT 0.00`, (err) => {
+  if (err && err.code !== 'ER_DUP_FIELDNAME') console.warn("migrate aplicado:", err?.message);
+});
+
 // Ruta de login (compatibilidad: acepta hash SHA-256 o texto plano)
 app.post("/login", (req, res) => {
   const { nombre_usuario, contrasena } = req.body || {};
@@ -3015,14 +3023,14 @@ app.get("/cobranza/export", authenticateToken, async (req, res) => {
         p.id_proyecto,
         p.nombre AS proyecto,
         COALESCE(cp.codigo_control, '') AS codigo_control,
-        COALESCE(p.presupuesto_total, p.presupuesto, 0) AS importe_contratado,
+        COALESCE(cp.importe_contratado, 0) AS importe_contratado,
         COALESCE(cp.importe_cobrado, 0) AS importe_cobrado,
-        (COALESCE(p.presupuesto_total, p.presupuesto, 0) - COALESCE(cp.importe_cobrado, 0)) AS importe_a_cobrar,
+        (COALESCE(cp.importe_contratado, 0) - COALESCE(cp.importe_cobrado, 0)) AS importe_a_cobrar,
         COALESCE(cp.fondo_garantia, 0) AS fondo_garantia,
-        (COALESCE(p.presupuesto_total, p.presupuesto, 0) - COALESCE(cp.importe_cobrado, 0) - COALESCE(cp.fondo_garantia, 0)) AS liquido_por_cobrar,
+        (COALESCE(cp.importe_contratado, 0) - COALESCE(cp.importe_cobrado, 0) - COALESCE(cp.fondo_garantia, 0)) AS liquido_por_cobrar,
         COALESCE(facturas.saldo_pendiente, 0) AS facturas_por_cobrar,
-        COALESCE(gastos_directos.total_pedidos, 0) AS total_pedidos,
-        COALESCE(gastos_viaticos.total_viaticos, 0) AS total_viaticos,
+        COALESCE(cp.aplicado, 0) AS total_pedidos,
+        0 AS total_viaticos,
         p.estado,
         COALESCE(cp.factor_indirectos, 0.20) AS factor_indirectos,
         COALESCE(cp.indirectos_aplicados, 0) AS indirectos_aplicados
@@ -3636,22 +3644,20 @@ app.get("/proyectos/:id/cobranza-resumen", authenticateToken, async (req, res) =
       return res.status(400).json({ success: false, message: "Proyecto inválido" });
     }
 
-    // importe_cobrado se lee directamente del campo manual en cobranza_proyecto
+    // Todos los campos del resumen son de captura manual en cobranza_proyecto
     const query = `
       SELECT
         p.id_proyecto,
         p.nombre AS proyecto,
         COALESCE(cp.codigo_control, '') AS codigo_control,
-        COALESCE(p.presupuesto_total, p.presupuesto, 0) AS importe_contratado,
+        COALESCE(cp.importe_contratado, 0) AS importe_contratado,
         COALESCE(cp.importe_cobrado, 0) AS importe_cobrado,
-        (COALESCE(p.presupuesto_total, p.presupuesto, 0) - COALESCE(cp.importe_cobrado, 0)) AS importe_a_cobrar,
+        (COALESCE(cp.importe_contratado, 0) - COALESCE(cp.importe_cobrado, 0)) AS importe_a_cobrar,
         COALESCE(cp.fondo_garantia, 0) AS fondo_garantia,
-        (COALESCE(p.presupuesto_total, p.presupuesto, 0) - COALESCE(cp.importe_cobrado, 0) - COALESCE(cp.fondo_garantia, 0)) AS liquido_por_cobrar,
+        (COALESCE(cp.importe_contratado, 0) - COALESCE(cp.importe_cobrado, 0) - COALESCE(cp.fondo_garantia, 0)) AS liquido_por_cobrar,
         COALESCE(facturas.saldo_pendiente, 0) AS facturas_por_cobrar,
-        COALESCE(gastos.total_pedidos, 0) AS total_pedidos,
-        COALESCE(gastos.total_viaticos, 0) AS total_viaticos,
-        (COALESCE(gastos.total_pedidos, 0) + COALESCE(gastos.total_viaticos, 0)) AS aplicado,
-        (COALESCE(cp.importe_cobrado, 0) - COALESCE(gastos.total_pedidos, 0) - COALESCE(gastos.total_viaticos, 0)) AS cobrado_vs_aplicado,
+        COALESCE(cp.aplicado, 0) AS aplicado,
+        (COALESCE(cp.importe_cobrado, 0) - COALESCE(cp.aplicado, 0)) AS cobrado_vs_aplicado,
         p.estado,
         COALESCE(cp.factor_indirectos, 0.20) AS factor_indirectos,
         COALESCE(cp.indirectos_aplicados, 0) AS indirectos_aplicados
@@ -3710,20 +3716,30 @@ app.get("/proyectos/:id/cobranza-resumen", authenticateToken, async (req, res) =
 app.put("/proyectos/:id/cobranza-resumen", authenticateToken, requireRole("contador"), async (req, res) => {
   try {
     const proyectoId = Number(req.params.id);
-    const { codigo_control, importe_cobrado, fondo_garantia, factor_indirectos, indirectos_aplicados } = req.body || {};
+    const { codigo_control, importe_contratado, importe_cobrado, fondo_garantia, aplicado, factor_indirectos, indirectos_aplicados } = req.body || {};
     const username = req.user?.username || "unknown";
 
     if (!Number.isInteger(proyectoId) || proyectoId <= 0) {
       return res.status(400).json({ success: false, message: "Proyecto inválido" });
     }
 
+    const importeContratadoVal = Number(importe_contratado);
     const importeCobradoVal = Number(importe_cobrado);
     const fondoGarantiaVal = Number(fondo_garantia);
+    const aplicadoVal = Number(aplicado);
     const factorIndirectosVal = Number(factor_indirectos);
     const indirectosAplicadosVal = Number(indirectos_aplicados);
 
+    if (importe_contratado !== undefined && (!Number.isFinite(importeContratadoVal) || importeContratadoVal < 0)) {
+      return res.status(400).json({ success: false, message: "Importe contratado inválido" });
+    }
+
     if (importe_cobrado !== undefined && (!Number.isFinite(importeCobradoVal) || importeCobradoVal < 0)) {
       return res.status(400).json({ success: false, message: "Importe cobrado inválido" });
+    }
+
+    if (aplicado !== undefined && (!Number.isFinite(aplicadoVal) || aplicadoVal < 0)) {
+      return res.status(400).json({ success: false, message: "Aplicado inválido" });
     }
 
     if (fondo_garantia !== undefined && (!Number.isFinite(fondoGarantiaVal) || fondoGarantiaVal < 0)) {
@@ -3739,12 +3755,14 @@ app.put("/proyectos/:id/cobranza-resumen", authenticateToken, requireRole("conta
     }
 
     const query = `
-      INSERT INTO cobranza_proyecto (id_proyecto, codigo_control, importe_cobrado, fondo_garantia, factor_indirectos, indirectos_aplicados, nombre_usuario)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO cobranza_proyecto (id_proyecto, codigo_control, importe_contratado, importe_cobrado, fondo_garantia, aplicado, factor_indirectos, indirectos_aplicados, nombre_usuario)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE
         codigo_control = COALESCE(VALUES(codigo_control), codigo_control),
+        importe_contratado = COALESCE(VALUES(importe_contratado), importe_contratado),
         importe_cobrado = COALESCE(VALUES(importe_cobrado), importe_cobrado),
         fondo_garantia = COALESCE(VALUES(fondo_garantia), fondo_garantia),
+        aplicado = COALESCE(VALUES(aplicado), aplicado),
         factor_indirectos = COALESCE(VALUES(factor_indirectos), factor_indirectos),
         indirectos_aplicados = COALESCE(VALUES(indirectos_aplicados), indirectos_aplicados),
         nombre_usuario = VALUES(nombre_usuario)
@@ -3753,8 +3771,10 @@ app.put("/proyectos/:id/cobranza-resumen", authenticateToken, requireRole("conta
     await queryAsync(query, [
       proyectoId,
       codigo_control || null,
+      importe_contratado !== undefined ? importeContratadoVal : null,
       importe_cobrado !== undefined ? importeCobradoVal : null,
       fondo_garantia !== undefined ? fondoGarantiaVal : null,
+      aplicado !== undefined ? aplicadoVal : null,
       factor_indirectos !== undefined ? factorIndirectosVal : null,
       indirectos_aplicados !== undefined ? indirectosAplicadosVal : null,
       username

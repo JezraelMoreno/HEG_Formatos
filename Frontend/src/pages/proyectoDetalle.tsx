@@ -511,8 +511,10 @@ export function ProyectoDetalle() {
   const [periodoRegistro, setPeriodoRegistro] = useState<string>("");
   const [editandoCobranzaConfig, setEditandoCobranzaConfig] = useState(false);
   const [codigoControlEdit, setCodigoControlEdit] = useState<string>("");
+  const [importeContratadoEdit, setImporteContratadoEdit] = useState<string>("");
   const [importeCobradoEdit, setImporteCobradoEdit] = useState<string>("");
   const [fondoGarantiaEdit, setFondoGarantiaEdit] = useState<string>("");
+  const [aplicadoEdit, setAplicadoEdit] = useState<string>("");
   const [factorIndirectosEdit, setFactorIndirectosEdit] = useState<string>("");
   const [indirectosAplicadosEdit, setIndirectosAplicadosEdit] = useState<string>("");
 
@@ -1261,8 +1263,10 @@ export function ProyectoDetalle() {
       setError("");
       const body = {
         codigo_control: codigoControlEdit || null,
+        importe_contratado: importeContratadoEdit ? Number(importeContratadoEdit) : 0,
         importe_cobrado: importeCobradoEdit ? Number(importeCobradoEdit) : 0,
         fondo_garantia: fondoGarantiaEdit ? Number(fondoGarantiaEdit) : 0,
+        aplicado: aplicadoEdit ? Number(aplicadoEdit) : 0,
         factor_indirectos: factorIndirectosEdit ? Number(factorIndirectosEdit) / 100 : 0.20,
         indirectos_aplicados: indirectosAplicadosEdit ? Number(indirectosAplicadosEdit) : 0,
       };
@@ -1307,8 +1311,10 @@ export function ProyectoDetalle() {
 
   const abrirEditarCobranzaConfig = () => {
     setCodigoControlEdit(cobranzaResumen?.codigo_control || "");
+    setImporteContratadoEdit(String(cobranzaResumen?.importe_contratado || 0));
     setImporteCobradoEdit(String(cobranzaResumen?.importe_cobrado || 0));
     setFondoGarantiaEdit(String(cobranzaResumen?.fondo_garantia || 0));
+    setAplicadoEdit(String(cobranzaResumen?.aplicado || 0));
     setFactorIndirectosEdit(String((cobranzaResumen?.factor_indirectos || 0.20) * 100));
     setIndirectosAplicadosEdit(String(cobranzaResumen?.indirectos_aplicados || 0));
     setEditandoCobranzaConfig(true);
@@ -2031,6 +2037,18 @@ export function ProyectoDetalle() {
                       />
                     </div>
                     <div>
+                      <label style={{ display: 'block', fontSize: 12, color: '#666', marginBottom: 4 }}>Importe Contratado</label>
+                      <input
+                        className="filter-select"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={importeContratadoEdit}
+                        onChange={(e) => setImporteContratadoEdit(e.target.value)}
+                        placeholder="Monto contratado"
+                      />
+                    </div>
+                    <div>
                       <label style={{ display: 'block', fontSize: 12, color: '#666', marginBottom: 4 }}>Importe Cobrado</label>
                       <input
                         className="filter-select"
@@ -2051,6 +2069,18 @@ export function ProyectoDetalle() {
                         value={fondoGarantiaEdit}
                         onChange={(e) => setFondoGarantiaEdit(e.target.value)}
                         placeholder="Monto fijo"
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 12, color: '#666', marginBottom: 4 }}>Aplicado (Gastos)</label>
+                      <input
+                        className="filter-select"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={aplicadoEdit}
+                        onChange={(e) => setAplicadoEdit(e.target.value)}
+                        placeholder="Total gastado"
                       />
                     </div>
                     <div>
@@ -2088,6 +2118,12 @@ export function ProyectoDetalle() {
                       <p style={{ margin: 0, fontSize: 16, fontWeight: 500 }}>{cobranzaResumen?.codigo_control || '-'}</p>
                     </div>
                     <div>
+                      <small style={{ color: '#666' }}>Importe Contratado</small>
+                      <p style={{ margin: 0, fontSize: 16, fontWeight: 500 }}>
+                        ${Number(cobranzaResumen?.importe_contratado || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      </p>
+                    </div>
+                    <div>
                       <small style={{ color: '#666' }}>Importe Cobrado</small>
                       <p style={{ margin: 0, fontSize: 16, fontWeight: 500, color: '#16a34a' }}>
                         ${Number(cobranzaResumen?.importe_cobrado || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
@@ -2097,6 +2133,12 @@ export function ProyectoDetalle() {
                       <small style={{ color: '#666' }}>Fondo de Garantía</small>
                       <p style={{ margin: 0, fontSize: 16, fontWeight: 500 }}>
                         ${Number(cobranzaResumen?.fondo_garantia || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      </p>
+                    </div>
+                    <div>
+                      <small style={{ color: '#666' }}>Aplicado (Gastos)</small>
+                      <p style={{ margin: 0, fontSize: 16, fontWeight: 500 }}>
+                        ${Number(cobranzaResumen?.aplicado || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                       </p>
                     </div>
                     <div>
