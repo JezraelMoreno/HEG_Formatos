@@ -5994,6 +5994,47 @@ app.put("/facturas/:id", authenticateToken, FacturasCtrl.actualizar);
 
 app.delete("/facturas/:id", authenticateToken, FacturasCtrl.eliminar);
 
+// Gestión de usuarios (solo administrador)
+app.get("/usuarios", authenticateToken, requireRole("administrador"), async (req, res) => {
+  try {
+    const rows = await new Promise((resolve, reject) => {
+      db.query("SELECT id_usuario, nombre_usuario, tipo_usuario FROM usuarios ORDER BY nombre_usuario", (err, r) => {
+        if (err) reject(err); else resolve(r);
+      });
+    });
+    return res.json({ success: true, data: rows });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: "Error al obtener usuarios" });
+  }
+});
+
+app.post("/usuarios", authenticateToken, requireRole("administrador"), async (req, res) => {
+  try {
+    const { nombre_usuario, contrasena, tipo_usuario } = req.body || {};
+    if (!nombre_usuario || !contrasena || !tipo_usuario) {
+      return res.status(400).json({ success: false, message: "Faltan datos" });
+    }
+    const tiposValidos = ["administrador", "contador", "visor"];
+    if (!tiposValidos.includes(tipo_usuario)) {
+      return res.status(400).json({ success: false, message: "Tipo de usuario inválido" });
+    }
+    const hash = crypto.createHash("sha256").update(contrasena).digest("hex");
+    await new Promise((resolve, reject) => {
+      db.query(
+        "INSERT INTO usuarios (nombre_usuario, contrasena, tipo_usuario) VALUES (?, ?, ?)",
+        [nombre_usuario.trim(), hash, tipo_usuario],
+        (err, result) => { if (err) reject(err); else resolve(result); }
+      );
+    });
+    return res.status(201).json({ success: true, message: "Usuario creado correctamente" });
+  } catch (err) {
+    if (err.code === "ER_DUP_ENTRY") {
+      return res.status(409).json({ success: false, message: "El nombre de usuario ya existe" });
+    }
+    return res.status(500).json({ success: false, message: "Error al crear usuario" });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(` Servidor corriendo en http://localhost:${PORT}`);
 });

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { ChangeEventHandler, MouseEvent } from "react";
+import type { ChangeEventHandler, FormEvent, MouseEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import "./mainPage.css";
 import { authHeader, clearToken, getRole, getToken, isTokenValid } from "../auth";
@@ -101,6 +101,12 @@ export function MainPage() {
   const [mensajeGeneral, setMensajeGeneral] = useState<string>("");
   const [subiendoPedidos, setSubiendoPedidos] = useState(false);
   const [modalAbierto, setModalAbierto] = useState(false);
+  const [modalUsuariosAbierto, setModalUsuariosAbierto] = useState(false);
+  const [usuarios, setUsuarios] = useState<Array<{ id_usuario: number; nombre_usuario: string; tipo_usuario: string }>>([]);
+  const [nuevoUsuario, setNuevoUsuario] = useState({ nombre_usuario: "", contrasena: "", tipo_usuario: "contador" });
+  const [errorUsuario, setErrorUsuario] = useState("");
+  const [mensajeUsuario, setMensajeUsuario] = useState("");
+  const [guardandoUsuario, setGuardandoUsuario] = useState(false);
   const [nombre, setNombre] = useState("");
   const [fecha, setFecha] = useState("");
   const [presupuestoCristal, setPresupuestoCristal] = useState("");
@@ -173,6 +179,48 @@ export function MainPage() {
   const handleLogout = () => {
     clearToken();
     navigate("/");
+  };
+
+  const abrirModalUsuarios = async () => {
+    setModalUsuariosAbierto(true);
+    setErrorUsuario("");
+    setMensajeUsuario("");
+    setNuevoUsuario({ nombre_usuario: "", contrasena: "", tipo_usuario: "contador" });
+    try {
+      const res = await fetch(`${API_URL}/usuarios`, { headers: { ...authHeader() } });
+      const data = await res.json();
+      if (res.ok && data.success) setUsuarios(data.data);
+    } catch {
+      setErrorUsuario("No se pudieron cargar los usuarios.");
+    }
+  };
+
+  const crearUsuario = async (e: FormEvent) => {
+    e.preventDefault();
+    setErrorUsuario("");
+    setMensajeUsuario("");
+    setGuardandoUsuario(true);
+    try {
+      const res = await fetch(`${API_URL}/usuarios`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeader() },
+        body: JSON.stringify(nuevoUsuario),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setMensajeUsuario("Usuario creado correctamente.");
+        setNuevoUsuario({ nombre_usuario: "", contrasena: "", tipo_usuario: "contador" });
+        const res2 = await fetch(`${API_URL}/usuarios`, { headers: { ...authHeader() } });
+        const data2 = await res2.json();
+        if (res2.ok && data2.success) setUsuarios(data2.data);
+      } else {
+        setErrorUsuario(data.message || "Error al crear usuario.");
+      }
+    } catch {
+      setErrorUsuario("Error de conexión.");
+    } finally {
+      setGuardandoUsuario(false);
+    }
   };
 
   const seleccionarModulo = (key: ModuleKey) => {
@@ -618,6 +666,12 @@ export function MainPage() {
             </>
           )}
 
+          {isAdmin && (
+            <button className="action-button secondary-button" onClick={abrirModalUsuarios}>
+              Usuarios
+            </button>
+          )}
+
           <button
             className="action-button secondary-button"
             onClick={() => setDarkMode(prev => !prev)}
@@ -1015,6 +1069,75 @@ export function MainPage() {
                 {eliminandoProyecto ? "Eliminando..." : "Eliminar proyecto"}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {modalUsuariosAbierto && (
+        <div className="modal-overlay" onClick={() => setModalUsuariosAbierto(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480 }}>
+            <h3>Gestionar usuarios</h3>
+
+            <form onSubmit={crearUsuario} className="form-proyecto">
+              <label>Nombre de usuario</label>
+              <input
+                type="text"
+                value={nuevoUsuario.nombre_usuario}
+                onChange={(e) => setNuevoUsuario((u) => ({ ...u, nombre_usuario: e.target.value }))}
+                placeholder="Nombre de usuario"
+                required
+                maxLength={15}
+              />
+              <label>Contraseña</label>
+              <input
+                type="password"
+                value={nuevoUsuario.contrasena}
+                onChange={(e) => setNuevoUsuario((u) => ({ ...u, contrasena: e.target.value }))}
+                placeholder="Contraseña"
+                required
+              />
+              <label>Tipo</label>
+              <select
+                value={nuevoUsuario.tipo_usuario}
+                onChange={(e) => setNuevoUsuario((u) => ({ ...u, tipo_usuario: e.target.value }))}
+              >
+                <option value="contador">Contador</option>
+                <option value="administrador">Administrador</option>
+                <option value="visor">Visor</option>
+              </select>
+              {errorUsuario && <p className="error-text">{errorUsuario}</p>}
+              {mensajeUsuario && <p style={{ color: "green" }}>{mensajeUsuario}</p>}
+              <div className="modal-actions">
+                <button type="button" className="cancel-button" onClick={() => setModalUsuariosAbierto(false)}>
+                  Cerrar
+                </button>
+                <button type="submit" className="action-button create-button" disabled={guardandoUsuario}>
+                  {guardandoUsuario ? "Guardando..." : "Agregar usuario"}
+                </button>
+              </div>
+            </form>
+
+            {usuarios.length > 0 && (
+              <div style={{ marginTop: "1rem" }}>
+                <h4 style={{ marginBottom: "0.5rem" }}>Usuarios registrados</h4>
+                <table className="tabla-resumen">
+                  <thead>
+                    <tr>
+                      <th>Usuario</th>
+                      <th>Tipo</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {usuarios.map((u) => (
+                      <tr key={u.id_usuario}>
+                        <td>{u.nombre_usuario}</td>
+                        <td>{u.tipo_usuario}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       )}
