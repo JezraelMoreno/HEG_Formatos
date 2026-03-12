@@ -55,7 +55,8 @@
       "provider": "github",
       "owner": "JezraelMoreno",
       "repo": "HEG_Formatos",
-      "releaseType": "release"
+      "releaseType": "release",
+      "draft": false
     },
     "directories": {
       "output": "dist-electron"
