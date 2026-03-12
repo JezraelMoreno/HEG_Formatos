@@ -9,35 +9,35 @@ export const DashboardNav: React.FC = () => {
     {
       title: 'Dashboard Ejecutivo',
       description: 'Vista general del sistema',
-      icon: '📊',
+      icon: 'EJ',
       path: '/dashboards/ejecutivo',
       color: '#3b82f6'
     },
     {
       title: 'Presupuestos',
       description: 'Análisis financiero',
-      icon: '💰',
+      icon: 'PR',
       path: '/dashboards/presupuestos',
       color: '#10b981'
     },
     {
       title: 'Proyectos',
       description: 'Seguimiento de proyectos',
-      icon: '📋',
+      icon: 'PY',
       path: '/dashboards/proyectos',
       color: '#f59e0b'
     },
     {
       title: 'Materiales',
       description: 'Gestión de inventario',
-      icon: '📦',
+      icon: 'MT',
       path: '/dashboards/materiales',
       color: '#8b5cf6'
     },
     {
       title: 'Cobranza General',
       description: 'Control de cobranza y números rojos',
-      icon: '💵',
+      icon: 'CB',
       path: '/dashboards/cobranza',
       color: '#ef4444'
     }

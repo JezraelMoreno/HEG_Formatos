@@ -2425,7 +2425,7 @@ export function ProyectoDetalle() {
                       }
                     }}
                   >
-                    📊 Exportar a Excel
+                    Exportar a Excel
                   </button>
                 </div>
 
@@ -2493,7 +2493,7 @@ export function ProyectoDetalle() {
                                 }}
                                 aria-label="Eliminar"
                               >
-                                🗑️
+                                X
                               </button>
                             </td>
                           )}

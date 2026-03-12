@@ -245,15 +245,15 @@ const parseDetailBlock = (rows: string[][], headerIndex: number) => {
     "PZ",
     "PIEZ",
     "PIEZS",
-    "PZAS", // 🔧 soportar PZAS
+    "PZAS", // soportar PZAS
   ]);
   const idxPrecioUnitario = idx([
     "P UNITARIO",
     "P UNIT",
     "PRECIO UNITARIO",
     "PUNITARIO",
-    "PU",  // 🔧 soportar P.U. → PU
-    "P U", // 🔧 por si viene con espacio
+    "PU",  // soportar P.U. → PU
+    "P U", // por si viene con espacio
   ]);
   const idxImporte = idx(["IMPORTE"]);
   const idxClave = idx(["CLAVE"]);
