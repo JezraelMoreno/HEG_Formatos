@@ -129,6 +129,7 @@ export function MainPage() {
   const filtroFechaRef = useRef<HTMLInputElement | null>(null);
   const role = (getRole() || "").toLowerCase();
   const isAdmin = role === "administrador";
+  const isVisor = role === "visor";
   const totalMiscel = miscelFamilias.reduce((sum, f) => {
     const n = Number(f.presupuesto);
     return Number.isFinite(n) && n >= 0 ? sum + n : sum;
@@ -673,7 +674,7 @@ export function MainPage() {
             </>
           )}
 
-          {isAdmin && (
+          {(isAdmin || isVisor) && (
             <button className="action-button secondary-button" onClick={abrirModalUsuarios}>
               Usuarios
             </button>
@@ -861,7 +862,7 @@ export function MainPage() {
             )}
           </section>
 
-          {isAdmin && (
+          {(isAdmin || isVisor) && (
             <section className="panel panel-resumen">
               <div className="panel-resumen-header">
                 <h2>Pedidos ingresados</h2>
@@ -1085,7 +1086,7 @@ export function MainPage() {
           <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480 }}>
             <h3>Gestionar usuarios</h3>
 
-            <form onSubmit={crearUsuario} className="form-proyecto">
+            {isAdmin && (<form onSubmit={crearUsuario} className="form-proyecto">
               <label>Nombre de usuario</label>
               <input
                 type="text"
@@ -1141,7 +1142,22 @@ export function MainPage() {
                   {guardandoUsuario ? "Guardando..." : "Agregar usuario"}
                 </button>
               </div>
-            </form>
+            </form>)}
+
+            {!isAdmin && (errorUsuario || mensajeUsuario) && (
+              <>
+                {errorUsuario && <p className="error-text">{errorUsuario}</p>}
+                {mensajeUsuario && <p style={{ color: "green" }}>{mensajeUsuario}</p>}
+              </>
+            )}
+
+            {!isAdmin && (
+              <div className="modal-actions" style={{ marginTop: "0.5rem" }}>
+                <button type="button" className="cancel-button" onClick={() => setModalUsuariosAbierto(false)}>
+                  Cerrar
+                </button>
+              </div>
+            )}
 
             {usuarios.length > 0 && (
               <div style={{ marginTop: "1rem" }}>

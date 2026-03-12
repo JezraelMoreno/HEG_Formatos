@@ -479,6 +479,7 @@ export function ProyectoDetalle() {
   const nombreProyecto = proyectoInfo?.nombre || state?.nombre || "Proyecto";
   const role = (getRole() || '').toLowerCase();
   const isAdmin = role === 'administrador';
+  const isVisor = role === 'visor';
   const mostrarViaticos = moduloOrigen === "viaticos";
 
   // viáticos
@@ -510,6 +511,7 @@ export function ProyectoDetalle() {
   const [periodoRegistro, setPeriodoRegistro] = useState<string>("");
   const [editandoCobranzaConfig, setEditandoCobranzaConfig] = useState(false);
   const [codigoControlEdit, setCodigoControlEdit] = useState<string>("");
+  const [importeCobradoEdit, setImporteCobradoEdit] = useState<string>("");
   const [fondoGarantiaEdit, setFondoGarantiaEdit] = useState<string>("");
   const [factorIndirectosEdit, setFactorIndirectosEdit] = useState<string>("");
   const [indirectosAplicadosEdit, setIndirectosAplicadosEdit] = useState<string>("");
@@ -758,7 +760,7 @@ export function ProyectoDetalle() {
   };
 
   const cargarExplosion = useCallback(async () => {
-    if (!id || !isAdmin || !mostrarPedidosModulo) return;
+    if (!id || (!isAdmin && !isVisor) || !mostrarPedidosModulo) return;
     setCargandoExplosion(true);
     setErrorExplosion("");
     try {
@@ -792,7 +794,7 @@ export function ProyectoDetalle() {
     } finally {
       setCargandoExplosion(false);
     }
-  }, [id, isAdmin, mostrarPedidosModulo]);
+  }, [id, isAdmin, isVisor, mostrarPedidosModulo]);
 
   const cargarMiscelDetalle = useCallback(async () => {
     if (!id) return;
@@ -884,7 +886,7 @@ export function ProyectoDetalle() {
   useEffect(() => {
     if (!isTokenValid(getToken())) { navigate("/"); return; }
     cargarProyecto();
-    if (isAdmin) {
+    if (isAdmin || isVisor) {
       cargarPedidos();
       if (mostrarPedidosModulo) {
         cargarExplosion();
@@ -905,7 +907,7 @@ export function ProyectoDetalle() {
     }
     cargarCobranza();
     cargarHistorialPresupuesto();
-  }, [cargarPedidos, cargarProyecto, cargarCobranza, cargarHistorialPresupuesto, navigate, isAdmin, mostrarPedidosModulo, cargarExplosion]);
+  }, [cargarPedidos, cargarProyecto, cargarCobranza, cargarHistorialPresupuesto, navigate, isAdmin, isVisor, mostrarPedidosModulo, cargarExplosion]);
 
   useEffect(() => {
     const combinar = (prev: string[], valores: (string | null | undefined)[], adicionales: string[] = []) => {
@@ -1259,6 +1261,7 @@ export function ProyectoDetalle() {
       setError("");
       const body = {
         codigo_control: codigoControlEdit || null,
+        importe_cobrado: importeCobradoEdit ? Number(importeCobradoEdit) : 0,
         fondo_garantia: fondoGarantiaEdit ? Number(fondoGarantiaEdit) : 0,
         factor_indirectos: factorIndirectosEdit ? Number(factorIndirectosEdit) / 100 : 0.20,
         indirectos_aplicados: indirectosAplicadosEdit ? Number(indirectosAplicadosEdit) : 0,
@@ -1304,6 +1307,7 @@ export function ProyectoDetalle() {
 
   const abrirEditarCobranzaConfig = () => {
     setCodigoControlEdit(cobranzaResumen?.codigo_control || "");
+    setImporteCobradoEdit(String(cobranzaResumen?.importe_cobrado || 0));
     setFondoGarantiaEdit(String(cobranzaResumen?.fondo_garantia || 0));
     setFactorIndirectosEdit(String((cobranzaResumen?.factor_indirectos || 0.20) * 100));
     setIndirectosAplicadosEdit(String(cobranzaResumen?.indirectos_aplicados || 0));
@@ -1331,7 +1335,7 @@ export function ProyectoDetalle() {
             {subiendo ? "Subiendo..." : "Agregar pedidos"}
           </button>
           )}
-          {isAdmin && (
+          {(isAdmin || isVisor) && (
           <MultiSelectFilter
             label="Familias"
             placeholder="Todas las familias"
@@ -1343,7 +1347,7 @@ export function ProyectoDetalle() {
             }}
           />
           )}
-          {isAdmin && (
+          {(isAdmin || isVisor) && (
           <MultiSelectFilter
             label="Clanes"
             placeholder="Todos los clanes"
@@ -1355,7 +1359,7 @@ export function ProyectoDetalle() {
             }}
           />
           )}
-          {isAdmin && (
+          {(isAdmin || isVisor) && (
           <MultiSelectFilter
             label="Proveedores"
             placeholder="Todos los proveedores"
@@ -1367,7 +1371,7 @@ export function ProyectoDetalle() {
             }}
           />
           )}
-          {isAdmin && (
+          {(isAdmin || isVisor) && (
           <select
             className="filter-select"
             value={concepto}
@@ -1383,7 +1387,7 @@ export function ProyectoDetalle() {
             ))}
           </select>
           )}
-          {isAdmin && (
+          {(isAdmin || isVisor) && (
           <input
             className="filter-select"
             type="date"
@@ -1395,7 +1399,7 @@ export function ProyectoDetalle() {
             }}
           />
           )}
-          {isAdmin && (
+          {(isAdmin || isVisor) && (
           <button
             type="button"
             className="btn btn-secondary"
@@ -1557,7 +1561,7 @@ export function ProyectoDetalle() {
 
         {mensaje && <p className="alert success">{mensaje}</p>}
         {error && <p className="alert error">{error}</p>}
-        {!isAdmin || !mostrarPedidosModulo ? null : (
+        {(!isAdmin && !isVisor) || !mostrarPedidosModulo ? null : (
           <>
             <div className="placeholder-card">
               <p>Selecciona uno o varios archivos CSV con el formato esperado para cargar pedidos.</p>
@@ -2006,7 +2010,7 @@ export function ProyectoDetalle() {
         {mostrarCobranza && (
           <div className="cobranza-section">
             {/* Configuración de cobranza (código control y fondo garantía) */}
-            {!isAdmin && (
+            {role === 'contador' && (
               <div className="placeholder-card" style={{ marginBottom: 16 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                   <h3 style={{ margin: 0 }}>Configuración de Cobranza</h3>
@@ -2024,6 +2028,18 @@ export function ProyectoDetalle() {
                         value={codigoControlEdit}
                         onChange={(e) => setCodigoControlEdit(e.target.value)}
                         placeholder="Ej: 00431"
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 12, color: '#666', marginBottom: 4 }}>Importe Cobrado</label>
+                      <input
+                        className="filter-select"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={importeCobradoEdit}
+                        onChange={(e) => setImporteCobradoEdit(e.target.value)}
+                        placeholder="Monto cobrado"
                       />
                     </div>
                     <div>
@@ -2070,6 +2086,12 @@ export function ProyectoDetalle() {
                     <div>
                       <small style={{ color: '#666' }}>Código de Control</small>
                       <p style={{ margin: 0, fontSize: 16, fontWeight: 500 }}>{cobranzaResumen?.codigo_control || '-'}</p>
+                    </div>
+                    <div>
+                      <small style={{ color: '#666' }}>Importe Cobrado</small>
+                      <p style={{ margin: 0, fontSize: 16, fontWeight: 500, color: '#16a34a' }}>
+                        ${Number(cobranzaResumen?.importe_cobrado || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      </p>
                     </div>
                     <div>
                       <small style={{ color: '#666' }}>Fondo de Garantía</small>
@@ -2153,7 +2175,7 @@ export function ProyectoDetalle() {
             <div className="tabla-wrapper cobranza-wrapper">
               <div className="tabla-toolbar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div className="tabla-header">Historial de Facturas</div>
-                {!isAdmin && (
+                {role === 'contador' && (
                   <button
                     className="btn btn-primary"
                     onClick={() => navigate(`/contabilidad/${id}`)}
@@ -2165,7 +2187,7 @@ export function ProyectoDetalle() {
               </div>
 
               {/* Formulario para agregar factura */}
-              {!isAdmin && formCobranzaAbierto && (
+              {role === 'contador' && formCobranzaAbierto && (
                 <div style={{ padding: 16, background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
                   <h4 style={{ margin: '0 0 12px 0', fontSize: 14 }}>Nueva Factura de Cobranza</h4>
                   <form onSubmit={submitCobranza}>
@@ -2266,7 +2288,7 @@ export function ProyectoDetalle() {
                       <th style={{ textAlign: 'right' }}>Importe Cobrado</th>
                       <th style={{ textAlign: 'right' }}>Saldo por Cobrar</th>
                       <th>Fecha Pago</th>
-                      {!isAdmin && <th>Acciones</th>}
+                      {role === 'contador' && <th>Acciones</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -2283,7 +2305,7 @@ export function ProyectoDetalle() {
                           ${Number(f.saldo_por_cobrar || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                         </td>
                         <td>{f.fecha_pago || '-'}</td>
-                        {!isAdmin && (
+                        {role === 'contador' && (
                           <td>
                             <button
                               className="btn btn-danger"
@@ -2310,7 +2332,7 @@ export function ProyectoDetalle() {
                         ${cobranzaFacturas.reduce((sum, f) => sum + Number(f.saldo_por_cobrar || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                       </td>
                       <td></td>
-                      {!isAdmin && <td></td>}
+                      {role === 'contador' && <td></td>}
                     </tr>
                   </tfoot>
                 </table>
