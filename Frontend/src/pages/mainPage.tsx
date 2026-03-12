@@ -623,7 +623,7 @@ export function MainPage() {
             onClick={() => setDarkMode(prev => !prev)}
             title={darkMode ? "Modo claro" : "Modo oscuro"}
           >
-            {darkMode ? "☀️" : "🌙"}
+            {darkMode ? "Claro" : "Oscuro"}
           </button>
 
           <button className="action-button logout-button" onClick={handleLogout}>
