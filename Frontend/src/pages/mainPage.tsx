@@ -103,7 +103,8 @@ export function MainPage() {
   const [modalAbierto, setModalAbierto] = useState(false);
   const [modalUsuariosAbierto, setModalUsuariosAbierto] = useState(false);
   const [usuarios, setUsuarios] = useState<Array<{ id_usuario: number; nombre_usuario: string; tipo_usuario: string }>>([]);
-  const [nuevoUsuario, setNuevoUsuario] = useState({ nombre_usuario: "", contrasena: "", tipo_usuario: "contador" });
+  const [nuevoUsuario, setNuevoUsuario] = useState({ nombre_usuario: "", contrasena: "", confirmarContrasena: "", tipo_usuario: "contador" });
+  const [mostrarContrasena, setMostrarContrasena] = useState(false);
   const [errorUsuario, setErrorUsuario] = useState("");
   const [mensajeUsuario, setMensajeUsuario] = useState("");
   const [guardandoUsuario, setGuardandoUsuario] = useState(false);
@@ -185,7 +186,8 @@ export function MainPage() {
     setModalUsuariosAbierto(true);
     setErrorUsuario("");
     setMensajeUsuario("");
-    setNuevoUsuario({ nombre_usuario: "", contrasena: "", tipo_usuario: "contador" });
+    setNuevoUsuario({ nombre_usuario: "", contrasena: "", confirmarContrasena: "", tipo_usuario: "contador" });
+    setMostrarContrasena(false);
     try {
       const res = await fetch(`${API_URL}/usuarios`, { headers: { ...authHeader() } });
       const data = await res.json();
@@ -199,17 +201,22 @@ export function MainPage() {
     e.preventDefault();
     setErrorUsuario("");
     setMensajeUsuario("");
+    if (nuevoUsuario.contrasena !== nuevoUsuario.confirmarContrasena) {
+      setErrorUsuario("Las contraseñas no coinciden.");
+      return;
+    }
     setGuardandoUsuario(true);
     try {
       const res = await fetch(`${API_URL}/usuarios`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeader() },
-        body: JSON.stringify(nuevoUsuario),
+        body: JSON.stringify({ nombre_usuario: nuevoUsuario.nombre_usuario, contrasena: nuevoUsuario.contrasena, tipo_usuario: nuevoUsuario.tipo_usuario }),
       });
       const data = await res.json();
       if (res.ok && data.success) {
         setMensajeUsuario("Usuario creado correctamente.");
-        setNuevoUsuario({ nombre_usuario: "", contrasena: "", tipo_usuario: "contador" });
+        setNuevoUsuario({ nombre_usuario: "", contrasena: "", confirmarContrasena: "", tipo_usuario: "contador" });
+        setMostrarContrasena(false);
         const res2 = await fetch(`${API_URL}/usuarios`, { headers: { ...authHeader() } });
         const data2 = await res2.json();
         if (res2.ok && data2.success) setUsuarios(data2.data);
@@ -1089,11 +1096,30 @@ export function MainPage() {
                 maxLength={15}
               />
               <label>Contraseña</label>
+              <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                <input
+                  type={mostrarContrasena ? "text" : "password"}
+                  value={nuevoUsuario.contrasena}
+                  onChange={(e) => setNuevoUsuario((u) => ({ ...u, contrasena: e.target.value }))}
+                  placeholder="Contraseña"
+                  required
+                  style={{ flex: 1 }}
+                />
+                <button
+                  type="button"
+                  className="action-button secondary-button"
+                  style={{ whiteSpace: "nowrap", padding: "0.35rem 0.6rem", fontSize: "0.8rem" }}
+                  onClick={() => setMostrarContrasena((v) => !v)}
+                >
+                  {mostrarContrasena ? "Ocultar" : "Ver"}
+                </button>
+              </div>
+              <label>Confirmar contraseña</label>
               <input
-                type="password"
-                value={nuevoUsuario.contrasena}
-                onChange={(e) => setNuevoUsuario((u) => ({ ...u, contrasena: e.target.value }))}
-                placeholder="Contraseña"
+                type={mostrarContrasena ? "text" : "password"}
+                value={nuevoUsuario.confirmarContrasena}
+                onChange={(e) => setNuevoUsuario((u) => ({ ...u, confirmarContrasena: e.target.value }))}
+                placeholder="Repetir contraseña"
                 required
               />
               <label>Tipo</label>
