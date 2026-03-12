@@ -90,6 +90,9 @@ const CalendarIcon = () => (
 
 export function MainPage() {
   const navigate = useNavigate();
+  const [darkMode, setDarkMode] = useState(() => {
+    return localStorage.getItem('theme') === 'dark';
+  });
   const [proyectos, setProyectos] = useState<Proyecto[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>("");
@@ -215,6 +218,17 @@ export function MainPage() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    const root = document.documentElement;
+    if (darkMode) {
+      root.setAttribute('data-theme', 'dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      root.removeAttribute('data-theme');
+      localStorage.setItem('theme', 'light');
+    }
+  }, [darkMode]);
 
   useEffect(() => {
     if (!isTokenValid(getToken())) {
@@ -603,6 +617,14 @@ export function MainPage() {
               </button>
             </>
           )}
+
+          <button
+            className="action-button secondary-button"
+            onClick={() => setDarkMode(prev => !prev)}
+            title={darkMode ? "Modo claro" : "Modo oscuro"}
+          >
+            {darkMode ? "☀️" : "🌙"}
+          </button>
 
           <button className="action-button logout-button" onClick={handleLogout}>
             Cerrar sesión
