@@ -3,6 +3,12 @@ const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs = require('fs');
 
+
+
+
+
+
+
 // Determinar si estamos en desarrollo o producción
 const isDev = process.env.NODE_ENV === 'development';
 
@@ -110,6 +116,15 @@ function createWindow() {
 
 function setupAutoUpdater() {
   if (isDev) return;
+
+  autoUpdater.setFeedURL({
+    provider: 'github',
+    owner: 'JezraelMoreno',
+    repo: 'HEG_Formatos',
+    private: true,
+    token: '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'   
+  });
+
 
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = true;
