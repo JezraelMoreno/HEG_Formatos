@@ -36,17 +36,21 @@ const uploadRemision = createUploader({ subdir: "remisiones", allowedExts: [".pd
 const uploadFactura = createUploader({ subdir: "facturas", allowedExts: [".pdf", ".xml"] })
   .fields([{ name: "pdf", maxCount: 1 }, { name: "xml", maxCount: 1 }]);
 
-// Conexión a MySQL
-const db = mysql.createConnection({
+// Conexión a MySQL (pool para manejo automático de reconexiones)
+const db = mysql.createPool({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
 });
 
-db.connect(err => {
+db.getConnection((err, connection) => {
   if (err) throw err;
   console.log("Conectado a la base de datos MySQL");
+  connection.release();
 });
 
 const queryAsync = (sql, params = []) =>
