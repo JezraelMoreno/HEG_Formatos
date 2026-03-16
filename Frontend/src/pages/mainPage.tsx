@@ -783,8 +783,8 @@ export function MainPage() {
                     {proyectosFiltrados.map((p) => {
                       const totalPedidos = p.total_pedidos ?? 0;
                       const sumaFamilias = (p.presupuesto_cristal ?? 0) + (p.presupuesto_aluminio ?? 0) + (p.presupuesto_miscelaneos ?? 0);
-                      const presupuestoRestante = (p.presupuesto_total ?? 0) || sumaFamilias || (p.presupuesto ?? 0);
-                      const presupuestoAsignado = presupuestoRestante + totalPedidos;
+                      const presupuestoAsignado = (p.presupuesto_total ?? 0) || sumaFamilias || (p.presupuesto ?? 0);
+                      const presupuestoRestante = presupuestoAsignado - totalPedidos;
                       const claseDisponible = presupuestoRestante < 0 ? "presupuesto-disponible negativo" : "presupuesto-disponible positivo";
                       const presupuestoFamilias = {
                         cristal: p.presupuesto_cristal ?? 0,

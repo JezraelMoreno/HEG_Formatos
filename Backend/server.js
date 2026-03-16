@@ -1725,11 +1725,6 @@ app.post("/proyectos/:id/pedidos", authenticateToken, requireRole("administrador
           } catch (calcErr) {
             console.error("Error recalculando importe previo del pedido:", calcErr);
           }
-          try {
-            await ajustarPresupuestoProyecto(proyectoId, existingRow.familia, importePrevio, { revert: true });
-          } catch (presErr) {
-            console.error("No se pudo reintegrar presupuesto del pedido previo:", presErr);
-          }
           await queryAsync("DELETE FROM pedidos WHERE id = ? AND id_proyecto = ?", [existingRow.id, proyectoId]);
           replacedExisting = true;
         }
@@ -1781,11 +1776,6 @@ app.post("/proyectos/:id/pedidos", authenticateToken, requireRole("administrador
           await queryAsync("UPDATE pedidos SET importe_total = ? WHERE id = ?", [importeFinalSeguro, pedidoId]);
         } catch (updErr) {
           console.error("No se pudo actualizar el importe_total del pedido:", updErr);
-        }
-        try {
-          await ajustarPresupuestoProyecto(proyectoId, familiaValor, importeFinalSeguro);
-        } catch (presErr) {
-          console.error("No se pudo descontar del presupuesto del proyecto:", presErr);
         }
         okCount += 1;
         detailsLog.push({ index: idx + 1, pedido: pedidoNombre, ok: true, replaced: replacedExisting, error: null });

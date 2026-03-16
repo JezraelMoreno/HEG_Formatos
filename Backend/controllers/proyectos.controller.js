@@ -230,26 +230,23 @@ export async function actualizarPresupuesto(req, res) {
     if (inputsProvided.some((v) => v !== null && (!Number.isFinite(v) || v < 0))) {
       return res.status(400).json({ success: false, message: "Presupuestos inválidos" });
     }
-    // Obtener lo ya gastado en pedidos para calcular el nuevo saldo restante
-    const { gastadoCristal, gastadoAluminio, gastadoMiscelaneos } =
-      await ProyectoModel.getGastadoPorCategoria(proyectoId);
-    // Nuevo saldo restante = nuevo total ingresado - ya gastado
-    // Si no se provee un valor, se conserva el saldo actual sin cambio
+    // Guardar directamente el presupuesto definido por el usuario (sin restar gastado)
+    // El gastado se calcula dinámicamente desde los pedidos al momento de consultarse
     const cristal = cristalInput !== null
-      ? Number((cristalInput - gastadoCristal).toFixed(2))
+      ? Number(cristalInput.toFixed(2))
       : Number(actuales.presupuesto_cristal || 0);
     const aluminio = aluminioInput !== null
-      ? Number((aluminioInput - gastadoAluminio).toFixed(2))
+      ? Number(aluminioInput.toFixed(2))
       : Number(actuales.presupuesto_aluminio || 0);
     const miscelaneos = miscelaneosInput !== null
-      ? Number((miscelaneosInput - gastadoMiscelaneos).toFixed(2))
+      ? Number(miscelaneosInput.toFixed(2))
       : Number(actuales.presupuesto_miscelaneos || 0);
     const total = Number((cristal + aluminio + miscelaneos).toFixed(2));
     await ProyectoModel.updateBudgets(proyectoId, { cristal, aluminio, miscelaneos, total });
-    // Historial guarda el total presupuestado (lo que el usuario ingresó), no el restante
-    const cristalHist = cristalInput !== null ? cristalInput : Number((actuales.presupuesto_cristal || 0) + gastadoCristal);
-    const aluminioHist = aluminioInput !== null ? aluminioInput : Number((actuales.presupuesto_aluminio || 0) + gastadoAluminio);
-    const miscelaneosHist = miscelaneosInput !== null ? miscelaneosInput : Number((actuales.presupuesto_miscelaneos || 0) + gastadoMiscelaneos);
+    // Historial guarda el total presupuestado (lo que el usuario ingresó)
+    const cristalHist = cristalInput !== null ? cristalInput : Number(actuales.presupuesto_cristal || 0);
+    const aluminioHist = aluminioInput !== null ? aluminioInput : Number(actuales.presupuesto_aluminio || 0);
+    const miscelaneosHist = miscelaneosInput !== null ? miscelaneosInput : Number(actuales.presupuesto_miscelaneos || 0);
     try {
       await ProyectoModel.registrarHistorialPresupuesto(proyectoId, {
         fecha: fecha_presupuesto,
