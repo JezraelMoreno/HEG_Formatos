@@ -178,28 +178,28 @@ app.get("/proyectos", authenticateToken, async (req, res) => {
         p.nombre,
         p.fecha_proyecto,
         p.estado,
-        COALESCE(p.presupuesto_cristal, 0) AS presupuesto_cristal,
-        COALESCE(p.presupuesto_aluminio, 0) AS presupuesto_aluminio,
-        COALESCE(p.presupuesto_miscelaneos, 0) AS presupuesto_miscelaneos,
-        COALESCE(
+        GREATEST(COALESCE(p.presupuesto_cristal, 0), 0) AS presupuesto_cristal,
+        GREATEST(COALESCE(p.presupuesto_aluminio, 0), 0) AS presupuesto_aluminio,
+        GREATEST(COALESCE(p.presupuesto_miscelaneos, 0), 0) AS presupuesto_miscelaneos,
+        GREATEST(COALESCE(
           NULLIF(p.presupuesto_total, 0),
-          NULLIF(COALESCE(p.presupuesto_cristal, 0) + COALESCE(p.presupuesto_aluminio, 0) + COALESCE(p.presupuesto_miscelaneos, 0), 0),
+          NULLIF(GREATEST(COALESCE(p.presupuesto_cristal,0),0) + GREATEST(COALESCE(p.presupuesto_aluminio,0),0) + GREATEST(COALESCE(p.presupuesto_miscelaneos,0),0), 0),
           p.presupuesto,
           0
-        ) AS presupuesto_total,
-        COALESCE(
+        ), 0) AS presupuesto_total,
+        GREATEST(COALESCE(
           NULLIF(p.presupuesto, 0),
           NULLIF(p.presupuesto_total, 0),
-          NULLIF(COALESCE(p.presupuesto_cristal, 0) + COALESCE(p.presupuesto_aluminio, 0) + COALESCE(p.presupuesto_miscelaneos, 0), 0),
+          NULLIF(GREATEST(COALESCE(p.presupuesto_cristal,0),0) + GREATEST(COALESCE(p.presupuesto_aluminio,0),0) + GREATEST(COALESCE(p.presupuesto_miscelaneos,0),0), 0),
           0
-        ) AS presupuesto,
+        ), 0) AS presupuesto,
         COALESCE(SUM(pe.importe_total), 0) AS total_pedidos,
-        COALESCE(
+        GREATEST(COALESCE(
           NULLIF(p.presupuesto_total, 0),
-          NULLIF(COALESCE(p.presupuesto_cristal, 0) + COALESCE(p.presupuesto_aluminio, 0) + COALESCE(p.presupuesto_miscelaneos, 0), 0),
+          NULLIF(GREATEST(COALESCE(p.presupuesto_cristal,0),0) + GREATEST(COALESCE(p.presupuesto_aluminio,0),0) + GREATEST(COALESCE(p.presupuesto_miscelaneos,0),0), 0),
           p.presupuesto,
           0
-        ) AS presupuesto_disponible
+        ), 0) AS presupuesto_disponible
       FROM proyectos p
       LEFT JOIN pedidos pe ON pe.id_proyecto = p.id_proyecto
       GROUP BY p.id_proyecto, p.nombre, p.fecha_proyecto, p.estado, p.presupuesto, p.presupuesto_cristal, p.presupuesto_aluminio, p.presupuesto_miscelaneos, p.presupuesto_total
@@ -429,10 +429,10 @@ app.get("/proyectos/:id", authenticateToken, async (req, res) => {
       return res.status(404).json({ success: false, message: "No encontrado" });
     }
     const proyecto = results[0];
-    const presupuestoCristal = Number(proyecto.presupuesto_cristal || 0);
-    const presupuestoAluminio = Number(proyecto.presupuesto_aluminio || 0);
-    const presupuestoMiscelaneos = Number(proyecto.presupuesto_miscelaneos || 0);
-    let presupuestoTotal = Number(proyecto.presupuesto_total || 0);
+    const presupuestoCristal = Math.max(0, Number(proyecto.presupuesto_cristal || 0));
+    const presupuestoAluminio = Math.max(0, Number(proyecto.presupuesto_aluminio || 0));
+    const presupuestoMiscelaneos = Math.max(0, Number(proyecto.presupuesto_miscelaneos || 0));
+    let presupuestoTotal = Math.max(0, Number(proyecto.presupuesto_total || 0));
     if (!Number.isFinite(presupuestoTotal) || presupuestoTotal === 0) {
       presupuestoTotal = Number((presupuestoCristal + presupuestoAluminio + presupuestoMiscelaneos).toFixed(2));
     }
@@ -2782,10 +2782,10 @@ app.get("/api/dashboard/proyecto/:id/ejecutivo", authenticateToken, async (req, 
         p.nombre,
         p.estado,
         p.fecha_proyecto,
-        COALESCE(p.presupuesto_total, p.presupuesto, 0) as presupuestoTotal,
-        COALESCE(p.presupuesto_cristal, 0) as presupuestoCristal,
-        COALESCE(p.presupuesto_aluminio, 0) as presupuestoAluminio,
-        COALESCE(p.presupuesto_miscelaneos, 0) as presupuestoMiscelaneos,
+        GREATEST(COALESCE(p.presupuesto_total, p.presupuesto, 0), 0) as presupuestoTotal,
+        GREATEST(COALESCE(p.presupuesto_cristal, 0), 0) as presupuestoCristal,
+        GREATEST(COALESCE(p.presupuesto_aluminio, 0), 0) as presupuestoAluminio,
+        GREATEST(COALESCE(p.presupuesto_miscelaneos, 0), 0) as presupuestoMiscelaneos,
         COALESCE(pe.total_pedidos, 0) as presupuestoEjecutado
       FROM proyectos p
       LEFT JOIN (
@@ -3993,10 +3993,10 @@ app.get("/api/dashboard/proyecto/:id/presupuestos", authenticateToken, async (re
     }
 
     const proyecto = proyectoRows[0];
-    const presupuestoTotal = Number(proyecto.presupuesto_total || 0);
-    const presupuestoCristal = Number(proyecto.presupuesto_cristal || 0);
-    const presupuestoAluminio = Number(proyecto.presupuesto_aluminio || 0);
-    const presupuestoMiscelaneos = Number(proyecto.presupuesto_miscelaneos || 0);
+    const presupuestoTotal = Math.max(0, Number(proyecto.presupuesto_total || 0));
+    const presupuestoCristal = Math.max(0, Number(proyecto.presupuesto_cristal || 0));
+    const presupuestoAluminio = Math.max(0, Number(proyecto.presupuesto_aluminio || 0));
+    const presupuestoMiscelaneos = Math.max(0, Number(proyecto.presupuesto_miscelaneos || 0));
 
     // Obtener total gastado por familia
     const gastadoPorFamilia = await queryAsync(
