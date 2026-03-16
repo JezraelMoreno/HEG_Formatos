@@ -447,10 +447,10 @@ app.get("/proyectos/:id", authenticateToken, async (req, res) => {
       presupuesto_total: presupuestoTotal,
       presupuesto: Number(proyecto.presupuesto ?? presupuestoTotal ?? 0),
       presupuesto_disponible: presupuestoTotal,
-      // Total presupuestado por categoría (restante + gastado) — usado para pre-llenar el modal de ajuste
-      presupuesto_cristal_total: Number((presupuestoCristal + gastadoCristal).toFixed(2)),
-      presupuesto_aluminio_total: Number((presupuestoAluminio + gastadoAluminio).toFixed(2)),
-      presupuesto_miscelaneos_total: Number((presupuestoMiscelaneos + gastadoMiscelaneos).toFixed(2)),
+      // Presupuesto definido por categoría — usado para pre-llenar el modal de ajuste
+      presupuesto_cristal_total: Number(presupuestoCristal.toFixed(2)),
+      presupuesto_aluminio_total: Number(presupuestoAluminio.toFixed(2)),
+      presupuesto_miscelaneos_total: Number(presupuestoMiscelaneos.toFixed(2)),
     };
     try {
       const pedidosRows = await queryAsync(
