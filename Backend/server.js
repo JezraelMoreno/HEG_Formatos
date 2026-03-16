@@ -2423,7 +2423,7 @@ app.get("/api/dashboard/presupuestos", authenticateToken, async (req, res) => {
              WHERE h.id_proyecto = p.id_proyecto
              ORDER BY fecha_presupuesto ASC
              LIMIT 1),
-            COALESCE(p.presupuesto_total, p.presupuesto, 0) + COALESCE(pe.total_pedidos, 0)
+            COALESCE(p.presupuesto_total, p.presupuesto, 0)
           )
         ), 0) as presupuestoTotal,
         COALESCE(SUM(COALESCE(pe.total_pedidos, 0)), 0) as presupuestoEjecutado
@@ -2486,7 +2486,7 @@ app.get("/api/dashboard/presupuestos", authenticateToken, async (req, res) => {
            WHERE h.id_proyecto = p.id_proyecto
            ORDER BY fecha_presupuesto ASC
            LIMIT 1),
-          COALESCE(p.presupuesto_total, p.presupuesto, 0) + COALESCE(total_ejecutado.ejecutado, 0)
+          COALESCE(p.presupuesto_total, p.presupuesto, 0)
         ) as planeado,
         COALESCE(total_ejecutado.ejecutado, 0) as ejecutado
       FROM proyectos p
