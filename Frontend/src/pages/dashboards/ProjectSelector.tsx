@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './ProjectSelector.css';
 import API_URL from '../../config';
+import { BackButton } from '../../components/BackButton';
 
 interface Proyecto {
   id_proyecto: number;
@@ -85,31 +86,31 @@ export const ProjectSelector: React.FC = () => {
 
   return (
     <div className="project-selector-container">
-      <div className="project-selector-header">
-        <div className="ps-titulo-bloque">
-          <h1 className="ps-titulo">Seleccionar Proyecto</h1>
-        </div>
-        <div className="ps-actions">
-          <div className="ps-search-bar">
-            <input
-              type="text"
-              placeholder="Buscar proyecto"
-              value={busqueda}
-              onChange={(e) => setBusqueda(e.target.value)}
-            />
+      <div className="ps-header-row">
+        <BackButton />
+        <div className="project-selector-header">
+          <div className="ps-titulo-bloque">
+            <h1 className="ps-titulo">Seleccionar Proyecto</h1>
           </div>
-          <select
-            value={filtroEstado}
-            onChange={(e) => setFiltroEstado(e.target.value as 'todos' | 'en_progreso' | 'completado')}
-            className="ps-filter-select"
-          >
-            <option value="todos">Todos los estados</option>
-            <option value="en_progreso">En Progreso</option>
-            <option value="completado">Completados</option>
-          </select>
-          <button className="ps-action-button ps-secondary-button" onClick={() => navigate('/home')}>
-            Volver al Inicio
-          </button>
+          <div className="ps-actions">
+            <div className="ps-search-bar">
+              <input
+                type="text"
+                placeholder="Buscar proyecto"
+                value={busqueda}
+                onChange={(e) => setBusqueda(e.target.value)}
+              />
+            </div>
+            <select
+              value={filtroEstado}
+              onChange={(e) => setFiltroEstado(e.target.value as 'todos' | 'en_progreso' | 'completado')}
+              className="ps-filter-select"
+            >
+              <option value="todos">Todos los estados</option>
+              <option value="en_progreso">En Progreso</option>
+              <option value="completado">Completados</option>
+            </select>
+          </div>
         </div>
       </div>
 

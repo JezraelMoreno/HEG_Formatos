@@ -4,6 +4,7 @@ import '../dashboards/ProjectSelector.css';
 import API_URL from '../../config';
 import { AgregarRemisionModal } from './AgregarRemisionModal';
 import { HistorialEntregas } from './HistorialEntregas';
+import { BackButton } from '../../components/BackButton';
 
 interface Proyecto {
   id_proyecto: number;
@@ -101,44 +102,45 @@ export function RemisionesProjectSelector() {
 
   return (
     <div className="project-selector-container">
-      <div className="project-selector-header">
-        <div className="ps-titulo-bloque">
-          <h1 className="ps-titulo">Control de Remisiones y Existencias</h1>
-          <p className="ps-subtitulo">Programa de Entregas - ALUBIN</p>
-        </div>
-        <div className="ps-actions">
-          <div className="ps-search-bar">
-            <input
-              type="text"
-              placeholder="Buscar proyecto"
-              value={busqueda}
-              onChange={(e) => setBusqueda(e.target.value)}
-            />
+      <div className="ps-header-row">
+        <BackButton />
+        <div className="project-selector-header">
+          <div className="ps-titulo-bloque">
+            <h1 className="ps-titulo">Control de Remisiones y Existencias</h1>
           </div>
-          <select
-            value={filtroEstado}
-            onChange={(e) => setFiltroEstado(e.target.value as 'todos' | 'en_progreso' | 'completado')}
-            className="ps-filter-select"
-          >
-            <option value="todos">Todos los estados</option>
-            <option value="en_progreso">En Progreso</option>
-            <option value="completado">Completados</option>
-          </select>
-          <button className="ps-action-button ps-add-remision-button" onClick={() => setShowAgregarRemision(true)}>
-            + Agregar Remisión
-          </button>
-          <button className="ps-action-button ps-historial-button" onClick={() => setShowHistorial(true)}>
-            Historial Entregas
-          </button>
-          <button className="ps-action-button ps-primary-button" onClick={irAVistaGeneral}>
-            Vista General
-          </button>
-          <button className="ps-action-button ps-success-button" onClick={exportarGeneral}>
-            Exportar Todo
-          </button>
-          <button className="ps-action-button ps-secondary-button" onClick={() => navigate('/home')}>
-            Volver al Inicio
-          </button>
+          <div className="ps-actions">
+            <div className="ps-search-bar">
+              <input
+                type="text"
+                placeholder="Buscar proyecto"
+                value={busqueda}
+                onChange={(e) => setBusqueda(e.target.value)}
+              />
+            </div>
+            <select
+              value={filtroEstado}
+              onChange={(e) => setFiltroEstado(e.target.value as 'todos' | 'en_progreso' | 'completado')}
+              className="ps-filter-select"
+            >
+              <option value="todos">Todos los estados</option>
+              <option value="en_progreso">En Progreso</option>
+              <option value="completado">Completados</option>
+            </select>
+            <div className="ps-action-group">
+              <button className="ps-action-button ps-add-remision-button" onClick={() => setShowAgregarRemision(true)}>
+                + Agregar Remisión
+              </button>
+              <button className="ps-action-button ps-historial-button" onClick={() => setShowHistorial(true)}>
+                Historial Entregas
+              </button>
+              <button className="ps-action-button ps-primary-button" onClick={irAVistaGeneral}>
+                Vista General
+              </button>
+              <button className="ps-action-button ps-success-button" onClick={exportarGeneral}>
+                Exportar Todo
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ChangeEventHandler, FormEvent, MouseEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import "./mainPage.css";
+import { BackButton } from "../components/BackButton";
 import { authHeader, clearToken, getRole, getToken, isTokenValid } from "../auth";
 import API_URL from "../config";
 import { parsePedidosCsv } from "../utils/pedidosCsv";
@@ -623,6 +624,7 @@ export function MainPage() {
   return (
     <div className="main-page">
       <div className="encabezado">
+        {moduloSeleccionado && <BackButton onClick={volverAModulos} />}
         <div className="titulo-bloque">
           <h1 className="titulo">{moduloActivo ? moduloActivo.titulo : "Pagina Principal"}</h1>
         </div>
@@ -640,11 +642,6 @@ export function MainPage() {
                 onChange={(e) => setBusquedaProyecto(e.target.value)}
               />
             </div>
-          )}
-          {moduloSeleccionado && (
-            <button className="action-button secondary-button" onClick={volverAModulos}>
-              Cambiar módulo
-            </button>
           )}
 
           {moduloSeleccionado === "pedidos" && isAdmin && (

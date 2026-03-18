@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import './DashboardLayout.css';
+import { BackButton } from '../../components/BackButton';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -27,9 +28,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, proj
   return (
     <div className="dashboard-layout">
       <nav className="dashboard-navbar">
-        <button className="nav-back-button" onClick={() => navigate('/dashboards')}>
-          ← Cambiar Proyecto
-        </button>
+        <BackButton />
         {projectName && (
           <div className="nav-project-name">
             <span className="project-label">Proyecto:</span>

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
+import { BackButton } from "../../components/BackButton";
 import { authHeader, getToken, isTokenValid } from "../../auth";
 import API_URL from "../../config";
 import { AgregarRemisionModal } from "./AgregarRemisionModal";
@@ -763,9 +764,7 @@ export function RemisionesPage({ isGeneral = false }: RemisionesPageProps) {
     <div className="remisiones-page">
       {/* Navbar */}
       <nav className="rem-navbar">
-        <button className="rem-nav-back" onClick={() => navigate("/remisiones")}>
-          &larr; Cambiar Proyecto
-        </button>
+        <BackButton />
         <div className="rem-nav-project">
           <span className="rem-project-label">Proyecto:</span>
           <span className="rem-project-title">{nombreProyecto}</span>

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
+import { BackButton } from "../../components/BackButton";
 import { authHeader, getToken, isTokenValid } from "../../auth";
 import "./ReportePage.css";
 import API_URL from "../../config";
@@ -355,9 +356,7 @@ export function ReportePage() {
     <div className="reporte-page">
       {/* Navbar */}
       <nav className="reporte-navbar">
-        <button className="reporte-nav-back" onClick={() => navigate("/reportes")}>
-          &larr; Cambiar Proyecto
-        </button>
+        <BackButton />
         <div className="reporte-nav-project">
           <span className="reporte-project-label">Proyecto:</span>
           <span className="reporte-project-title">{nombreProyecto}</span>

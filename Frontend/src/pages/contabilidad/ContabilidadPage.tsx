@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { BackButton } from '../../components/BackButton';
 import { authHeader } from '../../auth';
 import './ContabilidadPage.css';
 import API_URL from '../../config';
@@ -397,9 +398,7 @@ export function ContabilidadPage() {
         <div className="cnt-page">
             {/* Header */}
             <div className="cnt-header">
-                <button className="cnt-btn cnt-btn-secondary" onClick={() => navigate('/home')}>
-                    ← Volver
-                </button>
+                <BackButton />
                 <h1 className="cnt-title">Facturas del Proyecto</h1>
                 <button className="cnt-btn cnt-btn-primary" onClick={() => setModalAbierto(true)}>
                     + Agregar Factura

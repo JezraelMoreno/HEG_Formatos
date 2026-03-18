@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { BackButton } from "../components/BackButton";
 import { authHeader } from "../auth";
 import API_URL from "../config";
 import hegLogo from "../../assets/heg_logo.jpg";
@@ -190,7 +191,7 @@ export function PedidoPreview() {
   return (
     <div className="preview-page">
       <div className="preview-toolbar">
-        <button className="btn btn-secondary" onClick={() => navigate(-1)}>&larr; Regresar</button>
+        <BackButton />
         <div className="preview-toolbar-actions">
           <span className="preview-pill">{pedido ? `Pedido ${pedido.pedido}` : "Vista previa"}</span>
           <button className="btn btn-primary" onClick={() => window.print()}>Imprimir</button>

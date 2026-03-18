@@ -1,5 +1,6 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { BackButton } from "../components/BackButton";
 import { authHeader, getToken, isTokenValid, getRole } from "../auth";
 import { parsePedidosCsv } from "../utils/pedidosCsv";
 import type { PedidoCsv } from "../utils/pedidosCsv";
@@ -1323,7 +1324,7 @@ export function ProyectoDetalle() {
   return (
     <div className="detalle-page">
       <header className="detalle-header">
-        <button className="btn btn-secondary" onClick={volver}>&larr; Regresar</button>
+        <BackButton />
         <h2 className="detalle-titulo">{nombreProyecto}</h2>
         <div className="detalle-actions">
           {isAdmin && (

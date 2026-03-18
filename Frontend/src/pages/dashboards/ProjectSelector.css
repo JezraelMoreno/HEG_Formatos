@@ -16,14 +16,20 @@
   color: var(--color-text-secondary);
 }
 
+.ps-header-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  max-width: 1240px;
+  margin: 0 auto 20px;
+}
+
 .project-selector-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  flex-wrap: nowrap;
-  max-width: 1240px;
-  margin: 0 auto 20px;
+  flex: 1;
 }
 
 .ps-titulo-bloque {
@@ -241,4 +247,12 @@
   .ps-item-proyecto {
     max-width: 100%;
   }
+}
+
+.ps-action-group {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding-left: 16px;
+  border-left: 1px solid var(--color-border);
 }
