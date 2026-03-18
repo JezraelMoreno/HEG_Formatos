@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { useLocation, useParams } from "react-router-dom";
 import { BackButton } from "../components/BackButton";
 import { authHeader } from "../auth";
 import API_URL from "../config";
@@ -96,7 +96,6 @@ const normalizarFamilia = (familia: string | null | undefined) => (familia || ""
 
 export function PedidoPreview() {
   const { id, pedidoId } = useParams();
-  const navigate = useNavigate();
   const { state } = useLocation() as { state?: PreviewLocationState };
   const pedidoIdNumero = Number(pedidoId);
   const [pedido, setPedido] = useState<PedidoPreviewData | null>(() => state?.pedido || null);

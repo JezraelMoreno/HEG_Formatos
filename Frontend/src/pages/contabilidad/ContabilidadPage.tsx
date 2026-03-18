@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { BackButton } from '../../components/BackButton';
 import { authHeader } from '../../auth';
 import './ContabilidadPage.css';
@@ -333,8 +333,6 @@ function EditarFacturaModal({ factura, onClose, onSuccess }: EditarFacturaModalP
 // ---------------------------------------------------------------------------
 export function ContabilidadPage() {
     const { projectId } = useParams<{ projectId: string }>();
-    const navigate = useNavigate();
-
     const [facturas, setFacturas] = useState<Factura[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
