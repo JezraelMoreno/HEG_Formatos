@@ -2459,39 +2459,7 @@ export function ProyectoDetalle() {
                     }}
                   >
                     Limpiar filtros
-                  </button>
-                  <button
-                    className="action-button primary-button"
-                    onClick={async () => {
-                      try {
-                        const params = new URLSearchParams();
-                        if (familiaFiltro) params.append("familia", familiaFiltro);
-                        if (fechaDesdeFiltro) params.append("fecha_desde", fechaDesdeFiltro);
-                        if (fechaHastaFiltro) params.append("fecha_hasta", fechaHastaFiltro);
-
-                        const res = await fetch(
-                          `${API_URL}/proyectos/${id}/viaticos-movimientos/export?${params}`,
-                          { headers: { ...authHeader() } }
-                        );
-                        if (!res.ok) throw new Error("Error al exportar");
-
-                        const blob = await res.blob();
-                        const url = window.URL.createObjectURL(blob);
-                        const a = document.createElement("a");
-                        a.href = url;
-                        a.download = `Pagos_Efectivo_${nombreProyecto}_${new Date().toISOString().split("T")[0]}.xlsx`;
-                        document.body.appendChild(a);
-                        a.click();
-                        window.URL.revokeObjectURL(url);
-                        document.body.removeChild(a);
-                      } catch (err) {
-                        console.error("Error exportando:", err);
-                        alert("Error al exportar a Excel");
-                      }
-                    }}
-                  >
-                    Exportar a Excel
-                  </button>
+                  </button>        
                 </div>
 
                 {errorMovimientos && <p className="error-text">{errorMovimientos}</p>}
