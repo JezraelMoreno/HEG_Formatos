@@ -568,8 +568,6 @@ export function ProyectoDetalle() {
     }
   };
 
-  const volver = useCallback(() => navigate("/home"), [navigate]);
-
   const cargarPedidos = useCallback(async (overrides?: {
     familias?: string[];
     clanes?: string[];
