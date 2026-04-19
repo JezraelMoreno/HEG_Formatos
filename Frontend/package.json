@@ -1,7 +1,7 @@
 {
   "name": "heg-formatos",
   "private": true,
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "HEG Formatos - Sistema de gestión de proyectos y presupuestos",
   "author": "HEG",
   "type": "module",
