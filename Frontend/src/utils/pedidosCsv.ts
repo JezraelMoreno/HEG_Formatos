@@ -412,7 +412,7 @@ const parseDetailBlock = (rows: string[][], headerIndex: number) => {
     }
 
     const detalle: PedidoDetalleCsv = {
-      descripcion: descripcion || `Detalle ${detalles.length + 1}`,
+      descripcion: descripcion || "",
       unidad: unidad || undefined,
       medida: medida || undefined,
       cantidad: cantidad !== null ? cantidad : undefined,

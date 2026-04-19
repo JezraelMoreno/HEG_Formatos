@@ -261,12 +261,17 @@ export function PedidoPreview() {
               : tipoDetalle === "aluminio"
                 ? filasAluminio
                 : filasMiscelaneos
-            ).map((detalle, idx) => (
-              <li key={`${detalle.id_detalle}-${idx}`}>
-                <strong>{idx + 1}.</strong>{" "}
-                {((detalle as any).descripcion || "").trim() || "-"}
-              </li>
-            ))}
+            )
+              .filter((detalle) => {
+                const desc = ((detalle as any).descripcion || "").trim();
+                return desc !== "" && !/^Detalle \d+$/i.test(desc);
+              })
+              .map((detalle, idx) => (
+                <li key={`${detalle.id_detalle}-${idx}`}>
+                  <strong>{idx + 1}.</strong>{" "}
+                  {((detalle as any).descripcion || "").trim()}
+                </li>
+              ))}
           </ul>
         </div>
         <div className="preview-table-wrapper">

@@ -391,8 +391,9 @@ export function ProyectoDetalle() {
     state?.presupuesto_total ??
     state?.presupuesto ??
     0;
-  const presupuestoAsignado = presupuestoRestanteTotal + totalPedidosProyecto;
-  const clasePresupuestoDisponible = presupuestoRestanteTotal < 0 ? "monto-negativo" : "monto-positivo";
+  const presupuestoAsignado = presupuestoRestanteTotal;
+  const presupuestoDisponible = presupuestoRestanteTotal - totalPedidosProyecto;
+  const clasePresupuestoDisponible = presupuestoDisponible < 0 ? "monto-negativo" : "monto-positivo";
   const presupuestoCristal = proyectoInfo?.presupuesto_cristal ?? state?.presupuesto_cristal ?? 0;
   const presupuestoAluminio = proyectoInfo?.presupuesto_aluminio ?? state?.presupuesto_aluminio ?? 0;
   const presupuestoMiscelaneos = proyectoInfo?.presupuesto_miscelaneos ?? state?.presupuesto_miscelaneos ?? 0;
@@ -1084,7 +1085,7 @@ export function ProyectoDetalle() {
               };
               return {
                 id_detalle: typeof det.id_detalle === "number" ? det.id_detalle : index + 1,
-                descripcion: descripcion || `Detalle ${index + 1}`,
+                descripcion: descripcion || "",
                 clave_modelo: cleanString(det.clave_modelo),
                 ancho: toNullableNumber(det.ancho),
                 largo: toNullableNumber(det.largo),
@@ -1116,7 +1117,7 @@ export function ProyectoDetalle() {
               };
               return {
                 id_detalle: typeof det.id_detalle === "number" ? det.id_detalle : index + 1,
-                descripcion: descripcion || `Detalle ${index + 1}`,
+                descripcion: descripcion || "",
                 numero_perfil: cleanString(det.numero_perfil),
                 medida_tramo: toNullableNumber(det.medida_tramo),
                 unidad: cleanString(det.unidad),
@@ -1151,7 +1152,7 @@ export function ProyectoDetalle() {
               };
               return {
                 id_detalle: typeof det.id_detalle === "number" ? det.id_detalle : index + 1,
-                descripcion: descripcion || `Detalle ${index + 1}`,
+                descripcion: descripcion || "",
                 unidad: cleanString(det.unidad),
                 medida: cleanString(det.medida),
                 cantidad: toNumberValue(det.cantidad),
@@ -1435,9 +1436,9 @@ export function ProyectoDetalle() {
             <strong>{formatCurrency(totalPedidosProyecto)}</strong>
             <small>Aluminio, cristal y misceláneos</small>
           </div>
-          <div className={`presupuesto-card ${presupuestoRestanteTotal < 0 ? "presupuesto-alerta" : ""}`}>
+          <div className={`presupuesto-card ${presupuestoDisponible < 0 ? "presupuesto-alerta" : ""}`}>
             <span>Disponible total</span>
-            <strong className={clasePresupuestoDisponible}>{formatCurrency(presupuestoRestanteTotal)}</strong>
+            <strong className={clasePresupuestoDisponible}>{formatCurrency(presupuestoDisponible)}</strong>
             <small>{cargandoProyecto ? "Actualizando..." : "Se descuenta según la familia"}</small>
           </div>
           <div className={`presupuesto-card ${presupuestoCristal < 0 ? "presupuesto-alerta" : ""}`}>

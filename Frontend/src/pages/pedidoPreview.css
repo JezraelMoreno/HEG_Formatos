@@ -375,6 +375,114 @@
   color: var(--color-text);
 }
 
+@media print {
+  @page {
+    size: A4;
+    margin: 1cm;
+  }
+
+  .preview-toolbar,
+  .preview-pill {
+    display: none !important;
+  }
+
+  .preview-page {
+    background: #fff;
+    padding: 0;
+    min-height: unset;
+  }
+
+  .preview-sheet {
+    max-width: 100%;
+    margin: 0;
+    padding: 10px;
+    box-shadow: none;
+    border: none;
+  }
+
+  .sheet-grid-bg {
+    display: none;
+  }
+
+  .preview-logo {
+    width: 120px;
+    height: 80px;
+  }
+
+  .preview-top {
+    gap: 10px;
+  }
+
+  .preview-date {
+    font-size: 12px;
+  }
+
+  .provider-name {
+    font-size: 12px;
+  }
+
+  .preview-company {
+    margin: 8px 0 6px;
+    font-size: 11px;
+  }
+
+  .preview-meta-grid {
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .meta-row {
+    min-height: 26px;
+  }
+
+  .meta-row span,
+  .meta-row strong {
+    padding: 3px 6px;
+    font-size: 10px;
+  }
+
+  .preview-descripciones {
+    margin: 8px 0;
+    padding: 6px 10px;
+    font-size: 10px;
+  }
+
+  .preview-table {
+    font-size: 9px;
+  }
+
+  .preview-table th,
+  .preview-table td {
+    padding: 3px 5px;
+  }
+
+  .preview-totals {
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .totals-row span,
+  .totals-row strong {
+    padding: 4px 8px;
+    font-size: 10px;
+  }
+
+  .footer-label,
+  .footer-value {
+    padding: 4px 8px;
+    font-size: 10px;
+  }
+
+  .payment-title,
+  .payment-approved {
+    font-size: 11px;
+  }
+
+  .payment-date {
+    padding: 4px 8px;
+  }
+}
+
 @media (max-width: 768px) {
   .preview-top {
     grid-template-columns: 1fr;
