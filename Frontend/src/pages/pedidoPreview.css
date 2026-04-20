@@ -377,8 +377,7 @@
 
 @media print {
   @page {
-    size: A4 landscape;
-    margin: 1cm;
+    margin: 0.5cm;
   }
 
   .preview-toolbar,
@@ -399,7 +398,7 @@
   .preview-sheet {
     max-width: 100%;
     margin: 0;
-    padding: 10px;
+    padding: 6px;
     box-shadow: none;
     border: none;
   }
@@ -409,81 +408,89 @@
   }
 
   .preview-logo {
-    width: 120px;
-    height: 80px;
+    width: 100px;
+    height: 68px;
   }
 
   .preview-top {
-    gap: 10px;
+    gap: 8px;
   }
 
   .preview-date {
-    font-size: 12px;
-  }
-
-  .provider-name {
-    font-size: 12px;
-  }
-
-  .preview-company {
-    margin: 8px 0 6px;
     font-size: 11px;
   }
 
+  .provider-name {
+    font-size: 11px;
+  }
+
+  .preview-company {
+    margin: 6px 0 4px;
+    font-size: 10px;
+  }
+
   .preview-meta-grid {
-    gap: 8px;
-    margin-bottom: 10px;
+    gap: 6px;
+    margin-bottom: 8px;
   }
 
   .meta-row {
-    min-height: 26px;
+    min-height: 22px;
   }
 
   .meta-row span,
   .meta-row strong {
-    padding: 3px 6px;
-    font-size: 10px;
+    padding: 2px 5px;
+    font-size: 9px;
   }
 
   .preview-descripciones {
-    margin: 8px 0;
-    padding: 6px 10px;
-    font-size: 10px;
+    margin: 6px 0;
+    padding: 4px 8px;
+    font-size: 9px;
   }
 
   .preview-table {
-    font-size: 9px;
+    font-size: 7.5px;
+    table-layout: fixed;
+    width: 100%;
+  }
+
+  .preview-table th {
+    white-space: normal;
+    word-break: break-word;
+    line-height: 1.2;
   }
 
   .preview-table th,
   .preview-table td {
-    padding: 3px 5px;
+    padding: 2px 3px;
   }
 
   .preview-totals {
-    gap: 8px;
-    margin-bottom: 10px;
+    gap: 6px;
+    margin-bottom: 8px;
   }
 
   .totals-row span,
   .totals-row strong {
-    padding: 4px 8px;
-    font-size: 10px;
+    padding: 3px 6px;
+    font-size: 9px;
   }
 
   .footer-label,
   .footer-value {
-    padding: 4px 8px;
-    font-size: 10px;
+    padding: 3px 6px;
+    font-size: 9px;
   }
 
   .payment-title,
   .payment-approved {
-    font-size: 11px;
+    font-size: 10px;
   }
 
   .payment-date {
-    padding: 4px 8px;
+    padding: 3px 6px;
   }
 }
 
