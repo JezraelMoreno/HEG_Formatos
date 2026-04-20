@@ -587,7 +587,7 @@ export function ProyectoDetalle() {
       const params: string[] = [];
       const agregarLista = (nombre: string, valores: string[]) => {
         if (valores.length) {
-          params.push(`${nombre}=${encodeURIComponent(valores.join(","))}`);
+          params.push(`${nombre}=${encodeURIComponent(valores.join("||"))}`);
         }
       };
       agregarLista("familia", familiasFiltro);
@@ -935,7 +935,7 @@ export function ProyectoDetalle() {
       const params: string[] = [];
       const agregarLista = (nombre: string, valores: string[]) => {
         if (valores.length) {
-          params.push(`${nombre}=${encodeURIComponent(valores.join(","))}`);
+          params.push(`${nombre}=${encodeURIComponent(valores.join("||"))}`);
         }
       };
       agregarLista("familia", familiasSeleccionadas);

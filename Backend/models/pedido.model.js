@@ -16,7 +16,7 @@ export async function findByProyecto(id, filters = {}) {
   let sql =
     "SELECT id, id_proyecto, nombre_proyecto, pedido, clan, familia, proveedor, nombre_usuario, DATE_FORMAT(fecha_aprobacion, '%Y-%m-%d') AS fecha_aprobacion, concepto, situaciones_especiales, porcentaje_descuento, importe_total AS importe FROM pedidos WHERE id_proyecto = ?";
   const params = [id];
-  const toList = (v) => Array.isArray(v) ? v : (typeof v === 'string' ? v.split(',').map(s => s.trim()).filter(Boolean) : []);
+  const toList = (v) => Array.isArray(v) ? v : (typeof v === 'string' ? v.split('||').map(s => s.trim()).filter(Boolean) : []);
   const addMulti = (field, values) => {
     const list = toList(values);
     if (list.length === 1) { sql += ` AND ${field} = ?`; params.push(list[0]); }
@@ -306,7 +306,7 @@ export async function getPedidosForExport(id, filters = {}) {
   let sql =
     "SELECT id, nombre_proyecto, pedido, clan, familia, proveedor, DATE_FORMAT(fecha_aprobacion, '%Y-%m-%d') AS fecha_aprobacion, concepto, situaciones_especiales, importe_total AS importe FROM pedidos WHERE id_proyecto = ?";
   const params = [id];
-  const toList = (v) => Array.isArray(v) ? v : (typeof v === 'string' ? v.split(',').map(s => s.trim()).filter(Boolean) : []);
+  const toList = (v) => Array.isArray(v) ? v : (typeof v === 'string' ? v.split('||').map(s => s.trim()).filter(Boolean) : []);
   const addMulti = (field, values) => {
     const list = toList(values);
     if (list.length === 1) { sql += ` AND ${field} = ?`; params.push(list[0]); }
