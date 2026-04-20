@@ -65,6 +65,7 @@
       "electron/**/*"
     ],
     "win": {
+      "artifactName": "HEG-Formatos-Setup-${version}.${ext}",
       "target": [
         {
           "target": "nsis",
