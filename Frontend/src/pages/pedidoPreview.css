@@ -451,20 +451,22 @@
   }
 
   .preview-table {
-    font-size: 6px;
-    table-layout: fixed;
+    font-size: 6.5px;
+    table-layout: auto;
     width: 100%;
   }
 
   .preview-table th {
-    white-space: normal;
-    word-break: break-word;
-    line-height: 1.2;
+    white-space: nowrap;
+  }
+
+  .preview-table td {
+    white-space: nowrap;
   }
 
   .preview-table th,
   .preview-table td {
-    padding: 1px 2px;
+    padding: 1px 3px;
   }
 
   .preview-totals {
