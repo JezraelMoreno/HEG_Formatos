@@ -601,7 +601,7 @@ app.get("/proyectos/:id/pedidos", authenticateToken, requireRole("administrador"
   let query =
     "SELECT id, id_proyecto, nombre_proyecto, pedido, clan, familia, proveedor, nombre_usuario, DATE_FORMAT(fecha_aprobacion, '%Y-%m-%d') AS fecha_aprobacion, concepto, situaciones_especiales, porcentaje_descuento, importe_total AS importe FROM pedidos WHERE id_proyecto = ?";
   const params = [id];
-  const toList = (v) => Array.isArray(v) ? v : (typeof v === 'string' ? v.split(',').map(s => s.trim()).filter(Boolean) : []);
+  const toList = (v) => Array.isArray(v) ? v : (typeof v === 'string' ? v.split('||').map(s => s.trim()).filter(Boolean) : []);
   const addMulti = (field, values) => {
     const list = toList(values);
     if (list.length === 1) { query += ` AND ${field} = ?`; params.push(list[0]); }
@@ -875,7 +875,7 @@ app.get("/proyectos/:id/pedidos/export", authenticateToken, requireRole("adminis
   let qPedidos =
     "SELECT id, nombre_proyecto, pedido, clan, familia, proveedor, DATE_FORMAT(fecha_aprobacion, '%Y-%m-%d') AS fecha_aprobacion, concepto, situaciones_especiales, importe_total AS importe FROM pedidos WHERE id_proyecto = ?";
   const pedidosParams = [id];
-  const toListE = (v) => Array.isArray(v) ? v : (typeof v === 'string' ? v.split(',').map(s => s.trim()).filter(Boolean) : []);
+  const toListE = (v) => Array.isArray(v) ? v : (typeof v === 'string' ? v.split('||').map(s => s.trim()).filter(Boolean) : []);
   const addMultiE = (field, values) => {
     const list = toListE(values);
     if (list.length === 1) { qPedidos += ` AND ${field} = ?`; pedidosParams.push(list[0]); }
