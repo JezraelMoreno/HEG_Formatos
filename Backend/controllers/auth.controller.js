@@ -15,11 +15,10 @@ export async function login(req, res) {
       return res.status(401).json({ success: false, message: "Credenciales incorrectas" });
     }
     const stored = String(user.contrasena || "");
-    const ok = stored === hash || stored.toLowerCase() === hash.toLowerCase() || stored === contrasena;
-    if (!ok) {
+    if (stored !== hash) {
       return res.status(401).json({ success: false, message: "Credenciales incorrectas" });
     }
-    const roleVal = (user.tipo_usuario || user.rol || user.role || "contador");
+    const roleVal = user.rol_nombre;
     const payload = {
       sub: user.id_usuario || user.id || nombre_usuario,
       username: nombre_usuario,

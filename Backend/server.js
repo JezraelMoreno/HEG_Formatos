@@ -13,9 +13,13 @@ import ExcelJS from "exceljs";
 import { createUploader } from "./helpers/upload.js";
 import * as FacturasCtrl from "./controllers/facturas.controller.js";
 
+if (!process.env.JWT_SECRET) {
+  throw new Error("JWT_SECRET no está definido. Configúralo en el entorno antes de arrancar el servidor.");
+}
+
 const app = express();
 const PORT = process.env.PORT || 3000;
-const JWT_SECRET = process.env.JWT_SECRET || "change-me-dev-secret";
+const JWT_SECRET = process.env.JWT_SECRET;
 
 // Middlewares
 app.use(cors());
@@ -70,14 +74,20 @@ db.query(`ALTER TABLE cobranza_proyecto ADD COLUMN aplicado DECIMAL(15,2) DEFAUL
   if (err && err.errno !== 1060) console.warn("migrate aplicado:", err?.message);
 });
 
-// Ruta de login (compatibilidad: acepta hash SHA-256 o texto plano)
+// Ruta de login
 app.post("/login", (req, res) => {
   const { nombre_usuario, contrasena } = req.body || {};
   if (!nombre_usuario || !contrasena) {
     return res.status(400).json({ success: false, message: "Faltan datos" });
   }
   const hash = crypto.createHash("sha256").update(contrasena).digest("hex");
-  const q = "SELECT * FROM usuarios WHERE nombre_usuario = ? LIMIT 1";
+  const q = `
+    SELECT u.*, r.nombre AS rol_nombre
+    FROM usuarios u
+    JOIN roles r ON r.id_rol = u.id_rol
+    WHERE u.nombre_usuario = ?
+    LIMIT 1
+  `;
   db.query(q, [nombre_usuario], (err, rows) => {
     if (err) {
       console.error("Error en la consulta MySQL:", err);
@@ -88,11 +98,10 @@ app.post("/login", (req, res) => {
     }
     const user = rows[0] || {};
     const stored = String(user.contrasena || "");
-    const ok = stored === hash || stored.toLowerCase() === hash.toLowerCase() || stored === contrasena;
-    if (!ok) {
+    if (stored !== hash) {
       return res.status(401).json({ success: false, message: "Credenciales incorrectas" });
     }
-    const roleVal = (user.tipo_usuario || user.rol || user.role || "contador");
+    const roleVal = user.rol_nombre;
     const payload = {
       sub: user.id_usuario || user.id || nombre_usuario,
       username: nombre_usuario,
@@ -100,47 +109,6 @@ app.post("/login", (req, res) => {
     };
     const token = jwt.sign(payload, JWT_SECRET, { expiresIn: "8h" });
     return res.json({ success: true, message: "Login exitoso", token, user: { username: nombre_usuario, role: payload.role } });
-  });
-});
-
-// Ruta de login
-app.post("/login", (req, res) => {
-  const { nombre_usuario, contrasena } = req.body;
-
-  if (!nombre_usuario || !contrasena) {
-    return res.status(400).json({ success: false, message: "Faltan datos" });
-  }
-
-  // Hasheamos la contraseña recibida
-  const hash = crypto.createHash("sha256").update(contrasena).digest("hex");
-
-  const query =
-    "SELECT * FROM usuarios WHERE nombre_usuario = ? AND contrasena = ?";
-  console.log("Usuario:", nombre_usuario);
-  console.log("Contraseña (hash):", hash);
-  db.query(query, [nombre_usuario, hash], (err, results) => {
-    if (err) {
-      console.error("Error en la consulta MySQL:", err);
-      return res
-        .status(500)
-        .json({ success: false, message: "Error interno del servidor" });
-    }
-    console.log("Resultados de MySQL:", results);
-
-    if (results.length > 0) {
-      const user = results[0] || {};
-      const roleVal = (user.tipo_usuario || user.rol || user.role || "contador");
-      const payload = {
-        sub: user.id_usuario || user.id || nombre_usuario,
-        username: nombre_usuario,
-        role: roleVal,
-      };
-      const token = jwt.sign(payload, JWT_SECRET, { expiresIn: "8h" });
-      return res.json({ success: true, message: "Login exitoso", token, user: { username: nombre_usuario, role: payload.role } });
-    }
-    return res
-      .status(401)
-      .json({ success: false, message: "Credenciales incorrectas" });
   });
 });
 
@@ -359,7 +327,7 @@ app.patch("/proyectos/:id/estado", authenticateToken, async (req, res) => {
   }
 });
 
-app.delete("/proyectos/:id", authenticateToken, requireRole("administrador"), (req, res) => {
+app.delete("/proyectos/:id", authenticateToken, requireRole("Superadmin"), (req, res) => {
   const { id } = req.params;
   if (!id) {
     return res.status(400).json({ success: false, message: "Proyecto no especificado" });
@@ -481,7 +449,7 @@ app.get("/proyectos/:id", authenticateToken, async (req, res) => {
 });
 
 // Proyectos - actualizar presupuestos por familia y registrar historial
-app.put("/proyectos/:id/presupuesto", authenticateToken, requireRole("administrador"), async (req, res) => {
+app.put("/proyectos/:id/presupuesto", authenticateToken, requireRole("Superadmin"), async (req, res) => {
   try {
     const { id } = req.params;
     const proyectoId = Number(id);
@@ -595,7 +563,7 @@ app.get("/proyectos/:id/presupuestos/historial", authenticateToken, async (req, 
 });
 
 // Pedidos - listar por proyecto
-app.get("/proyectos/:id/pedidos", authenticateToken, requireRole("administrador", "visor"), (req, res) => {
+app.get("/proyectos/:id/pedidos", authenticateToken, requireRole("Superadmin", "Visor"), (req, res) => {
   const { id } = req.params;
   const { familia } = req.query;
   let query =
@@ -656,7 +624,7 @@ app.get("/proyectos/:id/pedidos", authenticateToken, requireRole("administrador"
 });
 
 // Pedidos - resumen por fecha de carga
-app.get("/pedidos/resumen", authenticateToken, requireRole("administrador", "visor"), async (req, res) => {
+app.get("/pedidos/resumen", authenticateToken, requireRole("Superadmin", "Visor"), async (req, res) => {
   try {
     const rawFecha = typeof req.query.fecha === "string" ? req.query.fecha.trim() : "";
     const rawUsuario = typeof req.query.usuario === "string" ? req.query.usuario.trim() : "";
@@ -710,7 +678,7 @@ app.get("/pedidos/resumen", authenticateToken, requireRole("administrador", "vis
 });
 
 // Pedidos - detalles por pedido
-app.get("/pedidos/:pedidoId/detalles", authenticateToken, requireRole("administrador", "visor"), (req, res) => {
+app.get("/pedidos/:pedidoId/detalles", authenticateToken, requireRole("Superadmin", "Visor"), (req, res) => {
   const pedidoId = Number(req.params.pedidoId);
   if (!Number.isInteger(pedidoId) || pedidoId <= 0) {
     return res.status(400).json({ success: false, message: "Pedido inválido" });
@@ -743,7 +711,7 @@ app.get("/pedidos/:pedidoId/detalles", authenticateToken, requireRole("administr
   });
 });
 
-app.get("/pedidos/:pedidoId/detalles-cristal", authenticateToken, requireRole("administrador", "visor"), (req, res) => {
+app.get("/pedidos/:pedidoId/detalles-cristal", authenticateToken, requireRole("Superadmin", "Visor"), (req, res) => {
   const pedidoId = Number(req.params.pedidoId);
   if (!Number.isInteger(pedidoId) || pedidoId <= 0) {
     return res.status(400).json({ success: false, message: "Pedido inválido" });
@@ -774,7 +742,7 @@ app.get("/pedidos/:pedidoId/detalles-cristal", authenticateToken, requireRole("a
   });
 });
 
-app.post("/pedidos/:pedidoId/detalles-cristal", authenticateToken, requireRole("administrador"), async (req, res) => {
+app.post("/pedidos/:pedidoId/detalles-cristal", authenticateToken, requireRole("Superadmin"), async (req, res) => {
   try {
     const pedidoId = Number(req.params.pedidoId);
     if (!Number.isInteger(pedidoId) || pedidoId <= 0) {
@@ -803,7 +771,7 @@ app.post("/pedidos/:pedidoId/detalles-cristal", authenticateToken, requireRole("
   }
 });
 
-app.get("/pedidos/:pedidoId/detalles-aluminio", authenticateToken, requireRole("administrador", "visor"), (req, res) => {
+app.get("/pedidos/:pedidoId/detalles-aluminio", authenticateToken, requireRole("Superadmin", "Visor"), (req, res) => {
   const pedidoId = Number(req.params.pedidoId);
   if (!Number.isInteger(pedidoId) || pedidoId <= 0) {
     return res.status(400).json({ success: false, message: "Pedido inválido" });
@@ -837,7 +805,7 @@ app.get("/pedidos/:pedidoId/detalles-aluminio", authenticateToken, requireRole("
   });
 });
 
-app.post("/pedidos/:pedidoId/detalles-aluminio", authenticateToken, requireRole("administrador"), async (req, res) => {
+app.post("/pedidos/:pedidoId/detalles-aluminio", authenticateToken, requireRole("Superadmin"), async (req, res) => {
   try {
     const pedidoId = Number(req.params.pedidoId);
     if (!Number.isInteger(pedidoId) || pedidoId <= 0) {
@@ -868,7 +836,7 @@ app.post("/pedidos/:pedidoId/detalles-aluminio", authenticateToken, requireRole(
 
 
 // Pedidos - exportar a XLSX con logo y estilos
-app.get("/proyectos/:id/pedidos/export", authenticateToken, requireRole("administrador", "visor"), (req, res) => {
+app.get("/proyectos/:id/pedidos/export", authenticateToken, requireRole("Superadmin", "Visor"), (req, res) => {
   const { id } = req.params;
   const { familia } = req.query;
   const qProyecto = "SELECT nombre FROM proyectos WHERE id_proyecto = ?";
@@ -1084,7 +1052,7 @@ app.get("/proyectos/:id/explosion-insumos", authenticateToken, async (req, res) 
   }
 });
 
-app.post("/proyectos/:id/explosion-insumos", authenticateToken, requireRole("administrador"), async (req, res) => {
+app.post("/proyectos/:id/explosion-insumos", authenticateToken, requireRole("Superadmin"), async (req, res) => {
   try {
     const proyectoId = Number(req.params.id);
     if (!Number.isInteger(proyectoId) || proyectoId <= 0) {
@@ -1131,7 +1099,7 @@ app.post("/proyectos/:id/explosion-insumos", authenticateToken, requireRole("adm
   }
 });
 
-app.put("/proyectos/:id/explosion-insumos/:explosionId", authenticateToken, requireRole("administrador"), async (req, res) => {
+app.put("/proyectos/:id/explosion-insumos/:explosionId", authenticateToken, requireRole("Superadmin"), async (req, res) => {
   try {
     const proyectoId = Number(req.params.id);
     const explosionId = Number(req.params.explosionId);
@@ -1187,7 +1155,7 @@ app.put("/proyectos/:id/explosion-insumos/:explosionId", authenticateToken, requ
   }
 });
 
-app.delete("/proyectos/:id/explosion-insumos/:explosionId", authenticateToken, requireRole("administrador"), async (req, res) => {
+app.delete("/proyectos/:id/explosion-insumos/:explosionId", authenticateToken, requireRole("Superadmin"), async (req, res) => {
   try {
     const proyectoId = Number(req.params.id);
     const explosionId = Number(req.params.explosionId);
@@ -1624,7 +1592,7 @@ async function insertDetallesSegunFamilia(pedidoId, familia, detallesRaw) {
 }
 
 // Pedidos - carga masiva desde CSV (parseado en el frontend)
-app.post("/proyectos/:id/pedidos", authenticateToken, requireRole("administrador"), async (req, res) => {
+app.post("/proyectos/:id/pedidos", authenticateToken, requireRole("Superadmin"), async (req, res) => {
   try {
     const { id } = req.params;
     const proyectoId = Number(id);
@@ -1832,7 +1800,7 @@ app.get("/proyectos/:id/viaticos-presupuestos", authenticateToken, async (req, r
 });
 
 // Crear o actualizar presupuesto de viáticos
-app.post("/proyectos/:id/viaticos-presupuestos", authenticateToken, requireRole("administrador"), async (req, res) => {
+app.post("/proyectos/:id/viaticos-presupuestos", authenticateToken, requireRole("Superadmin"), async (req, res) => {
   try {
     const proyectoId = Number(req.params.id);
     const { familia, presupuesto_asignado } = req.body || {};
@@ -1911,7 +1879,7 @@ app.get("/proyectos/:id/viaticos-movimientos", authenticateToken, async (req, re
 });
 
 // Crear movimiento de viáticos
-app.post("/proyectos/:id/viaticos-movimientos", authenticateToken, requireRole("administrador"), async (req, res) => {
+app.post("/proyectos/:id/viaticos-movimientos", authenticateToken, requireRole("Superadmin"), async (req, res) => {
   try {
     const proyectoId = Number(req.params.id);
     const { familia, persona, concepto, clave_referencia, fecha, ingreso, egreso } = req.body || {};
@@ -1970,7 +1938,7 @@ app.post("/proyectos/:id/viaticos-movimientos", authenticateToken, requireRole("
 });
 
 // Eliminar movimiento de viáticos
-app.delete("/proyectos/:id/viaticos-movimientos/:movimientoId", authenticateToken, requireRole("administrador"), async (req, res) => {
+app.delete("/proyectos/:id/viaticos-movimientos/:movimientoId", authenticateToken, requireRole("Superadmin"), async (req, res) => {
   try {
     const proyectoId = Number(req.params.id);
     const movimientoId = Number(req.params.movimientoId);
@@ -3708,7 +3676,7 @@ app.get("/proyectos/:id/cobranza-resumen", authenticateToken, async (req, res) =
 });
 
 // Actualizar datos de cobranza de un proyecto
-app.put("/proyectos/:id/cobranza-resumen", authenticateToken, requireRole("contador"), async (req, res) => {
+app.put("/proyectos/:id/cobranza-resumen", authenticateToken, requireRole("Contador"), async (req, res) => {
   try {
     const proyectoId = Number(req.params.id);
     const { codigo_control, importe_contratado, importe_cobrado, fondo_garantia, aplicado, factor_indirectos, indirectos_aplicados } = req.body || {};
@@ -3817,7 +3785,7 @@ app.get("/proyectos/:id/cobranza-facturas", authenticateToken, async (req, res) 
 });
 
 // Agregar factura de cobranza
-app.post("/proyectos/:id/cobranza-facturas", authenticateToken, requireRole("contador"), async (req, res) => {
+app.post("/proyectos/:id/cobranza-facturas", authenticateToken, requireRole("Contador"), async (req, res) => {
   try {
     const proyectoId = Number(req.params.id);
     const {
@@ -3872,7 +3840,7 @@ app.post("/proyectos/:id/cobranza-facturas", authenticateToken, requireRole("con
 });
 
 // Actualizar factura de cobranza
-app.put("/proyectos/:id/cobranza-facturas/:idFactura", authenticateToken, requireRole("contador"), async (req, res) => {
+app.put("/proyectos/:id/cobranza-facturas/:idFactura", authenticateToken, requireRole("Contador"), async (req, res) => {
   try {
     const proyectoId = Number(req.params.id);
     const idFactura = Number(req.params.idFactura);
@@ -3941,7 +3909,7 @@ app.put("/proyectos/:id/cobranza-facturas/:idFactura", authenticateToken, requir
 });
 
 // Eliminar factura de cobranza
-app.delete("/proyectos/:id/cobranza-facturas/:idFactura", authenticateToken, requireRole("contador"), async (req, res) => {
+app.delete("/proyectos/:id/cobranza-facturas/:idFactura", authenticateToken, requireRole("Contador"), async (req, res) => {
   try {
     const proyectoId = Number(req.params.id);
     const idFactura = Number(req.params.idFactura);
@@ -6016,12 +5984,18 @@ app.put("/facturas/:id", authenticateToken, FacturasCtrl.actualizar);
 app.delete("/facturas/:id", authenticateToken, FacturasCtrl.eliminar);
 
 // Gestión de usuarios (administrador y visor)
-app.get("/usuarios", authenticateToken, requireRole("administrador", "visor"), async (req, res) => {
+app.get("/usuarios", authenticateToken, requireRole("Superadmin", "Visor"), async (req, res) => {
   try {
     const rows = await new Promise((resolve, reject) => {
-      db.query("SELECT id_usuario, nombre_usuario, tipo_usuario FROM usuarios ORDER BY nombre_usuario", (err, r) => {
-        if (err) reject(err); else resolve(r);
-      });
+      db.query(
+        `SELECT u.id_usuario, u.nombre_usuario, r.nombre AS tipo_usuario
+         FROM usuarios u
+         JOIN roles r ON r.id_rol = u.id_rol
+         ORDER BY u.nombre_usuario`,
+        (err, r) => {
+          if (err) reject(err); else resolve(r);
+        }
+      );
     });
     return res.json({ success: true, data: rows });
   } catch (err) {
@@ -6029,21 +6003,34 @@ app.get("/usuarios", authenticateToken, requireRole("administrador", "visor"), a
   }
 });
 
-app.post("/usuarios", authenticateToken, requireRole("administrador"), async (req, res) => {
+// Mapeo temporal: el formulario actual de alta de usuarios (Frontend/src/pages/mainPage.tsx)
+// todavía envía los valores legado ("administrador"/"contador"/"visor"). Se traducen al nombre
+// de rol nuevo hasta que la UI se actualice (semana 2-3).
+const TIPO_USUARIO_LEGADO_A_ROL = {
+  administrador: "Superadmin",
+  contador: "Contador",
+  visor: "Visor",
+};
+
+app.post("/usuarios", authenticateToken, requireRole("Superadmin"), async (req, res) => {
   try {
     const { nombre_usuario, contrasena, tipo_usuario } = req.body || {};
     if (!nombre_usuario || !contrasena || !tipo_usuario) {
       return res.status(400).json({ success: false, message: "Faltan datos" });
     }
-    const tiposValidos = ["administrador", "contador", "visor"];
-    if (!tiposValidos.includes(tipo_usuario)) {
+    const nombreRol = TIPO_USUARIO_LEGADO_A_ROL[tipo_usuario];
+    if (!nombreRol) {
       return res.status(400).json({ success: false, message: "Tipo de usuario inválido" });
+    }
+    const rolRows = await queryAsync("SELECT id_rol FROM roles WHERE nombre = ? LIMIT 1", [nombreRol]);
+    if (!rolRows || rolRows.length === 0) {
+      return res.status(400).json({ success: false, message: "Rol no encontrado" });
     }
     const hash = crypto.createHash("sha256").update(contrasena).digest("hex");
     await new Promise((resolve, reject) => {
       db.query(
-        "INSERT INTO usuarios (nombre_usuario, contrasena, tipo_usuario) VALUES (?, ?, ?)",
-        [nombre_usuario.trim(), hash, tipo_usuario],
+        "INSERT INTO usuarios (nombre_usuario, contrasena, id_rol) VALUES (?, ?, ?)",
+        [nombre_usuario.trim(), hash, rolRows[0].id_rol],
         (err, result) => { if (err) reject(err); else resolve(result); }
       );
     });

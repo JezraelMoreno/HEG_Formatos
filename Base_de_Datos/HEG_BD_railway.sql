@@ -3,13 +3,28 @@
 -- USE railway (ya seleccionada)
 
 -- ---
+-- Tabla de roles
+-- ---
+-- Reemplaza al ENUM usuarios.tipo_usuario ("contador","administrador","visor").
+-- Ver Base_de_Datos/migrations/001_create_roles.sql y 002_usuarios_add_rol.sql.
+CREATE TABLE IF NOT EXISTS roles (
+  id_rol INT AUTO_INCREMENT PRIMARY KEY,
+  nombre VARCHAR(30) NOT NULL UNIQUE,
+  descripcion VARCHAR(255)
+);
+
+-- ---
 -- Tabla de usuarios
 -- ---
 CREATE TABLE IF NOT EXISTS usuarios (
   id_usuario INT AUTO_INCREMENT PRIMARY KEY,
   nombre_usuario VARCHAR(15) NOT NULL UNIQUE,
-  tipo_usuario ENUM("contador", "administrador", "visor") NOT NULL,
-  contrasena VARCHAR(1000) NOT NULL
+  id_rol INT NOT NULL,
+  contrasena VARCHAR(1000) NOT NULL,
+
+  FOREIGN KEY (id_rol) REFERENCES roles(id_rol)
+    ON UPDATE CASCADE
+    ON DELETE RESTRICT
 );
 
 -- ---
@@ -44,12 +59,12 @@ CREATE TABLE IF NOT EXISTS proyectos_presupuestos_historial (
 );
 
 -- ---
--- Tabla de asignaciones para explosiÃ³n de insumos
+-- Tabla de asignaciones para explosion de insumos
 -- ---
 CREATE TABLE IF NOT EXISTS explosion_insumos (
   id INT AUTO_INCREMENT PRIMARY KEY,
   id_proyecto INT NOT NULL,
-  clan VARCHAR(10) NOT NULL DEFAULT "",
+  clan VARCHAR(30) NOT NULL DEFAULT "",
   familia VARCHAR(10) NOT NULL,
   presupuesto_asignado DECIMAL(15,2) NOT NULL DEFAULT 0.00,
   fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -68,7 +83,7 @@ CREATE TABLE IF NOT EXISTS pedidos (
   id_proyecto INT NOT NULL,
   nombre_proyecto VARCHAR(50) NOT NULL,
   pedido VARCHAR(10) NOT NULL,
-  clan VARCHAR(10) NOT NULL,
+  clan VARCHAR(30) NOT NULL,
   familia VARCHAR(10) NOT NULL,
   proveedor VARCHAR(100) NOT NULL,
   fecha_aprobacion DATE NOT NULL,
@@ -76,8 +91,16 @@ CREATE TABLE IF NOT EXISTS pedidos (
   situaciones_especiales VARCHAR(100),
   porcentaje_descuento DECIMAL (6,2),
 
-  importe_total DECIMAL(15,2) DEFAULT 0.00, 
+  importe_total DECIMAL(15,2) DEFAULT 0.00,
   nombre_usuario VARCHAR(50) NOT NULL,
+
+  -- Flujo de aprobación (ver Base_de_Datos/migrations/003_pedidos_estado.sql y
+  -- 006_pedidos_estado_simplificar.sql). Daniel (rol Aprobador) levanta el pedido,
+  -- lo edita y mueve su propio estado; no hay paso de "enviar" a otra persona.
+  estado ENUM('levantado', 'aprobado', 'rechazado') NOT NULL DEFAULT 'levantado',
+  id_aprobador INT NULL,
+  fecha_levantado DATETIME NULL,
+  fecha_resolucion DATETIME NULL,
 
   CONSTRAINT uk_pedido_proyecto UNIQUE (id_proyecto, pedido),
 
@@ -87,7 +110,11 @@ CREATE TABLE IF NOT EXISTS pedidos (
 
   FOREIGN KEY (nombre_usuario) REFERENCES usuarios(nombre_usuario)
     ON UPDATE CASCADE
-    ON DELETE RESTRICT
+    ON DELETE RESTRICT,
+
+  FOREIGN KEY (id_aprobador) REFERENCES usuarios(id_usuario)
+    ON UPDATE CASCADE
+    ON DELETE SET NULL
 );
 
 -- ---
@@ -171,6 +198,48 @@ CREATE TABLE IF NOT EXISTS pedidos_detalles_cristal (
 
   FOREIGN KEY (id_pedido) REFERENCES pedidos(id)
     ON DELETE CASCADE
+);
+
+-- ---
+-- Tabla pedidos_historial_estados
+-- Auditoría de cambios de estado de pedidos (trazabilidad de aprobaciones)
+-- Ver Base_de_Datos/migrations/004_create_pedidos_historial_estados.sql
+-- ---
+CREATE TABLE IF NOT EXISTS pedidos_historial_estados (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  id_pedido INT NOT NULL,
+  estado_anterior ENUM('levantado', 'aprobado', 'rechazado') NULL,
+  estado_nuevo ENUM('levantado', 'aprobado', 'rechazado') NOT NULL,
+  id_usuario INT NOT NULL,
+  comentario VARCHAR(500) NULL,
+  fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+  INDEX idx_pedido (id_pedido),
+  INDEX idx_fecha (fecha_registro),
+
+  FOREIGN KEY (id_pedido) REFERENCES pedidos(id)
+    ON DELETE CASCADE ON UPDATE CASCADE,
+  FOREIGN KEY (id_usuario) REFERENCES usuarios(id_usuario)
+    ON UPDATE CASCADE ON DELETE RESTRICT
+);
+
+-- ---
+-- Tabla supervisores_proyectos
+-- Asignación de Supervisores a proyectos
+-- Ver Base_de_Datos/migrations/005_create_supervisores_proyectos.sql
+-- ---
+CREATE TABLE IF NOT EXISTS supervisores_proyectos (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  id_usuario INT NOT NULL,
+  id_proyecto INT NOT NULL,
+  fecha_asignacion DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+  CONSTRAINT uk_supervisor_proyecto UNIQUE (id_usuario, id_proyecto),
+
+  FOREIGN KEY (id_usuario) REFERENCES usuarios(id_usuario)
+    ON UPDATE CASCADE ON DELETE CASCADE,
+  FOREIGN KEY (id_proyecto) REFERENCES proyectos(id_proyecto)
+    ON UPDATE CASCADE ON DELETE CASCADE
 );
 
 -- ---

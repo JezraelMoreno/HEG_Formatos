@@ -1,6 +1,10 @@
 import jwt from "jsonwebtoken";
 
-const JWT_SECRET = process.env.JWT_SECRET || "change-me-dev-secret";
+if (!process.env.JWT_SECRET) {
+  throw new Error("JWT_SECRET no está definido. Configúralo en el entorno antes de arrancar el servidor.");
+}
+
+const JWT_SECRET = process.env.JWT_SECRET;
 
 function authenticateToken(req, res, next) {
   if (req.user) return next();
