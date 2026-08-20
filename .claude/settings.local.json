@@ -24,7 +24,18 @@
       "Bash(findstr:*)",
       "Bash(git show:*)",
       "Bash(node scripts/generate_excel.js:*)",
-      "Bash(gh issue list:*)"
+      "Bash(gh issue list:*)",
+      "Bash(npx vite:*)",
+      "Bash(python:*)",
+      "Bash(pip install:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nAgregar módulo de remisiones: modal, historial y migración\n\n- Nuevos componentes AgregarRemisionModal y HistorialEntregas\n- Migración para tablas de historial de entregas\n- Actualizar RemisionesPage y RemisionesProjectSelector\n- Actualizar server.js y esquema de BD\n- Eliminar bdprueba.sql y scripts de diagnóstico innecesarios\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git commit:*)",
+      "Bash(npm run electron:build:win:*)",
+      "Bash(xargs ls -la)",
+      "Bash(xargs grep -l \"miscellaneous\\\\|misceláneo\\\\|miscellaneous\")",
+      "Bash(grep -n \"Frontend.*src.*modulo\\\\|Frontend.*src.*page\\\\|Backend.*controller\" /c/Users/cantj/HEG_Formatos/Backend/routes/*)",
+      "Bash(node -e \"require\\(''puppeteer''\\)\")"
     ]
   }
 }
