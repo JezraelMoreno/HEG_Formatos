@@ -2,70 +2,184 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  height: 100vh;
+  min-height: 100vh;
   background: var(--color-bg);
   font-family: var(--font-family);
+  padding: 24px;
 }
 
-.login-form {
+.login-card {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  width: 100%;
+  max-width: 880px;
+  min-height: 460px;
   background: var(--color-surface);
-  padding: 2rem;
-  border-radius: var(--radius-lg);
-  width: 320px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  box-shadow: 0 24px 60px rgba(11, 47, 74, 0.18);
+}
+
+/* --- Panel de marca (degradado fijo, es intencional según HANDOFF.md) --- */
+.login-brand {
+  background: linear-gradient(155deg, #224c84 0%, #0b2f4a 100%);
+  padding: 44px 38px;
   display: flex;
   flex-direction: column;
+  justify-content: space-between;
+  color: #fff;
+  position: relative;
+  overflow: hidden;
 }
 
-.login-logo {
-  width: 160px;
+.login-brand-blob {
+  position: absolute;
+  border-radius: 50%;
+}
+
+.login-brand-blob-1 {
+  width: 260px;
+  height: 260px;
+  background: rgba(59, 130, 246, 0.22);
+  top: -90px;
+  right: -90px;
+}
+
+.login-brand-blob-2 {
+  width: 180px;
+  height: 180px;
+  background: rgba(255, 255, 255, 0.05);
+  bottom: -60px;
+  left: -40px;
+}
+
+.login-brand-logo {
+  position: relative;
+  background: #fff;
+  width: 70px;
+  height: 70px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+}
+
+.login-brand-logo img {
+  width: 52px;
   height: auto;
-  margin: 0 auto 0.75rem;
-  display: block;
 }
 
-.login-form h2 {
-  text-align: center;
-  margin-bottom: 1rem;
+.login-brand-copy {
+  position: relative;
+}
+
+.login-brand-copy h2 {
+  margin: 0 0 10px;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.25;
+  overflow-wrap: break-word;
+}
+
+.login-brand-copy p {
+  margin: 0;
+  font-size: 14px;
+  color: #c7d8f0;
+  line-height: 1.6;
+}
+
+/* --- Formulario --- */
+.login-form {
+  padding: 44px 40px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.login-form-eyebrow {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+}
+
+.login-form-title {
+  margin: 6px 0 24px;
   color: var(--color-text);
+  font-size: 26px;
 }
 
 .login-form label {
-  margin-top: 10px;
-  font-weight: bold;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
 }
 
-.login-form input {
-  padding: 10px;
-  margin-top: 4px;
+.login-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 6px 0 18px;
+  padding: 12px 14px;
   border-radius: var(--radius-md);
   border: 1px solid var(--color-border-input);
-  outline: none;
-  font-family: var(--font-family);
+  background: var(--color-bg-alt);
+  color: var(--color-text-placeholder);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-.login-form button {
-  margin-top: 20px;
-  padding: 10px;
-  background-color: var(--color-primary);
-  color: white;
+.login-field:focus-within {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+  color: var(--color-accent);
+}
+
+.login-field input {
   border: none;
-  border-radius: var(--radius-md);
-  cursor: pointer;
+  outline: none;
+  background: transparent;
+  font-size: 14px;
   font-family: var(--font-family);
-  font-weight: 600;
-  transition: background-color 0.3s;
+  flex: 1;
+  color: var(--color-text);
 }
 
-.login-form button:hover {
-  background-color: var(--color-primary-hover);
+.login-field input::placeholder {
+  color: var(--color-text-placeholder);
+}
+
+.login-forgot {
+  align-self: flex-end;
+  font-size: 13px;
+  margin-bottom: 22px;
+  color: var(--color-accent);
+}
+
+.login-submit {
+  padding: 13px;
+  font-size: 15px;
 }
 
 .error {
-  color: var(--color-danger);
+  color: var(--color-danger-text, var(--color-danger));
   background: var(--color-danger-bg);
   padding: 0.5rem;
   border-radius: var(--radius-md);
-  margin-bottom: 10px;
+  margin-bottom: 14px;
   text-align: center;
+  font-size: 13.5px;
+}
+
+@media (max-width: 720px) {
+  .login-card {
+    grid-template-columns: 1fr;
+  }
+
+  .login-brand {
+    padding: 32px 28px;
+  }
 }
