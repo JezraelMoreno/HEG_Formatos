@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import type { ChangeEventHandler, FormEvent, MouseEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import "./mainPage.css";
-import { BackButton } from "../components/BackButton";
-import { authHeader, clearToken, getRole, getToken, isTokenValid } from "../auth";
+import { AppShell } from "../components/AppShell";
+import { Topbar } from "../components/Topbar";
+import { useAuth } from "../hooks/useAuth";
+import { authHeader, clearToken, getToken, isTokenValid } from "../auth";
 import API_URL from "../config";
 import { parsePedidosCsv } from "../utils/pedidosCsv";
 import type { PedidoCsv } from "../utils/pedidosCsv";
@@ -128,9 +130,7 @@ export function MainPage() {
   const [moduloSeleccionado, setModuloSeleccionado] = useState<ModuleKey | null>(null);
   const pedidoFileInputRef = useRef<HTMLInputElement | null>(null);
   const filtroFechaRef = useRef<HTMLInputElement | null>(null);
-  const role = (getRole() || "").toLowerCase();
-  const isAdmin = role === "administrador";
-  const isVisor = role === "visor";
+  const { isSuperadmin: isAdmin, isVisor } = useAuth();
   const totalMiscel = miscelFamilias.reduce((sum, f) => {
     const n = Number(f.presupuesto);
     return Number.isFinite(n) && n >= 0 ? sum + n : sum;
@@ -621,15 +621,20 @@ export function MainPage() {
     ? proyectos.filter((proyecto) => proyecto.nombre.toLowerCase().includes(filtroNormalizado))
     : proyectos;
 
+  const sidebarItems = modulos.map((modulo) => ({
+    key: modulo.key,
+    label: modulo.titulo.replace(/^(Módulo de |Control de )/, ""),
+    active: moduloSeleccionado === modulo.key,
+    onClick: () => seleccionarModulo(modulo.key),
+  }));
+
   return (
-    <div className="main-page">
-      <div className="encabezado">
-        {moduloSeleccionado && <BackButton onClick={volverAModulos} />}
-        <div className="titulo-bloque">
-          <h1 className="titulo">{moduloActivo ? moduloActivo.titulo : "Pagina Principal"}</h1>
-        </div>
-        <div className="actions">
-          {mostrarBuscador && (
+    <AppShell items={sidebarItems}>
+      <Topbar
+        title={moduloActivo ? moduloActivo.titulo : "Página principal"}
+        onBack={moduloSeleccionado ? volverAModulos : undefined}
+      >
+        {mostrarBuscador && (
             <div className="search-bar search-bar-inline">
               <label htmlFor="busqueda-proyecto" className="visually-hidden">
                 Buscar proyecto
@@ -688,8 +693,9 @@ export function MainPage() {
           <button className="action-button logout-button" onClick={handleLogout}>
             Cerrar sesión
           </button>
-        </div>
-      </div>
+      </Topbar>
+
+      <div className="app-shell-content">
 
       <div className="contenido">
         <div className="mensajes-globales">
@@ -1180,6 +1186,7 @@ export function MainPage() {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </AppShell>
   );
 }

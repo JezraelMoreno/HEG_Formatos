@@ -1,7 +1,8 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { BackButton } from "../components/BackButton";
-import { authHeader, getToken, isTokenValid, getRole } from "../auth";
+import { authHeader, getToken, isTokenValid } from "../auth";
+import { useAuth } from "../hooks/useAuth";
 import { parsePedidosCsv } from "../utils/pedidosCsv";
 import type { PedidoCsv } from "../utils/pedidosCsv";
 import API_URL from "../config";
@@ -479,9 +480,7 @@ export function ProyectoDetalle() {
   const mostrarPedidosModulo = moduloOrigen === "pedidos";
   const mostrarCobranza = moduloOrigen === "contabilidad";
   const nombreProyecto = proyectoInfo?.nombre || state?.nombre || "Proyecto";
-  const role = (getRole() || '').toLowerCase();
-  const isAdmin = role === 'administrador';
-  const isVisor = role === 'visor';
+  const { role, isSuperadmin: isAdmin, isVisor } = useAuth();
   const mostrarViaticos = moduloOrigen === "viaticos";
 
   // viáticos
