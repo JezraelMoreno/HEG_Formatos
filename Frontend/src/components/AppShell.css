@@ -1,0 +1,17 @@
+.app-shell {
+  display: grid;
+  grid-template-columns: 232px 1fr;
+  min-height: 100vh;
+  background: var(--color-bg-alt);
+}
+
+.app-shell-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.app-shell-content {
+  padding: 28px 20px 24px;
+  box-sizing: border-box;
+}
