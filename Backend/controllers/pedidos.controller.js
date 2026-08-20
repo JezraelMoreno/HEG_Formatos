@@ -162,6 +162,250 @@ export async function guardarDetallesAluminio(req, res) {
   }
 }
 
+export async function crearDirecto(req, res) {
+  try {
+    const proyectoId = Number(req.params.id);
+    if (!Number.isInteger(proyectoId) || proyectoId <= 0) {
+      return res.status(400).json({ success: false, message: "Proyecto inválido" });
+    }
+    const body = req.body || {};
+    const pedidoNombre = normalizeTextValue(body.pedido);
+    const clan = normalizeTextValue(body.clan);
+    const familia = normalizeTextValue(body.familia);
+    const proveedor = normalizeTextValue(body.proveedor);
+    const fechaISO = parseDateToISO(body.fecha_aprobacion);
+    const concepto = normalizeTextValue(body.concepto);
+    if (!pedidoNombre || !clan || !familia || !proveedor || !fechaISO || !concepto) {
+      return res.status(400).json({ success: false, message: "Faltan datos requeridos del pedido" });
+    }
+    if (!(await PedidoModel.proyectoExists(proyectoId))) {
+      return res.status(404).json({ success: false, message: "Proyecto no encontrado" });
+    }
+    const situacionesEspeciales = normalizeTextValue(body.situaciones_especiales) || null;
+    const { dbPct: porcentajeDescuentoDb } = normalizePct(toFiniteNumber(body.porcentaje_descuento));
+    const username = normalizeTextValue(req.user?.username);
+    if (!username) {
+      return res.status(400).json({ success: false, message: "Usuario inválido" });
+    }
+    const nombreProyecto = await PedidoModel.getProyectoNombre(proyectoId);
+
+    const values = [
+      proyectoId,
+      nombreProyecto,
+      pedidoNombre,
+      clan,
+      familia,
+      proveedor,
+      fechaISO,
+      concepto,
+      situacionesEspeciales,
+      porcentajeDescuentoDb,
+      0,
+      username,
+    ];
+    let result;
+    try {
+      result = await PedidoModel.insertPedidoDirecto(values);
+    } catch (err) {
+      if (err.code === "ER_DUP_ENTRY") {
+        return res.status(409).json({ success: false, message: "Ya existe un pedido con ese número en este proyecto" });
+      }
+      throw err;
+    }
+    const pedidoId = result.insertId;
+    const idUsuario = req.user?.sub;
+    await PedidoModel.insertHistorialEstado(pedidoId, null, "levantado", idUsuario, null);
+
+    const detalles = Array.isArray(body.detalles) ? body.detalles : [];
+    if (detalles.length > 0) {
+      await PedidoModel.insertDetallesSegunFamilia(pedidoId, familia, detalles);
+    }
+    let importeFinal = 0;
+    try {
+      const calc = await PedidoModel.calcularImporteDesdeDetalles(
+        { id: pedidoId, familia, situaciones_especiales: situacionesEspeciales, porcentaje_descuento: porcentajeDescuentoDb },
+        { includeSubtotal: false }
+      );
+      if (Number.isFinite(calc)) importeFinal = Number(calc);
+    } catch (calcErr) {
+      console.error("No se pudo calcular el importe del pedido nuevo:", calcErr);
+    }
+    await PedidoModel.updateImporteTotal(pedidoId, importeFinal);
+
+    const pedido = await PedidoModel.getPedidoById(pedidoId);
+    return res.status(201).json({ success: true, data: pedido });
+  } catch (err) {
+    console.error("Error creando pedido:", err);
+    return res.status(500).json({ success: false, message: "Error interno al crear el pedido" });
+  }
+}
+
+export async function obtenerUno(req, res) {
+  try {
+    const pedidoId = Number(req.params.pedidoId);
+    if (!Number.isInteger(pedidoId) || pedidoId <= 0) {
+      return res.status(400).json({ success: false, message: "Pedido inválido" });
+    }
+    const pedido = await PedidoModel.getPedidoById(pedidoId);
+    if (!pedido) {
+      return res.status(404).json({ success: false, message: "Pedido no encontrado" });
+    }
+    const detalles = await PedidoModel.getDetallesSegunFamilia(pedidoId, pedido.familia);
+    return res.json({ success: true, data: { ...pedido, detalles } });
+  } catch (err) {
+    console.error("Error consultando pedido:", err);
+    return res.status(500).json({ success: false, message: "Error consultando el pedido" });
+  }
+}
+
+export async function actualizar(req, res) {
+  try {
+    const pedidoId = Number(req.params.pedidoId);
+    if (!Number.isInteger(pedidoId) || pedidoId <= 0) {
+      return res.status(400).json({ success: false, message: "Pedido inválido" });
+    }
+    const existing = await PedidoModel.getPedidoById(pedidoId);
+    if (!existing) {
+      return res.status(404).json({ success: false, message: "Pedido no encontrado" });
+    }
+    if (existing.estado === "rechazado") {
+      return res.status(409).json({ success: false, message: "No se puede editar un pedido rechazado" });
+    }
+    const body = req.body || {};
+    const pedidoNombre = normalizeTextValue(body.pedido) || existing.pedido;
+    const clan = normalizeTextValue(body.clan) || existing.clan;
+    const familia = normalizeTextValue(body.familia) || existing.familia;
+    const proveedor = normalizeTextValue(body.proveedor) || existing.proveedor;
+    const fechaISO = parseDateToISO(body.fecha_aprobacion) || existing.fecha_aprobacion;
+    const concepto = normalizeTextValue(body.concepto) || existing.concepto;
+    const situacionesEspeciales = body.situaciones_especiales !== undefined
+      ? (normalizeTextValue(body.situaciones_especiales) || null)
+      : existing.situaciones_especiales;
+    const porcentajeDescuentoDb = body.porcentaje_descuento !== undefined
+      ? normalizePct(toFiniteNumber(body.porcentaje_descuento)).dbPct
+      : existing.porcentaje_descuento;
+
+    try {
+      await PedidoModel.updatePedidoMetadata(pedidoId, {
+        pedido: pedidoNombre,
+        clan,
+        familia,
+        proveedor,
+        fecha_aprobacion: fechaISO,
+        concepto,
+        situaciones_especiales: situacionesEspeciales,
+        porcentaje_descuento: porcentajeDescuentoDb,
+      });
+    } catch (err) {
+      if (err.code === "ER_DUP_ENTRY") {
+        return res.status(409).json({ success: false, message: "Ya existe un pedido con ese número en este proyecto" });
+      }
+      throw err;
+    }
+
+    const { detalles, reemplazar = true } = body;
+    if (Array.isArray(detalles) && detalles.length > 0) {
+      if (reemplazar !== false) {
+        // Se borra la familia ANTERIOR (no la nueva) para no dejar filas huérfanas si el
+        // pedido cambió de familia (p.ej. Cristal -> Aluminio) en esta misma edición.
+        await PedidoModel.deleteDetallesSegunFamilia(pedidoId, existing.familia);
+      }
+      await PedidoModel.insertDetallesSegunFamilia(pedidoId, familia, detalles);
+    }
+
+    let importeFinal = Number(existing.importe) || 0;
+    try {
+      const calc = await PedidoModel.calcularImporteDesdeDetalles(
+        { id: pedidoId, familia, situaciones_especiales: situacionesEspeciales, porcentaje_descuento: porcentajeDescuentoDb },
+        { includeSubtotal: false }
+      );
+      if (Number.isFinite(calc)) importeFinal = Number(calc);
+    } catch (calcErr) {
+      console.error("No se pudo recalcular el importe del pedido editado:", calcErr);
+    }
+    await PedidoModel.updateImporteTotal(pedidoId, importeFinal);
+
+    const pedidoActualizado = await PedidoModel.getPedidoById(pedidoId);
+    const detallesActuales = await PedidoModel.getDetallesSegunFamilia(pedidoId, familia);
+    return res.json({ success: true, data: { ...pedidoActualizado, detalles: detallesActuales } });
+  } catch (err) {
+    console.error("Error actualizando pedido:", err);
+    return res.status(500).json({ success: false, message: "Error interno al actualizar el pedido" });
+  }
+}
+
+const ESTADOS_DESTINO_VALIDOS = new Set(["aprobado", "rechazado"]);
+
+export async function cambiarEstado(req, res) {
+  try {
+    const pedidoId = Number(req.params.pedidoId);
+    if (!Number.isInteger(pedidoId) || pedidoId <= 0) {
+      return res.status(400).json({ success: false, message: "Pedido inválido" });
+    }
+    const estadoNuevo = normalizeTextValue(req.body?.estado).toLowerCase();
+    if (!ESTADOS_DESTINO_VALIDOS.has(estadoNuevo)) {
+      return res.status(400).json({ success: false, message: "Estado inválido. Usa 'aprobado' o 'rechazado'." });
+    }
+    const comentario = normalizeTextValue(req.body?.comentario) || null;
+    if (estadoNuevo === "rechazado" && !comentario) {
+      return res.status(400).json({ success: false, message: "El comentario es obligatorio al rechazar un pedido" });
+    }
+    const pedido = await PedidoModel.getPedidoById(pedidoId);
+    if (!pedido) {
+      return res.status(404).json({ success: false, message: "Pedido no encontrado" });
+    }
+    if (pedido.estado === "rechazado") {
+      return res.status(409).json({ success: false, message: "El pedido ya está rechazado" });
+    }
+    if (pedido.estado === estadoNuevo) {
+      return res.status(409).json({ success: false, message: `El pedido ya está en estado '${estadoNuevo}'` });
+    }
+    const idUsuario = req.user?.sub;
+    await PedidoModel.updateEstado(pedidoId, estadoNuevo, idUsuario);
+    await PedidoModel.insertHistorialEstado(pedidoId, pedido.estado, estadoNuevo, idUsuario, comentario);
+    const pedidoActualizado = await PedidoModel.getPedidoById(pedidoId);
+    return res.json({ success: true, data: pedidoActualizado });
+  } catch (err) {
+    console.error("Error cambiando estado del pedido:", err);
+    return res.status(500).json({ success: false, message: "Error interno al cambiar el estado" });
+  }
+}
+
+export async function historial(req, res) {
+  try {
+    const pedidoId = Number(req.params.pedidoId);
+    if (!Number.isInteger(pedidoId) || pedidoId <= 0) {
+      return res.status(400).json({ success: false, message: "Pedido inválido" });
+    }
+    if (!(await PedidoModel.pedidoExists(pedidoId))) {
+      return res.status(404).json({ success: false, message: "Pedido no encontrado" });
+    }
+    const data = await PedidoModel.getHistorialByPedido(pedidoId);
+    return res.json({ success: true, data });
+  } catch (err) {
+    console.error("Error consultando historial del pedido:", err);
+    return res.status(500).json({ success: false, message: "Error consultando el historial" });
+  }
+}
+
+export async function eliminar(req, res) {
+  try {
+    const pedidoId = Number(req.params.pedidoId);
+    if (!Number.isInteger(pedidoId) || pedidoId <= 0) {
+      return res.status(400).json({ success: false, message: "Pedido inválido" });
+    }
+    const pedido = await PedidoModel.getPedidoById(pedidoId);
+    if (!pedido) {
+      return res.status(404).json({ success: false, message: "Pedido no encontrado" });
+    }
+    await PedidoModel.deletePedidoById(pedidoId, pedido.id_proyecto);
+    return res.json({ success: true, message: "Pedido eliminado" });
+  } catch (err) {
+    console.error("Error eliminando pedido:", err);
+    return res.status(500).json({ success: false, message: "Error interno al eliminar el pedido" });
+  }
+}
+
 export async function cargaMasiva(req, res) {
   try {
     const { id } = req.params;

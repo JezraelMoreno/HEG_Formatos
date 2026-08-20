@@ -14,7 +14,7 @@ import {
 
 export async function findByProyecto(id, filters = {}) {
   let sql =
-    "SELECT id, id_proyecto, nombre_proyecto, pedido, clan, familia, proveedor, nombre_usuario, DATE_FORMAT(fecha_aprobacion, '%Y-%m-%d') AS fecha_aprobacion, concepto, situaciones_especiales, porcentaje_descuento, importe_total AS importe FROM pedidos WHERE id_proyecto = ?";
+    "SELECT id, id_proyecto, nombre_proyecto, pedido, clan, familia, proveedor, nombre_usuario, DATE_FORMAT(fecha_aprobacion, '%Y-%m-%d') AS fecha_aprobacion, concepto, situaciones_especiales, porcentaje_descuento, importe_total AS importe, estado, id_aprobador, DATE_FORMAT(fecha_levantado, '%Y-%m-%d %H:%i:%s') AS fecha_levantado, DATE_FORMAT(fecha_resolucion, '%Y-%m-%d %H:%i:%s') AS fecha_resolucion FROM pedidos WHERE id_proyecto = ?";
   const params = [id];
   const toList = (v) => Array.isArray(v) ? v : (typeof v === 'string' ? v.split('||').map(s => s.trim()).filter(Boolean) : []);
   const addMulti = (field, values) => {
@@ -300,6 +300,89 @@ export async function updateImporteTotal(pedidoId, importe) {
 export async function getProyectoNombre(id) {
   const rows = await queryAsync("SELECT nombre FROM proyectos WHERE id_proyecto = ?", [id]);
   return rows && rows[0] ? rows[0].nombre : `Proyecto ${id}`;
+}
+
+export async function proyectoExists(id) {
+  const rows = await queryAsync("SELECT id_proyecto FROM proyectos WHERE id_proyecto = ? LIMIT 1", [id]);
+  return Array.isArray(rows) && rows.length > 0;
+}
+
+export async function insertPedidoDirecto(values) {
+  const sql = `INSERT INTO pedidos
+    (id_proyecto, nombre_proyecto, pedido, clan, familia, proveedor, fecha_aprobacion, concepto, situaciones_especiales, porcentaje_descuento, importe_total, nombre_usuario, estado, fecha_levantado)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'levantado', NOW())`;
+  return queryAsync(sql, values);
+}
+
+export async function getPedidoById(pedidoId) {
+  const sql = `SELECT id, id_proyecto, nombre_proyecto, pedido, clan, familia, proveedor,
+      DATE_FORMAT(fecha_aprobacion, '%Y-%m-%d') AS fecha_aprobacion, concepto, situaciones_especiales,
+      porcentaje_descuento, importe_total AS importe, nombre_usuario, estado, id_aprobador,
+      DATE_FORMAT(fecha_levantado, '%Y-%m-%d %H:%i:%s') AS fecha_levantado,
+      DATE_FORMAT(fecha_resolucion, '%Y-%m-%d %H:%i:%s') AS fecha_resolucion
+    FROM pedidos WHERE id = ? LIMIT 1`;
+  const rows = await queryAsync(sql, [pedidoId]);
+  return rows && rows.length > 0 ? rows[0] : null;
+}
+
+export async function getDetallesSegunFamilia(pedidoId, familia) {
+  const familiaVal = normalizeTextValue(familia).toUpperCase();
+  if (familiaVal === "CR") return getDetallesCristal(pedidoId);
+  if (familiaVal === "AL" || familiaVal === "MQAL") return getDetallesAluminio(pedidoId);
+  return getDetallesMiscelaneos(pedidoId);
+}
+
+export async function deleteDetallesMiscelaneos(pedidoId) {
+  return queryAsync("DELETE FROM pedidos_detalles_miscelaneos WHERE id_pedido = ?", [pedidoId]);
+}
+
+export async function deleteDetallesSegunFamilia(pedidoId, familia) {
+  const familiaVal = normalizeTextValue(familia).toUpperCase();
+  if (familiaVal === "CR") return deleteDetallesCristal(pedidoId);
+  if (familiaVal === "AL" || familiaVal === "MQAL") return deleteDetallesAluminio(pedidoId);
+  return deleteDetallesMiscelaneos(pedidoId);
+}
+
+export async function updatePedidoMetadata(pedidoId, fields) {
+  const sql = `UPDATE pedidos SET pedido = ?, clan = ?, familia = ?, proveedor = ?, fecha_aprobacion = ?,
+    concepto = ?, situaciones_especiales = ?, porcentaje_descuento = ? WHERE id = ?`;
+  const values = [
+    fields.pedido,
+    fields.clan,
+    fields.familia,
+    fields.proveedor,
+    fields.fecha_aprobacion,
+    fields.concepto,
+    fields.situaciones_especiales,
+    fields.porcentaje_descuento,
+    pedidoId,
+  ];
+  return queryAsync(sql, values);
+}
+
+export async function updateEstado(pedidoId, estadoNuevo, idUsuario) {
+  return queryAsync(
+    "UPDATE pedidos SET estado = ?, id_aprobador = ?, fecha_resolucion = NOW() WHERE id = ?",
+    [estadoNuevo, idUsuario, pedidoId]
+  );
+}
+
+export async function insertHistorialEstado(pedidoId, estadoAnterior, estadoNuevo, idUsuario, comentario) {
+  return queryAsync(
+    "INSERT INTO pedidos_historial_estados (id_pedido, estado_anterior, estado_nuevo, id_usuario, comentario) VALUES (?, ?, ?, ?, ?)",
+    [pedidoId, estadoAnterior || null, estadoNuevo, idUsuario, comentario || null]
+  );
+}
+
+export async function getHistorialByPedido(pedidoId) {
+  const sql = `SELECT h.id, h.id_pedido, h.estado_anterior, h.estado_nuevo, h.comentario,
+      DATE_FORMAT(h.fecha_registro, '%Y-%m-%d %H:%i:%s') AS fecha_registro,
+      u.nombre_usuario
+    FROM pedidos_historial_estados h
+    JOIN usuarios u ON u.id_usuario = h.id_usuario
+    WHERE h.id_pedido = ?
+    ORDER BY h.fecha_registro ASC, h.id ASC`;
+  return queryAsync(sql, [pedidoId]);
 }
 
 export async function getPedidosForExport(id, filters = {}) {
