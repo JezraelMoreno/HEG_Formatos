@@ -8,3 +8,6 @@ node_modules/
 dist/
 build/
 claude/
+
+# Archivos subidos por usuarios (remisiones, etc.)
+uploads/

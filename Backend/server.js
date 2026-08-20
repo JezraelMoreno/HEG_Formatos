@@ -2,9 +2,6 @@ import dotenv from "dotenv";
 dotenv.config();
 
 import express from "express";
-import mysql from "mysql2";
-import crypto from "crypto";
-import jwt from "jsonwebtoken";
 import cors from "cors";
 import path from "path";
 import fs from "fs";
@@ -12,14 +9,16 @@ import { fileURLToPath } from "url";
 import ExcelJS from "exceljs";
 import { createUploader } from "./helpers/upload.js";
 import * as FacturasCtrl from "./controllers/facturas.controller.js";
-
-if (!process.env.JWT_SECRET) {
-  throw new Error("JWT_SECRET no está definido. Configúralo en el entorno antes de arrancar el servidor.");
-}
+import { db, queryAsync } from "./config/db.js";
+import { authenticateToken, requireRole, globalAuth } from "./middleware/auth.js";
+import authRouter from "./routes/auth.routes.js";
+import pedidosRouter from "./routes/pedidos.routes.js";
+import supervisoresRouter from "./routes/supervisores.routes.js";
+import usuariosRouter from "./routes/usuarios.routes.js";
+import pdfTestRouter from "./routes/pdfTest.routes.js";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const JWT_SECRET = process.env.JWT_SECRET;
 
 // Middlewares
 app.use(cors());
@@ -40,30 +39,11 @@ const uploadRemision = createUploader({ subdir: "remisiones", allowedExts: [".pd
 const uploadFactura = createUploader({ subdir: "facturas", allowedExts: [".pdf", ".xml"] })
   .fields([{ name: "pdf", maxCount: 1 }, { name: "xml", maxCount: 1 }]);
 
-// Conexión a MySQL (pool para manejo automático de reconexiones)
-const db = mysql.createPool({
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
-});
-
 db.getConnection((err, connection) => {
   if (err) throw err;
   console.log("Conectado a la base de datos MySQL");
   connection.release();
 });
-
-const queryAsync = (sql, params = []) =>
-  new Promise((resolve, reject) => {
-    db.query(sql, params, (err, result) => {
-      if (err) return reject(err);
-      resolve(result);
-    });
-  });
 
 // Migración automática: agregar columnas manuales de cobranza si no existen
 // Usa errno 1060 (ER_DUP_FIELDNAME) para ignorar si la columna ya existe (compatible MySQL 5.7+)
@@ -75,67 +55,10 @@ db.query(`ALTER TABLE cobranza_proyecto ADD COLUMN aplicado DECIMAL(15,2) DEFAUL
 });
 
 // Ruta de login
-app.post("/login", (req, res) => {
-  const { nombre_usuario, contrasena } = req.body || {};
-  if (!nombre_usuario || !contrasena) {
-    return res.status(400).json({ success: false, message: "Faltan datos" });
-  }
-  const hash = crypto.createHash("sha256").update(contrasena).digest("hex");
-  const q = `
-    SELECT u.*, r.nombre AS rol_nombre
-    FROM usuarios u
-    JOIN roles r ON r.id_rol = u.id_rol
-    WHERE u.nombre_usuario = ?
-    LIMIT 1
-  `;
-  db.query(q, [nombre_usuario], (err, rows) => {
-    if (err) {
-      console.error("Error en la consulta MySQL:", err);
-      return res.status(500).json({ success: false, message: "Error interno del servidor" });
-    }
-    if (!rows || rows.length === 0) {
-      return res.status(401).json({ success: false, message: "Credenciales incorrectas" });
-    }
-    const user = rows[0] || {};
-    const stored = String(user.contrasena || "");
-    if (stored !== hash) {
-      return res.status(401).json({ success: false, message: "Credenciales incorrectas" });
-    }
-    const roleVal = user.rol_nombre;
-    const payload = {
-      sub: user.id_usuario || user.id || nombre_usuario,
-      username: nombre_usuario,
-      role: roleVal,
-    };
-    const token = jwt.sign(payload, JWT_SECRET, { expiresIn: "8h" });
-    return res.json({ success: true, message: "Login exitoso", token, user: { username: nombre_usuario, role: payload.role } });
-  });
-});
-
-// Middleware de autenticación con JWT
-function authenticateToken(req, res, next) {
-  if (req.user) return next();
-  try {
-    const auth = req.headers["authorization"] || req.headers["Authorization"];
-    if (!auth || typeof auth !== "string" || !auth.startsWith("Bearer ")) {
-      return res.status(401).json({ success: false, message: "No autorizado" });
-    }
-    const token = auth.slice("Bearer ".length);
-    const decoded = jwt.verify(token, JWT_SECRET);
-    req.user = decoded;
-    next();
-  } catch (e) {
-    return res.status(401).json({ success: false, message: "Token inválido o expirado" });
-  }
-}
+app.use(authRouter);
 
 // Middleware global: todo requiere sesión iniciada excepto /login y preflight
-const PUBLIC_ROUTES = ["/login"];
-app.use((req, res, next) => {
-  if (req.method === "OPTIONS") return next();
-  if (PUBLIC_ROUTES.includes(req.path)) return next();
-  return authenticateToken(req, res, next);
-});
+app.use(globalAuth);
 
 // Proyectos - listar
 app.get("/proyectos", authenticateToken, async (req, res) => {
@@ -562,120 +485,8 @@ app.get("/proyectos/:id/presupuestos/historial", authenticateToken, async (req, 
   }
 });
 
-// Pedidos - listar por proyecto
-app.get("/proyectos/:id/pedidos", authenticateToken, requireRole("Superadmin", "Visor"), (req, res) => {
-  const { id } = req.params;
-  const { familia } = req.query;
-  let query =
-    "SELECT id, id_proyecto, nombre_proyecto, pedido, clan, familia, proveedor, nombre_usuario, DATE_FORMAT(fecha_aprobacion, '%Y-%m-%d') AS fecha_aprobacion, concepto, situaciones_especiales, porcentaje_descuento, importe_total AS importe FROM pedidos WHERE id_proyecto = ?";
-  const params = [id];
-  const toList = (v) => Array.isArray(v) ? v : (typeof v === 'string' ? v.split('||').map(s => s.trim()).filter(Boolean) : []);
-  const addMulti = (field, values) => {
-    const list = toList(values);
-    if (list.length === 1) { query += ` AND ${field} = ?`; params.push(list[0]); }
-    else if (list.length > 1) { query += ` AND ${field} IN (${list.map(_ => '?').join(',')})`; params.push(...list); }
-  };
-  addMulti('familia', familia);
-  const { clan, proveedor, concepto, fecha } = req.query;
-  addMulti('clan', clan);
-  addMulti('proveedor', proveedor);
-  if (concepto && String(concepto).trim() !== "") {
-    query += " AND concepto = ?";
-    params.push(String(concepto));
-  }
-  if (fecha && String(fecha).trim() !== "") {
-    query += " AND DATE(fecha_aprobacion) = ?";
-    params.push(String(fecha));
-  }
-  query += " ORDER BY clan ASC, familia ASC, CAST(pedido AS UNSIGNED) ASC";
-  db.query(query, params, async (err, results) => {
-    if (err) {
-      console.error("Error consultando pedidos:", err);
-      return res
-        .status(500)
-        .json({ success: false, message: "Error interno del servidor" });
-    }
-    try {
-      const rows = Array.isArray(results) ? results : [];
-      const data = await Promise.all(
-        rows.map(async (row) => {
-          let importe = Number(row.importe || 0);
-          try {
-            const calc = await calcularImporteDesdeDetalles(row, { includeSubtotal: true });
-            if (
-              !Number.isFinite(importe) ||
-              importe <= 0 ||
-              (calc.subtotal > 0 && importe < calc.subtotal * 1.15)
-            ) {
-              importe = calc.total;
-            }
-          } catch (calcErr) {
-            console.error("Error recalculando importe de pedido:", calcErr);
-          }
-          return { ...row, importe };
-        })
-      );
-      res.json({ success: true, data });
-    } catch (calcErr) {
-      console.error("Error procesando pedidos:", calcErr);
-      res.json({ success: true, data: results || [] });
-    }
-  });
-});
-
-// Pedidos - resumen por fecha de carga
-app.get("/pedidos/resumen", authenticateToken, requireRole("Superadmin", "Visor"), async (req, res) => {
-  try {
-    const rawFecha = typeof req.query.fecha === "string" ? req.query.fecha.trim() : "";
-    const rawUsuario = typeof req.query.usuario === "string" ? req.query.usuario.trim() : "";
-    const today = new Date();
-    const todayIso = `${today.getFullYear()}-${pad2(today.getMonth() + 1)}-${pad2(today.getDate())}`;
-    const fechaFiltro = parseDateToISO(rawFecha) || todayIso;
-    let query = `
-      SELECT
-        p.id,
-        p.nombre_proyecto,
-        p.pedido,
-        p.nombre_usuario,
-        DATE_FORMAT(COALESCE(pd.fecha_subida, p.fecha_aprobacion), '%Y-%m-%d') AS fecha_subida
-      FROM pedidos p
-      LEFT JOIN (
-        SELECT id_pedido, MIN(fecha_registro) AS fecha_subida
-        FROM (
-          SELECT id_pedido, fecha_registro FROM pedidos_detalles_miscelaneos
-          UNION ALL
-          SELECT id_pedido, fecha_registro FROM pedidos_detalles_cristal
-          UNION ALL
-          SELECT id_pedido, fecha_registro FROM pedidos_detalles_aluminio
-        ) detalles
-        GROUP BY id_pedido
-      ) pd ON pd.id_pedido = p.id
-      WHERE 1 = 1
-    `;
-    const params = [];
-    if (fechaFiltro) {
-      query += " AND DATE(COALESCE(pd.fecha_subida, p.fecha_aprobacion)) = ?";
-      params.push(fechaFiltro);
-    }
-    if (rawUsuario) {
-      query += " AND p.nombre_usuario = ?";
-      params.push(rawUsuario);
-    }
-    query += " ORDER BY p.id DESC";
-
-    const rows = await queryAsync(query, params);
-    const usuariosRows = await queryAsync("SELECT DISTINCT nombre_usuario FROM pedidos ORDER BY nombre_usuario ASC");
-    res.json({
-      success: true,
-      data: rows || [],
-      usuarios: (usuariosRows || []).map((row) => row.nombre_usuario).filter(Boolean),
-      fechaFiltro,
-    });
-  } catch (err) {
-    console.error("Error consultando resumen de pedidos:", err);
-    res.status(500).json({ success: false, message: "Error interno al cargar pedidos" });
-  }
-});
+// Pedidos - listar por proyecto y resumen: movidos a Backend/routes/pedidos.routes.js
+// (PedidosCtrl.listarPorProyecto / PedidosCtrl.resumen), montado al final del archivo.
 
 // Pedidos - detalles por pedido
 app.get("/pedidos/:pedidoId/detalles", authenticateToken, requireRole("Superadmin", "Visor"), (req, res) => {
@@ -2278,18 +2089,6 @@ app.get("/proyectos/:id/viaticos-movimientos/export", authenticateToken, async (
     res.status(500).json({ success: false, message: "Error al exportar" });
   }
 });
-
-// Middleware de autorizacion por rol
-function requireRole(...roles) {
-  const allowed = roles.map(r => String(r).toLowerCase());
-  return (req, res, next) => {
-    const role = String((req.user && req.user.role) || "").toLowerCase();
-    if (!role || (allowed.length && !allowed.includes(role))) {
-      return res.status(403).json({ success: false, message: "Permisos insuficientes" });
-    }
-    next();
-  };
-}
 
 // Endpoints de Dashboards
 
@@ -5983,65 +5782,15 @@ app.put("/facturas/:id", authenticateToken, FacturasCtrl.actualizar);
 
 app.delete("/facturas/:id", authenticateToken, FacturasCtrl.eliminar);
 
-// Gestión de usuarios (administrador y visor)
-app.get("/usuarios", authenticateToken, requireRole("Superadmin", "Visor"), async (req, res) => {
-  try {
-    const rows = await new Promise((resolve, reject) => {
-      db.query(
-        `SELECT u.id_usuario, u.nombre_usuario, r.nombre AS tipo_usuario
-         FROM usuarios u
-         JOIN roles r ON r.id_rol = u.id_rol
-         ORDER BY u.nombre_usuario`,
-        (err, r) => {
-          if (err) reject(err); else resolve(r);
-        }
-      );
-    });
-    return res.json({ success: true, data: rows });
-  } catch (err) {
-    return res.status(500).json({ success: false, message: "Error al obtener usuarios" });
-  }
-});
-
-// Mapeo temporal: el formulario actual de alta de usuarios (Frontend/src/pages/mainPage.tsx)
-// todavía envía los valores legado ("administrador"/"contador"/"visor"). Se traducen al nombre
-// de rol nuevo hasta que la UI se actualice (semana 2-3).
-const TIPO_USUARIO_LEGADO_A_ROL = {
-  administrador: "Superadmin",
-  contador: "Contador",
-  visor: "Visor",
-};
-
-app.post("/usuarios", authenticateToken, requireRole("Superadmin"), async (req, res) => {
-  try {
-    const { nombre_usuario, contrasena, tipo_usuario } = req.body || {};
-    if (!nombre_usuario || !contrasena || !tipo_usuario) {
-      return res.status(400).json({ success: false, message: "Faltan datos" });
-    }
-    const nombreRol = TIPO_USUARIO_LEGADO_A_ROL[tipo_usuario];
-    if (!nombreRol) {
-      return res.status(400).json({ success: false, message: "Tipo de usuario inválido" });
-    }
-    const rolRows = await queryAsync("SELECT id_rol FROM roles WHERE nombre = ? LIMIT 1", [nombreRol]);
-    if (!rolRows || rolRows.length === 0) {
-      return res.status(400).json({ success: false, message: "Rol no encontrado" });
-    }
-    const hash = crypto.createHash("sha256").update(contrasena).digest("hex");
-    await new Promise((resolve, reject) => {
-      db.query(
-        "INSERT INTO usuarios (nombre_usuario, contrasena, id_rol) VALUES (?, ?, ?)",
-        [nombre_usuario.trim(), hash, rolRows[0].id_rol],
-        (err, result) => { if (err) reject(err); else resolve(result); }
-      );
-    });
-    return res.status(201).json({ success: true, message: "Usuario creado correctamente" });
-  } catch (err) {
-    if (err.code === "ER_DUP_ENTRY") {
-      return res.status(409).json({ success: false, message: "El nombre de usuario ya existe" });
-    }
-    return res.status(500).json({ success: false, message: "Error al crear usuario" });
-  }
-});
+// Endpoints nuevos del flujo de pedidos (semana 2) — Router + controller/model.
+// Montados al final para que el :id/:pedidoId genérico de estos routers no intercepte
+// ninguna ruta literal que siga viviendo inline arriba en este archivo. Dentro de
+// pedidosRouter, /pedidos/resumen y /proyectos/:id/pedidos ya están registradas antes de
+// /pedidos/:pedidoId a propósito (ver comentario en pedidos.routes.js).
+app.use(pedidosRouter);
+app.use(supervisoresRouter);
+app.use(usuariosRouter);
+app.use(pdfTestRouter);
 
 app.listen(PORT, () => {
   console.log(` Servidor corriendo en http://localhost:${PORT}`);
