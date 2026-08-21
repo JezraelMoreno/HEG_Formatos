@@ -10,7 +10,7 @@ import ExcelJS from "exceljs";
 import { createUploader } from "./helpers/upload.js";
 import * as FacturasCtrl from "./controllers/facturas.controller.js";
 import { db, queryAsync } from "./config/db.js";
-import { authenticateToken, requireRole, globalAuth } from "./middleware/auth.js";
+import { authenticateToken, requireRole, requireProjectAccessByProyectoId, globalAuth } from "./middleware/auth.js";
 import authRouter from "./routes/auth.routes.js";
 import pedidosRouter from "./routes/pedidos.routes.js";
 import supervisoresRouter from "./routes/supervisores.routes.js";
@@ -63,6 +63,7 @@ app.use(globalAuth);
 // Proyectos - listar
 app.get("/proyectos", authenticateToken, async (req, res) => {
   try {
+    const esSupervisor = String(req.user?.role || "").toLowerCase() === "supervisor";
     const query = `
       SELECT
         p.id_proyecto,
@@ -93,10 +94,12 @@ app.get("/proyectos", authenticateToken, async (req, res) => {
         ), 0) AS presupuesto_disponible
       FROM proyectos p
       LEFT JOIN pedidos pe ON pe.id_proyecto = p.id_proyecto
+      ${esSupervisor ? "WHERE p.id_proyecto IN (SELECT sp.id_proyecto FROM supervisores_proyectos sp WHERE sp.id_usuario = ?)" : ""}
       GROUP BY p.id_proyecto, p.nombre, p.fecha_proyecto, p.estado, p.presupuesto, p.presupuesto_cristal, p.presupuesto_aluminio, p.presupuesto_miscelaneos, p.presupuesto_total
       ORDER BY p.id_proyecto DESC
     `;
-    const results = await queryAsync(query);
+    const params = esSupervisor ? [req.user.sub] : [];
+    const results = await queryAsync(query, params);
     res.json({ success: true, data: results });
   } catch (err) {
     console.error("Error consultando proyectos:", err);
@@ -275,7 +278,7 @@ app.delete("/proyectos/:id", authenticateToken, requireRole("Superadmin"), (req,
 });
 
 // Proyectos - obtener uno por id
-app.get("/proyectos/:id", authenticateToken, async (req, res) => {
+app.get("/proyectos/:id", authenticateToken, requireProjectAccessByProyectoId, async (req, res) => {
   try {
     const { id } = req.params;
     const query = `
