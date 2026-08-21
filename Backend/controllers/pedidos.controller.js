@@ -64,6 +64,17 @@ export async function resumen(req, res) {
   }
 }
 
+export async function conteoPendientes(req, res) {
+  try {
+    const esSupervisor = String(req.user?.role || "").toLowerCase() === "supervisor";
+    const total = await PedidoModel.getConteoPendientes(esSupervisor ? req.user.sub : null);
+    return res.json({ success: true, data: { total } });
+  } catch (err) {
+    console.error("Error consultando conteo de pedidos pendientes:", err);
+    return res.status(500).json({ success: false, message: "Error al consultar pedidos pendientes" });
+  }
+}
+
 export async function obtenerDetalles(req, res) {
   try {
     const pedidoId = Number(req.params.pedidoId);

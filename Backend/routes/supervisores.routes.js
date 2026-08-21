@@ -13,5 +13,11 @@ router.delete(
   requireRole("Superadmin"),
   SupervisoresCtrl.quitar
 );
+router.get(
+  "/usuarios/:id/proyectos-supervisados",
+  authenticateToken,
+  requireRole("Superadmin"),
+  SupervisoresCtrl.proyectosDeUsuario
+);
 
 export default router;

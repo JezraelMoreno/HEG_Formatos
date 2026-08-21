@@ -28,6 +28,13 @@ router.get(
 );
 
 router.get(
+  "/pedidos/pendientes/conteo",
+  authenticateToken,
+  requireRole("Superadmin", "Supervisor"),
+  PedidosCtrl.conteoPendientes
+);
+
+router.get(
   "/proyectos/:id/pedidos",
   authenticateToken,
   requireRole("Aprobador", "Superadmin", "Supervisor", "Visor"),

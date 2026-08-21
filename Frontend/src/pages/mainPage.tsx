@@ -7,6 +7,7 @@ import { Topbar } from "../components/Topbar";
 import { useAuth } from "../hooks/useAuth";
 import { authHeader, clearToken, getToken, isTokenValid } from "../auth";
 import API_URL from "../config";
+import { apiFetch } from "../api/client";
 import dashboardImg from "../../assets/dashboards.png";
 import remisionesIMG from "../../assets/remisiones.png";
 import pedidosImg from "../../assets/proyectos.png";
@@ -106,6 +107,14 @@ export function MainPage() {
   const [errorUsuario, setErrorUsuario] = useState("");
   const [mensajeUsuario, setMensajeUsuario] = useState("");
   const [guardandoUsuario, setGuardandoUsuario] = useState(false);
+  const [usuarioParaAsignar, setUsuarioParaAsignar] = useState<{ id_usuario: number; nombre_usuario: string } | null>(null);
+  const [proyectosAsignadosIds, setProyectosAsignadosIds] = useState<Set<number>>(new Set());
+  const [proyectosSeleccionadosIds, setProyectosSeleccionadosIds] = useState<Set<number>>(new Set());
+  const [cargandoAsignacion, setCargandoAsignacion] = useState(false);
+  const [guardandoAsignacion, setGuardandoAsignacion] = useState(false);
+  const [errorAsignacion, setErrorAsignacion] = useState("");
+  const [mensajeAsignacion, setMensajeAsignacion] = useState("");
+  const [conteoPendientes, setConteoPendientes] = useState(0);
   const [nombre, setNombre] = useState("");
   const [fecha, setFecha] = useState("");
   const [presupuestoCristal, setPresupuestoCristal] = useState("");
@@ -124,7 +133,7 @@ export function MainPage() {
   const [busquedaProyecto, setBusquedaProyecto] = useState("");
   const [moduloSeleccionado, setModuloSeleccionado] = useState<ModuleKey | null>(null);
   const filtroFechaRef = useRef<HTMLInputElement | null>(null);
-  const { isSuperadmin: isAdmin, isVisor } = useAuth();
+  const { isSuperadmin: isAdmin, isVisor, isSupervisor } = useAuth();
   const totalMiscel = miscelFamilias.reduce((sum, f) => {
     const n = Number(f.presupuesto);
     return Number.isFinite(n) && n >= 0 ? sum + n : sum;
@@ -184,6 +193,11 @@ export function MainPage() {
     setMensajeUsuario("");
     setNuevoUsuario({ nombre_usuario: "", contrasena: "", confirmarContrasena: "", tipo_usuario: "contador" });
     setMostrarContrasena(false);
+    setUsuarioParaAsignar(null);
+    setProyectosAsignadosIds(new Set());
+    setProyectosSeleccionadosIds(new Set());
+    setErrorAsignacion("");
+    setMensajeAsignacion("");
     try {
       const res = await fetch(`${API_URL}/usuarios`, { headers: { ...authHeader() } });
       const data = await res.json();
@@ -223,6 +237,69 @@ export function MainPage() {
       setErrorUsuario("Error de conexión.");
     } finally {
       setGuardandoUsuario(false);
+    }
+  };
+
+  const abrirAsignacionObras = async (u: { id_usuario: number; nombre_usuario: string }) => {
+    setUsuarioParaAsignar(u);
+    setErrorAsignacion("");
+    setMensajeAsignacion("");
+    setCargandoAsignacion(true);
+    try {
+      const data = await apiFetch<Array<{ id_proyecto: number }>>(`/usuarios/${u.id_usuario}/proyectos-supervisados`);
+      const ids = new Set((data || []).map((p) => p.id_proyecto));
+      setProyectosAsignadosIds(ids);
+      setProyectosSeleccionadosIds(new Set(ids));
+    } catch (e) {
+      setErrorAsignacion(e instanceof Error ? e.message : "No se pudieron cargar las obras asignadas.");
+    } finally {
+      setCargandoAsignacion(false);
+    }
+  };
+
+  const toggleProyectoSeleccionado = (idProyecto: number) => {
+    setProyectosSeleccionadosIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(idProyecto)) next.delete(idProyecto);
+      else next.add(idProyecto);
+      return next;
+    });
+  };
+
+  const volverATablaUsuarios = () => {
+    setUsuarioParaAsignar(null);
+    setProyectosAsignadosIds(new Set());
+    setProyectosSeleccionadosIds(new Set());
+    setErrorAsignacion("");
+    setMensajeAsignacion("");
+  };
+
+  const guardarAsignacionObras = async () => {
+    if (!usuarioParaAsignar) return;
+    setErrorAsignacion("");
+    setMensajeAsignacion("");
+    setGuardandoAsignacion(true);
+    const idUsuario = usuarioParaAsignar.id_usuario;
+    const toAdd = [...proyectosSeleccionadosIds].filter((id) => !proyectosAsignadosIds.has(id));
+    const toRemove = [...proyectosAsignadosIds].filter((id) => !proyectosSeleccionadosIds.has(id));
+    try {
+      await Promise.all([
+        ...toAdd.map((idProyecto) =>
+          apiFetch(`/proyectos/${idProyecto}/supervisores`, {
+            method: "POST",
+            body: JSON.stringify({ id_usuario: idUsuario }),
+          })
+        ),
+        ...toRemove.map((idProyecto) =>
+          apiFetch(`/proyectos/${idProyecto}/supervisores/${idUsuario}`, { method: "DELETE" })
+        ),
+      ]);
+      setProyectosAsignadosIds(new Set(proyectosSeleccionadosIds));
+      setMensajeAsignacion("Asignaciones guardadas correctamente.");
+    } catch (e) {
+      setErrorAsignacion(e instanceof Error ? e.message : "No se pudieron guardar las asignaciones.");
+    } finally {
+      setGuardandoAsignacion(false);
     }
   };
 
@@ -288,6 +365,13 @@ export function MainPage() {
     }
     cargarProyectos();
   }, [navigate]);
+
+  useEffect(() => {
+    if (!isAdmin && !isSupervisor) return;
+    apiFetch<{ total: number }>("/pedidos/pendientes/conteo")
+      .then((data) => setConteoPendientes(Number(data?.total) || 0))
+      .catch(() => setConteoPendientes(0));
+  }, [isAdmin, isSupervisor]);
 
   const abrirModal = () => setModalAbierto(true);
   const cerrarModal = () => {
@@ -549,6 +633,12 @@ export function MainPage() {
             <button className="action-button secondary-button" onClick={abrirModalUsuarios}>
               Usuarios
             </button>
+          )}
+
+          {(isAdmin || isSupervisor) && conteoPendientes > 0 && (
+            <span className="badge-pendientes" title="Pedidos en estado Levantado sin resolver">
+              {conteoPendientes} pendiente{conteoPendientes === 1 ? "" : "s"}
+            </span>
           )}
 
           <button
@@ -953,9 +1043,11 @@ export function MainPage() {
 
       {modalUsuariosAbierto && (
         <div className="modal-overlay" onClick={() => setModalUsuariosAbierto(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480 }}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 560 }}>
             <h3>Gestionar usuarios</h3>
 
+            {!usuarioParaAsignar && (
+            <>
             {isAdmin && (<form onSubmit={crearUsuario} className="form-proyecto">
               <label>Nombre de usuario</label>
               <input
@@ -1037,6 +1129,7 @@ export function MainPage() {
                     <tr>
                       <th>Usuario</th>
                       <th>Tipo</th>
+                      {isAdmin && <th>Acciones</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -1044,10 +1137,67 @@ export function MainPage() {
                       <tr key={u.id_usuario}>
                         <td>{u.nombre_usuario}</td>
                         <td>{u.tipo_usuario}</td>
+                        {isAdmin && (
+                          <td>
+                            {u.tipo_usuario === "Supervisor" && (
+                              <button
+                                type="button"
+                                className="action-button secondary-button"
+                                style={{ padding: "0.35rem 0.6rem", fontSize: "0.8rem" }}
+                                onClick={() => abrirAsignacionObras(u)}
+                              >
+                                Asignar obras
+                              </button>
+                            )}
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+            </>
+            )}
+
+            {usuarioParaAsignar && (
+              <div>
+                <h4 style={{ marginBottom: "0.5rem" }}>Obras asignadas — {usuarioParaAsignar.nombre_usuario}</h4>
+                {cargandoAsignacion ? (
+                  <p>Cargando...</p>
+                ) : (
+                  <ul className="checklist-proyectos">
+                    {proyectos.map((p) => (
+                      <li key={p.id_proyecto} className={p.estado === "completado" ? "proyecto-inactivo" : ""}>
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked={proyectosSeleccionadosIds.has(p.id_proyecto)}
+                            onChange={() => toggleProyectoSeleccionado(p.id_proyecto)}
+                          />
+                          {" "}
+                          {p.nombre} {p.estado === "completado" && <span>(completado)</span>}
+                        </label>
+                      </li>
+                    ))}
+                    {proyectos.length === 0 && <li>No hay proyectos aún</li>}
+                  </ul>
+                )}
+                {errorAsignacion && <p className="error-text">{errorAsignacion}</p>}
+                {mensajeAsignacion && <p style={{ color: "green" }}>{mensajeAsignacion}</p>}
+                <div className="modal-actions">
+                  <button type="button" className="cancel-button" onClick={volverATablaUsuarios}>
+                    Volver
+                  </button>
+                  <button
+                    type="button"
+                    className="action-button create-button"
+                    disabled={guardandoAsignacion || cargandoAsignacion}
+                    onClick={guardarAsignacionObras}
+                  >
+                    {guardandoAsignacion ? "Guardando..." : "Guardar asignaciones"}
+                  </button>
+                </div>
               </div>
             )}
           </div>

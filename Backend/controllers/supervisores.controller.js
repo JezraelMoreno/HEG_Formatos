@@ -71,3 +71,20 @@ export async function misProyectos(req, res) {
     return res.status(500).json({ success: false, message: "Error al consultar proyectos asignados" });
   }
 }
+
+export async function proyectosDeUsuario(req, res) {
+  try {
+    const idUsuario = Number(req.params.id);
+    if (!Number.isInteger(idUsuario) || idUsuario <= 0) {
+      return res.status(400).json({ success: false, message: "Usuario inválido" });
+    }
+    if (!(await UsuarioModel.usuarioExists(idUsuario))) {
+      return res.status(404).json({ success: false, message: "Usuario no encontrado" });
+    }
+    const data = await SupervisorModel.misProyectos(idUsuario);
+    return res.json({ success: true, data });
+  } catch (err) {
+    console.error("Error consultando proyectos asignados del usuario:", err);
+    return res.status(500).json({ success: false, message: "Error al consultar proyectos asignados" });
+  }
+}

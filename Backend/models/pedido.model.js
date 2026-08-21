@@ -385,6 +385,16 @@ export async function getHistorialByPedido(pedidoId) {
   return queryAsync(sql, [pedidoId]);
 }
 
+export async function getConteoPendientes(idUsuarioSupervisor = null) {
+  const sql = `SELECT COUNT(*) AS total FROM pedidos p
+    WHERE p.estado = 'levantado'
+    ${idUsuarioSupervisor
+      ? "AND p.id_proyecto IN (SELECT id_proyecto FROM supervisores_proyectos WHERE id_usuario = ?)"
+      : ""}`;
+  const rows = await queryAsync(sql, idUsuarioSupervisor ? [idUsuarioSupervisor] : []);
+  return rows?.[0]?.total ?? 0;
+}
+
 export async function getPedidosForExport(id, filters = {}) {
   let sql =
     "SELECT id, nombre_proyecto, pedido, clan, familia, proveedor, DATE_FORMAT(fecha_aprobacion, '%Y-%m-%d') AS fecha_aprobacion, concepto, situaciones_especiales, importe_total AS importe FROM pedidos WHERE id_proyecto = ?";
