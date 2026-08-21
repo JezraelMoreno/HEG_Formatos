@@ -7,9 +7,7 @@ import { Topbar } from "../components/Topbar";
 import { useAuth } from "../hooks/useAuth";
 import { authHeader, clearToken, getToken, isTokenValid } from "../auth";
 import API_URL from "../config";
-import { parsePedidosCsv } from "../utils/pedidosCsv";
-import type { PedidoCsv } from "../utils/pedidosCsv";
-import dashboardImg from "../../assets/dashboards.png"; 
+import dashboardImg from "../../assets/dashboards.png";
 import remisionesIMG from "../../assets/remisiones.png";
 import pedidosImg from "../../assets/proyectos.png";
 import contabilidadImg from "../../assets/contabilidad.png";
@@ -99,10 +97,7 @@ export function MainPage() {
   const [proyectos, setProyectos] = useState<Proyecto[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>("");
-  const [errorPedidos, setErrorPedidos] = useState<string>("");
-  const [mensajePedidos, setMensajePedidos] = useState<string>("");
   const [mensajeGeneral, setMensajeGeneral] = useState<string>("");
-  const [subiendoPedidos, setSubiendoPedidos] = useState(false);
   const [modalAbierto, setModalAbierto] = useState(false);
   const [modalUsuariosAbierto, setModalUsuariosAbierto] = useState(false);
   const [usuarios, setUsuarios] = useState<Array<{ id_usuario: number; nombre_usuario: string; tipo_usuario: string }>>([]);
@@ -128,7 +123,6 @@ export function MainPage() {
   const [errorResumen, setErrorResumen] = useState("");
   const [busquedaProyecto, setBusquedaProyecto] = useState("");
   const [moduloSeleccionado, setModuloSeleccionado] = useState<ModuleKey | null>(null);
-  const pedidoFileInputRef = useRef<HTMLInputElement | null>(null);
   const filtroFechaRef = useRef<HTMLInputElement | null>(null);
   const { isSuperadmin: isAdmin, isVisor } = useAuth();
   const totalMiscel = miscelFamilias.reduce((sum, f) => {
@@ -482,119 +476,10 @@ export function MainPage() {
   }, [isAdmin, fechaFiltroPedidos, usuarioFiltro]);
 
   useEffect(() => {
-    if (!mensajePedidos) return;
-    const timeout = setTimeout(() => setMensajePedidos(""), 2000);
-    return () => clearTimeout(timeout);
-  }, [mensajePedidos]);
-
-  useEffect(() => {
-    if (!errorPedidos) return;
-    const timeout = setTimeout(() => setErrorPedidos(""), 2000);
-    return () => clearTimeout(timeout);
-  }, [errorPedidos]);
-
-  useEffect(() => {
     if (!mensajeGeneral) return;
     const timeout = setTimeout(() => setMensajeGeneral(""), 2000);
     return () => clearTimeout(timeout);
   }, [mensajeGeneral]);
-
-  const abrirCargaPedidos = () => {
-    pedidoFileInputRef.current?.click();
-  };
-
-  const agruparPorProyecto = (pedidos: PedidoCsv[]) => {
-    return pedidos.reduce<Record<string, PedidoCsv[]>>((acc, pedido) => {
-      const key = (pedido.nombre_proyecto || "").trim();
-      if (!key) return acc;
-      if (!acc[key]) acc[key] = [];
-      acc[key].push(pedido);
-      return acc;
-    }, {});
-  };
-
-  const subirPedidosDesdeCsv: ChangeEventHandler<HTMLInputElement> = async (e) => {
-    const files = Array.from(e.target.files || []);
-    if (!files.length) return;
-    if (!proyectos.length) {
-      setErrorPedidos("Primero carga la lista de proyectos antes de subir pedidos.");
-      if (pedidoFileInputRef.current) pedidoFileInputRef.current.value = "";
-      return;
-    }
-    setMensajePedidos("");
-    setErrorPedidos("");
-    setSubiendoPedidos(true);
-    try {
-      const exitos: string[] = [];
-      const fallos: string[] = [];
-
-      for (const file of files) {
-        try {
-          const text = await file.text();
-          const parsed = parsePedidosCsv(text);
-          if (!parsed.length) {
-            fallos.push(`${file.name}: sin filas válidas`);
-            continue;
-          }
-          const grupos = agruparPorProyecto(parsed);
-          const nombres = Object.keys(grupos);
-          if (!nombres.length) {
-            fallos.push(`${file.name}: falta la columna PROYECTO`);
-            continue;
-          }
-          const faltantes = nombres.filter((nombre) => {
-            const normalized = nombre.trim().toLowerCase();
-            return !proyectos.some((p) => p.nombre.trim().toLowerCase() === normalized);
-          });
-          if (faltantes.length) {
-            fallos.push(`${file.name}: proyectos no encontrados (${faltantes.join(", ")})`);
-            continue;
-          }
-
-          for (const nombre of nombres) {
-            const normalized = nombre.trim().toLowerCase();
-            const proyecto = proyectos.find((p) => p.nombre.trim().toLowerCase() === normalized);
-            if (!proyecto) continue;
-            const pedidosPorProyecto = grupos[nombre].map((pedido) => ({
-              ...pedido,
-              nombre_proyecto: proyecto.nombre,
-            }));
-            const res = await fetch(`${API_URL}/proyectos/${proyecto.id_proyecto}/pedidos`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json", ...authHeader() },
-              body: JSON.stringify({ pedidos: pedidosPorProyecto }),
-            });
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok || !data?.success) {
-              fallos.push(`${file.name} / ${proyecto.nombre}: ${data?.message || "Error al subir pedidos"}`);
-            } else {
-              const inserted = typeof data.inserted === "number" ? data.inserted : pedidosPorProyecto.length;
-              exitos.push(`${proyecto.nombre}: ${inserted} pedidos cargados`);
-            }
-          }
-        } catch {
-          fallos.push(`${file.name}: no se pudo procesar`);
-        }
-      }
-
-      if (exitos.length) {
-        setMensajePedidos(exitos.join(" | "));
-        await cargarProyectos();
-      }
-      if (fallos.length) {
-        setErrorPedidos(fallos.join(" | "));
-      } else if (exitos.length) {
-        setErrorPedidos("");
-      } else {
-        setErrorPedidos("No se pudo procesar los archivos seleccionados");
-      }
-    } catch {
-      setErrorPedidos("Error al procesar los archivos CSV");
-    } finally {
-      setSubiendoPedidos(false);
-      if (pedidoFileInputRef.current) pedidoFileInputRef.current.value = "";
-    }
-  };
 
   const abrirCalendarioFiltro = () => {
     const input = filtroFechaRef.current as DateInputWithPicker | null;
@@ -649,22 +534,6 @@ export function MainPage() {
             </div>
           )}
 
-          {moduloSeleccionado === "pedidos" && isAdmin && (
-            <>
-              <input
-                ref={pedidoFileInputRef}
-                type="file"
-                accept=".csv,text/csv"
-                style={{ display: "none" }}
-                multiple
-                onChange={subirPedidosDesdeCsv}
-              />
-              <button className="action-button create-button" onClick={abrirCargaPedidos} disabled={subiendoPedidos}>
-                {subiendoPedidos ? "Subiendo pedidos..." : "Agregar pedidos"}
-              </button>
-            </>
-          )}
-
           {esModuloContabilidad && (
             <>
               <button className="action-button create-button" onClick={abrirModal}>
@@ -701,8 +570,6 @@ export function MainPage() {
         <div className="mensajes-globales">
           {loading && <p>Cargando proyectos...</p>}
           {error && <p className="error-text">{error}</p>}
-          {errorPedidos && <p className="error-text">{errorPedidos}</p>}
-          {mensajePedidos && <p className="success-text">{mensajePedidos}</p>}
           {mensajeGeneral && <p className="success-text">{mensajeGeneral}</p>}
         </div>
 
