@@ -1,73 +1,22 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { BackButton } from "../components/BackButton";
 import { authHeader, getToken, isTokenValid } from "../auth";
 import { useAuth } from "../hooks/useAuth";
 import { parsePedidosCsv } from "../utils/pedidosCsv";
 import type { PedidoCsv } from "../utils/pedidosCsv";
 import API_URL from "../config";
+import { AppShell } from "../components/AppShell";
+import { Topbar } from "../components/Topbar";
+import { EstadoBadge } from "../components/EstadoBadge";
+import { PedidoFormModal } from "./pedidos/PedidoFormModal";
+import type {
+  Pedido,
+  PedidoDetalleItem,
+  PedidoDetalleCristalItem,
+  PedidoDetalleAluminioItem,
+} from "../types/pedidos";
 
 import "./proyectoDetalle.css";
-
-type Pedido = {
-  id: number;
-  id_proyecto: number;
-  nombre_proyecto: string;
-  pedido: string;
-  clan: string;
-  familia: string;
-  proveedor: string;
-  nombre_usuario?: string | null;
-  fecha_aprobacion: string; // YYYY-MM-DD
-  concepto: string;
-  situaciones_especiales?: string | null;
-  importe: number;
-  porcentaje_descuento?: number | null;
-};
-
-type PedidoDetalleItem = {
-  id_detalle: number;
-  descripcion: string;
-  unidad?: string | null;
-  medida?: string | null;
-  cantidad: number;
-  precio_unitario: number;
-  importe: number;
-  clave?: string | null;
-  ml?: number | null;
-  acabado?: string | null;
-  kg?: number | null;
-  precio_x_kg?: number | null;
-};
-
-type PedidoDetalleCristalItem = {
-  id_detalle: number;
-  descripcion: string;
-  clave_modelo?: string | null;
-  ancho?: number | null;
-  largo?: number | null;
-  m2_corte?: number | null;
-  piezas: number;
-  m2_pedido?: number | null;
-  precio_unitario: number;
-  importe: number;
-};
-
-type PedidoDetalleAluminioItem = {
-  id_detalle: number;
-  descripcion: string;
-  numero_perfil?: string | null;
-  medida_tramo?: number | null;
-  unidad?: string | null;
-  peso_kg_ml?: number | null;
-  perimetro_m2_ml?: number | null;
-  acabado?: string | null;
-  total_tramos?: number | null;
-  ml?: number | null;
-  kg?: number | null;
-  m2?: number | null;
-  importe: number;
-};
 
 type CobranzaFactura = {
   id_factura: number;
@@ -342,6 +291,7 @@ export function ProyectoDetalle() {
   const [tipoDetallePedido, setTipoDetallePedido] = useState<"miscelaneos" | "cristal" | "aluminio">("miscelaneos");
   const [cargandoDetalles, setCargandoDetalles] = useState(false);
   const [detalleError, setDetalleError] = useState("");
+  const [modalNuevoPedido, setModalNuevoPedido] = useState(false);
   const [historialPresupuesto, setHistorialPresupuesto] = useState<PresupuestoHistorial[]>([]);
   const [cargandoHistorial, setCargandoHistorial] = useState(false);
   const [modalPresupuestoAbierto, setModalPresupuestoAbierto] = useState(false);
@@ -480,7 +430,7 @@ export function ProyectoDetalle() {
   const mostrarPedidosModulo = moduloOrigen === "pedidos";
   const mostrarCobranza = moduloOrigen === "contabilidad";
   const nombreProyecto = proyectoInfo?.nombre || state?.nombre || "Proyecto";
-  const { role, isSuperadmin: isAdmin, isVisor } = useAuth();
+  const { role, isSuperadmin: isAdmin, isVisor, isAprobador, isSupervisor } = useAuth();
   const mostrarViaticos = moduloOrigen === "viaticos";
 
   // viáticos
@@ -761,7 +711,7 @@ export function ProyectoDetalle() {
   };
 
   const cargarExplosion = useCallback(async () => {
-    if (!id || (!isAdmin && !isVisor) || !mostrarPedidosModulo) return;
+    if (!id || (!isAdmin && !isVisor && !isAprobador && !isSupervisor) || !mostrarPedidosModulo) return;
     setCargandoExplosion(true);
     setErrorExplosion("");
     try {
@@ -795,7 +745,7 @@ export function ProyectoDetalle() {
     } finally {
       setCargandoExplosion(false);
     }
-  }, [id, isAdmin, isVisor, mostrarPedidosModulo]);
+  }, [id, isAdmin, isVisor, isAprobador, isSupervisor, mostrarPedidosModulo]);
 
   const cargarMiscelDetalle = useCallback(async () => {
     if (!id) return;
@@ -887,7 +837,7 @@ export function ProyectoDetalle() {
   useEffect(() => {
     if (!isTokenValid(getToken())) { navigate("/"); return; }
     cargarProyecto();
-    if (isAdmin || isVisor) {
+    if (isAdmin || isVisor || isAprobador || isSupervisor) {
       cargarPedidos();
       if (mostrarPedidosModulo) {
         cargarExplosion();
@@ -908,7 +858,7 @@ export function ProyectoDetalle() {
     }
     cargarCobranza();
     cargarHistorialPresupuesto();
-  }, [cargarPedidos, cargarProyecto, cargarCobranza, cargarHistorialPresupuesto, navigate, isAdmin, isVisor, mostrarPedidosModulo, cargarExplosion]);
+  }, [cargarPedidos, cargarProyecto, cargarCobranza, cargarHistorialPresupuesto, navigate, isAdmin, isVisor, isAprobador, isSupervisor, mostrarPedidosModulo, cargarExplosion]);
 
   useEffect(() => {
     const combinar = (prev: string[], valores: (string | null | undefined)[], adicionales: string[] = []) => {
@@ -1319,12 +1269,17 @@ export function ProyectoDetalle() {
     setEditandoCobranzaConfig(true);
   };
 
+  const sidebarItems = [
+    { key: "pedidos", label: "Pedidos", active: moduloOrigen === "pedidos", onClick: () => navigate("/home") },
+    { key: "contabilidad", label: "Contabilidad", active: moduloOrigen === "contabilidad", onClick: () => navigate("/home") },
+    { key: "viaticos", label: "Viáticos", active: moduloOrigen === "viaticos", onClick: () => navigate("/home") },
+    { key: "dashboards", label: "Dashboards", active: moduloOrigen === "dashboards", onClick: () => navigate("/home") },
+    { key: "remisiones", label: "Remisiones", active: moduloOrigen === "remisiones", onClick: () => navigate("/home") },
+  ];
+
   return (
-    <div className="detalle-page">
-      <header className="detalle-header">
-        <BackButton />
-        <h2 className="detalle-titulo">{nombreProyecto}</h2>
-        <div className="detalle-actions">
+    <AppShell items={sidebarItems}>
+      <Topbar title={nombreProyecto} onBack={() => navigate("/home")}>
           {isAdmin && (
           <input
             ref={fileInputRef}
@@ -1340,7 +1295,12 @@ export function ProyectoDetalle() {
             {subiendo ? "Subiendo..." : "Agregar pedidos"}
           </button>
           )}
-          {(isAdmin || isVisor) && (
+          {(isAprobador || isAdmin) && id && (
+          <button className="btn btn-primary" onClick={() => setModalNuevoPedido(true)}>
+            Nuevo pedido
+          </button>
+          )}
+          {(isAdmin || isVisor || isAprobador || isSupervisor) && (
           <MultiSelectFilter
             label="Familias"
             placeholder="Todas las familias"
@@ -1352,7 +1312,7 @@ export function ProyectoDetalle() {
             }}
           />
           )}
-          {(isAdmin || isVisor) && (
+          {(isAdmin || isVisor || isAprobador || isSupervisor) && (
           <MultiSelectFilter
             label="Clanes"
             placeholder="Todos los clanes"
@@ -1364,7 +1324,7 @@ export function ProyectoDetalle() {
             }}
           />
           )}
-          {(isAdmin || isVisor) && (
+          {(isAdmin || isVisor || isAprobador || isSupervisor) && (
           <MultiSelectFilter
             label="Proveedores"
             placeholder="Todos los proveedores"
@@ -1376,7 +1336,7 @@ export function ProyectoDetalle() {
             }}
           />
           )}
-          {(isAdmin || isVisor) && (
+          {(isAdmin || isVisor || isAprobador || isSupervisor) && (
           <select
             className="filter-select"
             value={concepto}
@@ -1392,7 +1352,7 @@ export function ProyectoDetalle() {
             ))}
           </select>
           )}
-          {(isAdmin || isVisor) && (
+          {(isAdmin || isVisor || isAprobador || isSupervisor) && (
           <input
             className="filter-select"
             type="date"
@@ -1404,7 +1364,7 @@ export function ProyectoDetalle() {
             }}
           />
           )}
-          {(isAdmin || isVisor) && (
+          {(isAdmin || isVisor || isAprobador || isSupervisor) && (
           <button
             type="button"
             className="btn btn-secondary"
@@ -1420,9 +1380,9 @@ export function ProyectoDetalle() {
             Limpiar filtros
           </button>
           )}
-        </div>
-      </header>
+      </Topbar>
 
+      <div className="app-shell-content">
       <main className="detalle-contenido">
         <div className="presupuesto-summary">
           <div className="presupuesto-card">
@@ -1566,7 +1526,7 @@ export function ProyectoDetalle() {
 
         {mensaje && <p className="alert success">{mensaje}</p>}
         {error && <p className="alert error">{error}</p>}
-        {(!isAdmin && !isVisor) || !mostrarPedidosModulo ? null : (
+        {(!isAdmin && !isVisor && !isAprobador && !isSupervisor) || !mostrarPedidosModulo ? null : (
           <>
             <div className="placeholder-card">
               <p>Selecciona uno o varios archivos CSV con el formato esperado para cargar pedidos.</p>
@@ -1610,6 +1570,7 @@ export function ProyectoDetalle() {
                       <th className="th-sortable" style={{ textAlign: "right" }} onClick={() => manejarOrdenColumna("importe")}>
                         Importe {ordenColumna === "importe" && (ordenDireccion === "asc" ? "▲" : "▼")}
                       </th>
+                      <th>Estado</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1638,12 +1599,14 @@ export function ProyectoDetalle() {
                         <td style={{ textAlign: "right" }}>
                           {Number(p.importe).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
+                        <td>{p.estado && <EstadoBadge estado={p.estado} />}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               )}
             </div>
+            {!isSupervisor && (
             <div className="tabla-wrapper explosion-wrapper">
               <div className="tabla-toolbar">
                 <div className="tabla-header">Explosión de insumos</div>
@@ -1749,6 +1712,7 @@ export function ProyectoDetalle() {
                 </table>
               )}
             </div>
+            )}
           </>
         )}
 
@@ -2862,6 +2826,19 @@ export function ProyectoDetalle() {
         </div>
       )}
       </main>
-    </div>
+      </div>
+
+      {id && (
+        <PedidoFormModal
+          isOpen={modalNuevoPedido}
+          onClose={() => setModalNuevoPedido(false)}
+          idProyecto={Number(id)}
+          onCreated={() => {
+            cargarPedidos();
+            cargarProyecto();
+          }}
+        />
+      )}
+    </AppShell>
   );
 }
