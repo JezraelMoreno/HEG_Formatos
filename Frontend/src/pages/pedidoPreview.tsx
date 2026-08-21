@@ -1,449 +1,391 @@
-import { useEffect, useMemo, useState } from "react";
-import { useLocation, useParams } from "react-router-dom";
-import { BackButton } from "../components/BackButton";
-import { authHeader } from "../auth";
-import API_URL from "../config";
-import hegLogo from "../../assets/heg_logo.jpg";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import { AppShell } from "../components/AppShell";
+import { Topbar } from "../components/Topbar";
+import { EstadoBadge } from "../components/EstadoBadge";
+import { Modal } from "../components/Modal";
+import { useAuth } from "../hooks/useAuth";
+import { usePedidoTotales } from "../hooks/usePedidoTotales";
+import { apiFetch } from "../api/client";
+import { DetalleLineasEditor } from "./pedidos/DetalleLineasEditor";
+import type { DetalleUnion, EstadoPedido, HistorialEstadoItem, Pedido, TipoDetalle } from "../types/pedidos";
+import "./pedidos/PedidoFormModal.css";
 import "./pedidoPreview.css";
 
-type PedidoPreviewData = {
-  id: number;
-  id_proyecto?: number;
-  nombre_proyecto?: string;
-  pedido: string;
-  clan: string;
-  familia: string;
-  proveedor: string;
-  nombre_usuario?: string | null;
-  fecha_aprobacion: string;
-  concepto: string;
-  situaciones_especiales?: string | null;
-  importe: number;
-  porcentaje_descuento?: number | null;
-};
-
-type PedidoDetalleItem = {
-  id_detalle: number;
-  descripcion: string;
-  unidad?: string | null;
-  medida?: string | null;
-  cantidad: number;
-  precio_unitario: number;
-  importe: number;
-  clave?: string | null;
-  ml?: number | null;
-  acabado?: string | null;
-  kg?: number | null;
-  precio_x_kg?: number | null;
-};
-
-type PedidoDetalleCristalItem = {
-  id_detalle: number;
-  descripcion: string;
-  clave_modelo?: string | null;
-  ancho?: number | null;
-  largo?: number | null;
-  m2_corte?: number | null;
-  piezas: number;
-  m2_pedido?: number | null;
-  precio_unitario: number;
-  importe: number;
-};
-
-type PedidoDetalleAluminioItem = {
-  id_detalle: number;
-  descripcion: string;
-  numero_perfil?: string | null;
-  medida_tramo?: number | null;
-  unidad?: string | null;
-  peso_kg_ml?: number | null;
-  perimetro_m2_ml?: number | null;
-  acabado?: string | null;
-  total_tramos?: number | null;
-  ml?: number | null;
-  kg?: number | null;
-  m2?: number | null;
-  importe: number;
-};
-
-type DetalleUnion = PedidoDetalleItem | PedidoDetalleCristalItem | PedidoDetalleAluminioItem;
-
-type PreviewLocationState = {
-  pedido?: PedidoPreviewData;
-  detalles?: DetalleUnion[];
-  tipoDetalle?: "miscelaneos" | "cristal" | "aluminio";
-  proyectoNombre?: string;
-};
+type PedidoConDetalles = Pedido & { detalles: DetalleUnion[] };
 
 const formatCurrency = (value: number | null | undefined) => {
   const num = Number(value ?? 0);
   const safe = Number.isFinite(num) ? num : 0;
-  return `$${safe.toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
+  return safe.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
-const formatFechaLarga = (iso: string | null | undefined) => {
-  if (!iso) return "Cd. de México";
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "Cd. de México";
-  const fmt = new Intl.DateTimeFormat("es-MX", { day: "numeric", month: "long", year: "numeric" });
-  return `Cd. de México a ${fmt.format(date)}`;
+const formatFechaHora = (iso: string | null | undefined) => {
+  if (!iso) return "-";
+  const normalizado = iso.includes("T") ? iso : iso.replace(" ", "T");
+  const date = new Date(normalizado);
+  if (Number.isNaN(date.getTime())) return iso;
+  return new Intl.DateTimeFormat("es-MX", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(date);
 };
 
-const normalizarFamilia = (familia: string | null | undefined) => (familia || "").trim().toUpperCase();
+const tipoDetalleDeFamilia = (familia: string | null | undefined): TipoDetalle => {
+  const f = (familia || "").trim().toUpperCase();
+  if (f === "CR") return "cristal";
+  if (f === "AL" || f === "MQAL") return "aluminio";
+  return "miscelaneos";
+};
+
+const ESTADO_LABEL: Record<EstadoPedido, string> = {
+  levantado: "Levantado",
+  aprobado: "Aprobado",
+  rechazado: "Rechazado",
+};
+
+type PasoStepper = { key: EstadoPedido; label: string; estado: "done" | "active" | "rejected" | "todo" };
+
+function pasosStepper(estadoActual: EstadoPedido | undefined): PasoStepper[] {
+  return [
+    { key: "levantado", label: "Levantado", estado: "done" },
+    {
+      key: "aprobado",
+      label: "Aprobado",
+      estado: estadoActual === "aprobado" ? "active" : estadoActual === "rechazado" ? "todo" : "todo",
+    },
+    {
+      key: "rechazado",
+      label: "Rechazado",
+      estado: estadoActual === "rechazado" ? "rejected" : "todo",
+    },
+  ];
+}
 
 export function PedidoPreview() {
-  const { id, pedidoId } = useParams();
-  const { state } = useLocation() as { state?: PreviewLocationState };
-  const pedidoIdNumero = Number(pedidoId);
-  const [pedido, setPedido] = useState<PedidoPreviewData | null>(() => state?.pedido || null);
-  const [detalles, setDetalles] = useState<DetalleUnion[]>(() => state?.detalles || []);
-  const [tipoDetalle, setTipoDetalle] = useState<"miscelaneos" | "cristal" | "aluminio">(
-    () => state?.tipoDetalle || "miscelaneos"
-  );
-  const [cargando, setCargando] = useState(false);
+  const { pedidoId } = useParams();
+  const navigate = useNavigate();
+  const { isAprobador, isSuperadmin } = useAuth();
+  const puedeGestionar = isAprobador || isSuperadmin;
+
+  const [pedido, setPedido] = useState<Pedido | null>(null);
+  const [detalles, setDetalles] = useState<DetalleUnion[]>([]);
+  const [historial, setHistorial] = useState<HistorialEstadoItem[]>([]);
+  const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
+  const [guardando, setGuardando] = useState(false);
+  const [cambiandoEstado, setCambiandoEstado] = useState(false);
+  const [modalRechazo, setModalRechazo] = useState(false);
+  const [comentarioRechazo, setComentarioRechazo] = useState("");
+  const [accionError, setAccionError] = useState("");
+  const [accionMensaje, setAccionMensaje] = useState("");
 
-  const porcentajeDescuento = useMemo(() => {
-    if (!pedido) return 0;
-    let pct = Number(pedido.porcentaje_descuento ?? 0);
-    if (!Number.isFinite(pct) || pct <= 0) return 0;
-    if (pct > 0 && pct <= 1) pct = pct * 100;
-    return pct;
-  }, [pedido]);
+  const tipoDetalle = useMemo(() => tipoDetalleDeFamilia(pedido?.familia), [pedido?.familia]);
+  const totales = usePedidoTotales(detalles, pedido?.porcentaje_descuento);
+  const puedeEditarAhora = puedeGestionar && pedido?.estado !== "rechazado";
 
-  const subtotalBase = useMemo(
-    () => detalles.reduce((sum, det) => sum + Number((det as any).importe || 0), 0),
-    [detalles]
-  );
-  const descuentoMonto = useMemo(
-    () => subtotalBase * (porcentajeDescuento / 100),
-    [subtotalBase, porcentajeDescuento]
-  );
-  const subtotalConDescuento = useMemo(
-    () => subtotalBase - descuentoMonto,
-    [subtotalBase, descuentoMonto]
-  );
-  const ivaMonto = useMemo(
-    () => subtotalConDescuento * 0.16,
-    [subtotalConDescuento]
-  );
-  const totalFinal = useMemo(
-    () => subtotalConDescuento + ivaMonto,
-    [subtotalConDescuento, ivaMonto]
-  );
-  const proyectoNombre = pedido?.nombre_proyecto || state?.proyectoNombre || "Proyecto";
-  const formuladoPor = (pedido?.nombre_usuario || "").trim() || "No capturado";
+  const cargar = useCallback(async () => {
+    if (!pedidoId) return;
+    setCargando(true);
+    setError("");
+    try {
+      const pedidoData = await apiFetch<PedidoConDetalles>(`/pedidos/${pedidoId}`);
+      const { detalles: detallesData, ...pedidoSolo } = pedidoData;
+      setPedido(pedidoSolo as Pedido);
+      setDetalles(Array.isArray(detallesData) ? detallesData : []);
+      try {
+        const historialData = await apiFetch<HistorialEstadoItem[]>(`/pedidos/${pedidoId}/historial`);
+        setHistorial(Array.isArray(historialData) ? historialData : []);
+      } catch {
+        setHistorial([]);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo cargar el pedido");
+    } finally {
+      setCargando(false);
+    }
+  }, [pedidoId]);
 
   useEffect(() => {
-    const needsPedido = !pedido;
-    const needsDetalles = detalles.length === 0;
-    if (!id || !pedidoIdNumero || (!needsPedido && !needsDetalles)) return;
-    const cargar = async () => {
-      setCargando(true);
-      setError("");
-      try {
-        let pedidoEncontrado = pedido;
-        if (needsPedido) {
-          const res = await fetch(`${API_URL}/proyectos/${id}/pedidos`, { headers: { ...authHeader() } });
-          const data = await res.json().catch(() => ({}));
-          if (!res.ok || !data?.success || !Array.isArray(data.data)) {
-            throw new Error(data?.message || "No se pudo obtener el pedido");
-          }
-          pedidoEncontrado = data.data.find((p: any) => Number(p.id) === pedidoIdNumero) || null;
-          setPedido(pedidoEncontrado);
-        }
-        const familia = normalizarFamilia(pedidoEncontrado?.familia);
-        const endpoint = familia === "CR" ? "detalles-cristal" : familia === "AL" || familia === "MQAL" ? "detalles-aluminio" : "detalles";
-        if (familia === "CR") setTipoDetalle("cristal");
-        else if (familia === "AL" || familia === "MQAL") setTipoDetalle("aluminio");
-        else setTipoDetalle("miscelaneos");
-        if (needsDetalles) {
-          const resDetalles = await fetch(`${API_URL}/pedidos/${pedidoIdNumero}/${endpoint}`, { headers: { ...authHeader() } });
-          const dataDetalles = await resDetalles.json().catch(() => ({}));
-          if (!resDetalles.ok || !dataDetalles?.success || !Array.isArray(dataDetalles.data)) {
-            throw new Error(dataDetalles?.message || "No se pudieron obtener los detalles");
-          }
-          setDetalles(dataDetalles.data);
-        }
-      } catch (e: any) {
-        setError(e?.message || "No se pudo cargar la vista previa");
-      } finally {
-        setCargando(false);
-      }
-    };
     cargar();
-  }, [id, pedidoIdNumero, pedido, detalles.length]);
+  }, [cargar]);
 
-  const filasMiscelaneos = tipoDetalle === "miscelaneos"
-    ? (detalles as PedidoDetalleItem[])
-    : [];
-  const filasCristal = tipoDetalle === "cristal"
-    ? (detalles as PedidoDetalleCristalItem[])
-    : [];
-  const filasAluminio = tipoDetalle === "aluminio"
-    ? (detalles as PedidoDetalleAluminioItem[])
-    : [];
+  const actualizarCampo = (campo: keyof Pedido, valor: string) => {
+    setPedido((prev) => (prev ? ({ ...prev, [campo]: valor } as Pedido) : prev));
+  };
+
+  const guardarCambios = async () => {
+    if (!pedido || !pedidoId) return;
+    setGuardando(true);
+    setAccionError("");
+    setAccionMensaje("");
+    try {
+      const payload = {
+        pedido: pedido.pedido,
+        clan: pedido.clan,
+        familia: pedido.familia,
+        proveedor: pedido.proveedor,
+        fecha_aprobacion: pedido.fecha_aprobacion,
+        concepto: pedido.concepto,
+        situaciones_especiales: pedido.situaciones_especiales,
+        porcentaje_descuento: pedido.porcentaje_descuento,
+        detalles,
+        reemplazar: true,
+      };
+      const actualizado = await apiFetch<PedidoConDetalles>(`/pedidos/${pedidoId}`, {
+        method: "PUT",
+        body: JSON.stringify(payload),
+      });
+      const { detalles: detallesData, ...pedidoSolo } = actualizado;
+      setPedido(pedidoSolo as Pedido);
+      setDetalles(Array.isArray(detallesData) ? detallesData : []);
+      setAccionMensaje("Cambios guardados");
+    } catch (e) {
+      setAccionError(e instanceof Error ? e.message : "No se pudieron guardar los cambios");
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const cambiarEstado = async (estado: EstadoPedido, comentario?: string) => {
+    if (!pedidoId) return;
+    setCambiandoEstado(true);
+    setAccionError("");
+    setAccionMensaje("");
+    try {
+      await apiFetch(`/pedidos/${pedidoId}/estado`, {
+        method: "PATCH",
+        body: JSON.stringify({ estado, comentario }),
+      });
+      await cargar();
+      setModalRechazo(false);
+      setComentarioRechazo("");
+    } catch (e) {
+      setAccionError(e instanceof Error ? e.message : "No se pudo cambiar el estado");
+    } finally {
+      setCambiandoEstado(false);
+    }
+  };
+
+  const aprobar = () => {
+    cambiarEstado("aprobado");
+  };
+
+  const confirmarRechazo = () => {
+    if (!comentarioRechazo.trim()) {
+      setAccionError("El comentario es obligatorio al rechazar un pedido.");
+      return;
+    }
+    cambiarEstado("rechazado", comentarioRechazo.trim());
+  };
+
+  const sidebarItems = [
+    { key: "pedidos", label: "Pedidos", active: true, onClick: () => navigate("/home") },
+    { key: "contabilidad", label: "Contabilidad", active: false, onClick: () => navigate("/home") },
+    { key: "viaticos", label: "Viáticos", active: false, onClick: () => navigate("/home") },
+    { key: "dashboards", label: "Dashboards", active: false, onClick: () => navigate("/home") },
+    { key: "remisiones", label: "Remisiones", active: false, onClick: () => navigate("/home") },
+  ];
+
+  const ultimaActualizacion = historial.length > 0 ? historial[historial.length - 1].fecha_registro : pedido?.fecha_levantado;
 
   return (
-    <div className="preview-page">
-      <div className="preview-toolbar">
-        <BackButton />
-        <div className="preview-toolbar-actions">
-          <span className="preview-pill">{pedido ? `Pedido ${pedido.pedido}` : "Vista previa"}</span>
-          <button className="btn btn-primary" onClick={() => window.print()}>Imprimir</button>
-        </div>
+    <AppShell items={sidebarItems}>
+      <Topbar title={pedido ? `Pedido ${pedido.pedido}` : "Vista previa"} onBack={() => navigate(-1)}>
+        <button type="button" className="btn-secondary" onClick={() => window.print()}>
+          Imprimir
+        </button>
+      </Topbar>
+
+      <div className="app-shell-content">
+        {error && <p className="alert error">{error}</p>}
+        {cargando ? (
+          <p>Cargando vista previa...</p>
+        ) : !pedido ? (
+          <p>No se encontró el pedido.</p>
+        ) : (
+          <div className="pedido-preview-layout">
+            <div className="pedido-preview-header">
+              <EstadoBadge estado={pedido.estado} />
+              <div className="pedido-preview-stepper">
+                {pasosStepper(pedido.estado).map((paso, idx, arr) => (
+                  <div key={paso.key} className={`stepper-step stepper-${paso.estado}`}>
+                    <span className="stepper-circle">
+                      {paso.estado === "done" || paso.estado === "active" ? "✓" : paso.estado === "rejected" ? "✕" : idx + 1}
+                    </span>
+                    <span className="stepper-label">{paso.label}</span>
+                    {idx < arr.length - 1 && <span className="stepper-bar" />}
+                  </div>
+                ))}
+              </div>
+              <span className="pedido-preview-updated">Última actualización: {formatFechaHora(ultimaActualizacion)}</span>
+            </div>
+
+            <div className="pedido-preview-grid">
+              <div className="pedido-preview-main">
+                <div className="pedido-form-card">
+                  <h4>Datos del pedido</h4>
+                  <div className="pedido-form-grid">
+                    <label>
+                      Pedido
+                      <input type="text" value={pedido.pedido || ""} disabled={!puedeEditarAhora} onChange={(e) => actualizarCampo("pedido", e.target.value)} />
+                    </label>
+                    <label>
+                      Clan
+                      <input type="text" value={pedido.clan || ""} disabled={!puedeEditarAhora} onChange={(e) => actualizarCampo("clan", e.target.value.toUpperCase())} />
+                    </label>
+                    <label>
+                      Familia
+                      <input type="text" value={pedido.familia || ""} disabled={!puedeEditarAhora} onChange={(e) => actualizarCampo("familia", e.target.value.toUpperCase())} />
+                    </label>
+                    <label>
+                      Fecha de aprobación
+                      <input type="date" value={pedido.fecha_aprobacion || ""} disabled={!puedeEditarAhora} onChange={(e) => actualizarCampo("fecha_aprobacion", e.target.value)} />
+                    </label>
+                    <label className="span-2">
+                      Proveedor
+                      <input type="text" value={pedido.proveedor || ""} disabled={!puedeEditarAhora} onChange={(e) => actualizarCampo("proveedor", e.target.value)} />
+                    </label>
+                    <label>
+                      Concepto
+                      <input type="text" value={pedido.concepto || ""} disabled={!puedeEditarAhora} onChange={(e) => actualizarCampo("concepto", e.target.value)} />
+                    </label>
+                    <label>
+                      % Descuento
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.01"
+                        value={pedido.porcentaje_descuento ?? ""}
+                        disabled={!puedeEditarAhora}
+                        onChange={(e) => actualizarCampo("porcentaje_descuento", e.target.value)}
+                      />
+                    </label>
+                    <label className="span-4">
+                      Situaciones especiales
+                      <textarea
+                        value={pedido.situaciones_especiales || ""}
+                        disabled={!puedeEditarAhora}
+                        onChange={(e) => actualizarCampo("situaciones_especiales", e.target.value)}
+                        rows={2}
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                <div className="pedido-form-card">
+                  <h4>Líneas de detalle</h4>
+                  <DetalleLineasEditor tipoDetalle={tipoDetalle} detalles={detalles} onChange={setDetalles} disabled={!puedeEditarAhora} />
+                </div>
+
+                <div className="pedido-form-totales">
+                  <div>
+                    <span>Importe</span>
+                    <strong>{formatCurrency(totales.subtotalBase)}</strong>
+                  </div>
+                  <div>
+                    <span>Descuento ({totales.porcentajeDescuento.toFixed(2)}%)</span>
+                    <strong>{formatCurrency(totales.descuentoMonto)}</strong>
+                  </div>
+                  <div>
+                    <span>Subtotal</span>
+                    <strong>{formatCurrency(totales.subtotalConDescuento)}</strong>
+                  </div>
+                  <div>
+                    <span>IVA 16%</span>
+                    <strong>{formatCurrency(totales.ivaMonto)}</strong>
+                  </div>
+                  <div className="pedido-form-total-final">
+                    <span>Total</span>
+                    <strong>{formatCurrency(totales.totalFinal)}</strong>
+                  </div>
+                </div>
+              </div>
+
+              <aside className="pedido-preview-rail">
+                {accionError && <p className="alert error">{accionError}</p>}
+                {accionMensaje && <p className="alert success">{accionMensaje}</p>}
+
+                {puedeEditarAhora && (
+                  <div className="pedido-preview-actions">
+                    <button type="button" className="btn-primary" onClick={guardarCambios} disabled={guardando}>
+                      {guardando ? "Guardando..." : "Guardar cambios"}
+                    </button>
+                    <button type="button" className="pedido-preview-approve" onClick={aprobar} disabled={cambiandoEstado || pedido.estado === "aprobado"}>
+                      Aprobar
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-danger"
+                      onClick={() => {
+                        setAccionError("");
+                        setModalRechazo(true);
+                      }}
+                      disabled={cambiandoEstado}
+                    >
+                      Rechazar
+                    </button>
+                  </div>
+                )}
+
+                <div className="pedido-preview-pdf-note">
+                  El PDF de solo lectura para el proveedor comparte estos mismos datos (disponible en una próxima entrega).
+                </div>
+
+                <div className="pedido-preview-historial">
+                  <h4>Historial de estados</h4>
+                  {historial.length === 0 ? (
+                    <p className="pedido-preview-historial-vacio">Sin movimientos registrados.</p>
+                  ) : (
+                    <ul>
+                      {[...historial].reverse().map((h) => (
+                        <li key={h.id} className={`historial-item historial-${h.estado_nuevo}`}>
+                          <span className="historial-dot" />
+                          <div>
+                            <strong>{ESTADO_LABEL[h.estado_nuevo] || h.estado_nuevo}</strong>
+                            <span className="historial-meta">
+                              {formatFechaHora(h.fecha_registro)} · {h.nombre_usuario}
+                            </span>
+                            {h.comentario && <p className="historial-comentario">{h.comentario}</p>}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </aside>
+            </div>
+          </div>
+        )}
       </div>
 
-      <div className="preview-sheet">
-        <div className="sheet-grid-bg" aria-hidden="true" />
-        <div className="preview-top">
-          <div className="preview-logo">
-            <img src={hegLogo} alt="Logo HEG" />
-          </div>
-          <div className="preview-top-info">
-            <div className="preview-date">{formatFechaLarga(pedido?.fecha_aprobacion)}</div>
-            <div className="preview-provider">
-              <div className="provider-label">Proveedor:</div>
-              <div className="provider-name">{pedido?.proveedor || "Proveedor no capturado"}</div>
-              <div className="provider-meta">
-                <span>Proyecto:</span>
-                <strong>{proyectoNombre}</strong>
-              </div>
-              <div className="provider-meta">
-                <span>Clan:</span>
-                <strong>{pedido?.clan || "-"}</strong>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="preview-company">HEG DISEÑO E INSTALACION, S.A. DE C.V.</div>
-
-        <div className="preview-meta-grid">
-          <div className="meta-table">
-            <div className="meta-row">
-              <span>PEDIDO</span>
-              <strong>{pedido?.pedido || "-"}</strong>
-            </div>
-            <div className="meta-row">
-              <span>FAMILIA</span>
-              <strong>{normalizarFamilia(pedido?.familia) || "-"}</strong>
-            </div>
-            <div className="meta-row">
-              <span>CONCEPTO</span>
-              <strong>{pedido?.concepto || "-"}</strong>
-            </div>
-          </div>
-          <div className="meta-table">
-            <div className="meta-row">
-              <span>PROYECTO</span>
-              <strong>{proyectoNombre}</strong>
-            </div>
-            <div className="meta-row">
-              <span>CLAN</span>
-              <strong>{pedido?.clan || "-"}</strong>
-            </div>
-            <div className="meta-row">
-              <span>ENTREGAR EN</span>
-              <strong>{pedido?.situaciones_especiales || "Por definir"}</strong>
-            </div>
-          </div>
-        </div>
-
-        <div className="preview-descripciones">
-          <h4>Descripciones</h4>
-          <ul>
-            {(tipoDetalle === "cristal"
-              ? filasCristal
-              : tipoDetalle === "aluminio"
-                ? filasAluminio
-                : filasMiscelaneos
-            )
-              .filter((detalle) => {
-                const desc = ((detalle as any).descripcion || "").trim();
-                return desc !== "" && !/^Detalle \d+$/i.test(desc);
-              })
-              .map((detalle, idx) => (
-                <li key={`${detalle.id_detalle}-${idx}`}>
-                  <strong>{idx + 1}.</strong>{" "}
-                  {((detalle as any).descripcion || "").trim()}
-                </li>
-              ))}
-          </ul>
-        </div>
-        <div className="preview-table-wrapper">
-          {cargando ? (
-            <p className="preview-status">Cargando vista previa...</p>
-          ) : error ? (
-            <p className="preview-status error">{error}</p>
-          ) : tipoDetalle === "cristal" ? (
-            <table className="preview-table">
-              <thead>
-                <tr>
-                  <th>NO.</th>
-                  <th>CLAVE / MODELO</th>
-                  <th>ANCHO</th>
-                  <th>LARGO</th>
-                  <th>M2 CORTE</th>
-                  <th>PIEZAS</th>
-                  <th>M2 PEDIDO</th>
-                  <th>P. UNITARIO</th>
-                  <th>IMPORTE</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filasCristal.length === 0 ? (
-                  <tr>
-                    <td colSpan={9} className="preview-empty">Sin detalles registrados</td>
-                  </tr>
-                ) : filasCristal.map((detalle, idx) => (
-                  <tr key={`${detalle.id_detalle}-${idx}`}>
-                    <td>{idx + 1}</td>
-                    <td>{detalle.clave_modelo || "-"}</td>
-                    <td>{detalle.ancho === null || detalle.ancho === undefined ? "-" : Number(detalle.ancho).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
-                    <td>{detalle.largo === null || detalle.largo === undefined ? "-" : Number(detalle.largo).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
-                    <td>{detalle.m2_corte === null || detalle.m2_corte === undefined ? "-" : Number(detalle.m2_corte).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
-                    <td>{Number(detalle.piezas || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                    <td>{detalle.m2_pedido === null || detalle.m2_pedido === undefined ? "-" : Number(detalle.m2_pedido).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
-                    <td>{formatCurrency(detalle.precio_unitario)}</td>
-                    <td>{formatCurrency(detalle.importe)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : tipoDetalle === "aluminio" ? (
-            <table className="preview-table">
-              <thead>
-                <tr>
-                  <th>NO.</th>
-                  <th>N° PERFIL</th>
-                  <th>MEDIDA (TRAMO)</th>
-                  <th>UNIDAD</th>
-                  <th>PESO (KG/ML)</th>
-                  <th>PERÍM (M2/ML)</th>
-                  <th>ACABADO</th>
-                  <th>TOTAL TRAMOS</th>
-                  <th>M.L.</th>
-                  <th>KG</th>
-                  <th>M2</th>
-                  <th>IMPORTE</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filasAluminio.length === 0 ? (
-                  <tr>
-                    <td colSpan={12} className="preview-empty">Sin detalles registrados</td>
-                  </tr>
-                ) : filasAluminio.map((detalle, idx) => (
-                  <tr key={`${detalle.id_detalle}-${idx}`}>
-                    <td>{idx + 1}</td>
-                    <td>{detalle.numero_perfil || "-"}</td>
-                    <td>{detalle.medida_tramo === null || detalle.medida_tramo === undefined ? "-" : Number(detalle.medida_tramo).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
-                    <td>{detalle.unidad || "-"}</td>
-                    <td>{detalle.peso_kg_ml === null || detalle.peso_kg_ml === undefined ? "-" : Number(detalle.peso_kg_ml).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
-                    <td>{detalle.perimetro_m2_ml === null || detalle.perimetro_m2_ml === undefined ? "-" : Number(detalle.perimetro_m2_ml).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
-                    <td>{detalle.acabado || "-"}</td>
-                    <td>{detalle.total_tramos === null || detalle.total_tramos === undefined ? "-" : Number(detalle.total_tramos).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                    <td>{detalle.ml === null || detalle.ml === undefined ? "-" : Number(detalle.ml).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
-                    <td>{detalle.kg === null || detalle.kg === undefined ? "-" : Number(detalle.kg).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
-                    <td>{detalle.m2 === null || detalle.m2 === undefined ? "-" : Number(detalle.m2).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
-                    <td>{formatCurrency(detalle.importe)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <table className="preview-table">
-              <thead>
-                <tr>
-                  <th>NO.</th>
-                  <th>UNIDAD</th>
-                  <th>MEDIDA</th>
-                  <th>CANTIDAD</th>
-                  <th>P. UNITARIO</th>
-                  <th>IMPORTE</th>
-                  <th>CLAVE</th>
-                  <th>DIBUJO</th>
-                  <th>M.L.</th>
-                  <th>ACABADO</th>
-                  <th>KG</th>
-                  <th>PRECIOxKG</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filasMiscelaneos.length === 0 ? (
-                  <tr>
-                    <td colSpan={12} className="preview-empty">Sin detalles registrados</td>
-                  </tr>
-                ) : filasMiscelaneos.map((detalle, idx) => (
-                  <tr key={`${detalle.id_detalle}-${idx}`}>
-                    <td>{idx + 1}</td>
-                    <td>{detalle.unidad || "-"}</td>
-                    <td>{detalle.medida || "-"}</td>
-                    <td>{Number(detalle.cantidad || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
-                    <td>{formatCurrency(detalle.precio_unitario)}</td>
-                    <td>{formatCurrency(detalle.importe)}</td>
-                    <td>{detalle.clave || "-"}</td>
-                    <td>-</td>
-                    <td>{detalle.ml === null || detalle.ml === undefined ? "-" : Number(detalle.ml).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
-                    <td>{detalle.acabado || "-"}</td>
-                    <td>{detalle.kg === null || detalle.kg === undefined ? "-" : Number(detalle.kg).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
-                    <td>{detalle.precio_x_kg === null || detalle.precio_x_kg === undefined ? "-" : formatCurrency(detalle.precio_x_kg)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-
-        <div className="preview-payment-block">
-          <div className="payment-title">PAGOS INMEDIATOS</div>
-          <div className="payment-approved">APROBADO</div>
-          <div className="payment-date">
-            <span>FECHA DE APROBACIÓN</span>
-            <strong>{pedido?.fecha_aprobacion || "-"}</strong>
-          </div>
-        </div>
-
-        <div className="preview-totals">
-          <div className="totals-table">
-            <div className="totals-row">
-              <span>IMPORTE</span>
-              <strong>{formatCurrency(subtotalBase)}</strong>
-            </div>
-            <div className="totals-row">
-              <span>DESCUENTO</span>
-              <strong>
-                {porcentajeDescuento > 0 ? `${formatCurrency(descuentoMonto)} (${porcentajeDescuento.toFixed(2)}%)` : "-"}
-              </strong>
-            </div>
-            <div className="totals-row">
-              <span>SUBTOTAL</span>
-              <strong>{formatCurrency(subtotalConDescuento)}</strong>
-            </div>
-            <div className="totals-row">
-              <span>IVA</span>
-              <strong>{formatCurrency(ivaMonto)}</strong>
-            </div>
-            <div className="totals-row total">
-              <span>TOTAL</span>
-              <strong>{formatCurrency(totalFinal)}</strong>
-            </div>
-          </div>
-          <div className="totals-special">
-            <span>SITUACIONES ESPECIALES</span>
-            <p>{pedido?.situaciones_especiales?.trim() || "-"}</p>
-          </div>
-        </div>
-
-        <div className="preview-footer">
-          <div className="footer-label">FORMULÓ</div>
-          <div className="footer-value">{formuladoPor}</div>
-        </div>
-      </div>
-    </div>
+      <Modal
+        isOpen={modalRechazo}
+        onClose={() => {
+          setModalRechazo(false);
+          setComentarioRechazo("");
+        }}
+        title="Rechazar pedido"
+        footer={
+          <>
+            <button type="button" className="btn-secondary" onClick={() => setModalRechazo(false)} disabled={cambiandoEstado}>
+              Cancelar
+            </button>
+            <button type="button" className="btn-danger" onClick={confirmarRechazo} disabled={cambiandoEstado}>
+              {cambiandoEstado ? "Rechazando..." : "Confirmar rechazo"}
+            </button>
+          </>
+        }
+      >
+        {modalRechazo && accionError && <p className="alert error">{accionError}</p>}
+        <label className="pedido-preview-comentario-label">
+          Comentario*
+          <textarea
+            value={comentarioRechazo}
+            onChange={(e) => setComentarioRechazo(e.target.value)}
+            placeholder="Explica por qué se rechaza este pedido (obligatorio, queda en el historial)"
+            rows={4}
+          />
+        </label>
+      </Modal>
+    </AppShell>
   );
 }
