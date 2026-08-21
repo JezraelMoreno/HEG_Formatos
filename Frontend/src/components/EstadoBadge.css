@@ -1,0 +1,42 @@
+.hf-estado-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: var(--radius-pill);
+  font-size: 12.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.hf-estado-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.hf-estado-levantado {
+  background: var(--color-info-bg);
+  color: var(--color-info-text);
+}
+.hf-estado-levantado .hf-estado-dot {
+  background: var(--color-info);
+}
+
+.hf-estado-aprobado {
+  background: var(--color-success-bg);
+  color: var(--color-success-text);
+}
+.hf-estado-aprobado .hf-estado-dot {
+  background: var(--color-success);
+}
+
+.hf-estado-rechazado {
+  background: var(--color-danger-bg);
+  color: var(--color-danger-text);
+}
+.hf-estado-rechazado .hf-estado-dot {
+  background: var(--color-danger);
+}
