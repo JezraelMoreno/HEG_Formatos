@@ -40,6 +40,8 @@ type DateInputWithPicker = HTMLInputElement & { showPicker?: () => void };
 
 type ModuleKey = "pedidos" | "contabilidad" | "viaticos" | "dashboards" | "remisiones";
 
+const ROLES_DISPONIBLES = ["Superadmin", "Aprobador", "Supervisor", "Ingeniero", "Contador", "Visor"];
+
 const getTodayISO = () => {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
@@ -102,6 +104,8 @@ export function MainPage() {
   const [modalAbierto, setModalAbierto] = useState(false);
   const [modalUsuariosAbierto, setModalUsuariosAbierto] = useState(false);
   const [usuarios, setUsuarios] = useState<Array<{ id_usuario: number; nombre_usuario: string; tipo_usuario: string }>>([]);
+  const [nuevoRolPorUsuario, setNuevoRolPorUsuario] = useState<Record<number, string>>({});
+  const [guardandoRolId, setGuardandoRolId] = useState<number | null>(null);
   const [nuevoUsuario, setNuevoUsuario] = useState({ nombre_usuario: "", contrasena: "", confirmarContrasena: "", tipo_usuario: "contador" });
   const [mostrarContrasena, setMostrarContrasena] = useState(false);
   const [errorUsuario, setErrorUsuario] = useState("");
@@ -237,6 +241,32 @@ export function MainPage() {
       setErrorUsuario("Error de conexión.");
     } finally {
       setGuardandoUsuario(false);
+    }
+  };
+
+  const cambiarRolUsuario = async (u: { id_usuario: number; nombre_usuario: string; tipo_usuario: string }) => {
+    const nuevoRol = nuevoRolPorUsuario[u.id_usuario];
+    if (!nuevoRol || nuevoRol === u.tipo_usuario) return;
+    setErrorUsuario("");
+    setMensajeUsuario("");
+    setGuardandoRolId(u.id_usuario);
+    try {
+      await apiFetch(`/usuarios/${u.id_usuario}/rol`, {
+        method: "PATCH",
+        body: JSON.stringify({ rol: nuevoRol }),
+      });
+      setMensajeUsuario(`Rol de ${u.nombre_usuario} actualizado a ${nuevoRol}.`);
+      setNuevoRolPorUsuario((prev) => {
+        const next = { ...prev };
+        delete next[u.id_usuario];
+        return next;
+      });
+      const data = await apiFetch<Array<{ id_usuario: number; nombre_usuario: string; tipo_usuario: string }>>("/usuarios");
+      setUsuarios(data);
+    } catch (e) {
+      setErrorUsuario(e instanceof Error ? e.message : "Error al actualizar el rol.");
+    } finally {
+      setGuardandoRolId(null);
     }
   };
 
@@ -1136,7 +1166,23 @@ export function MainPage() {
                     {usuarios.map((u) => (
                       <tr key={u.id_usuario}>
                         <td>{u.nombre_usuario}</td>
-                        <td>{u.tipo_usuario}</td>
+                        <td>
+                          {isAdmin ? (
+                            <select
+                              value={nuevoRolPorUsuario[u.id_usuario] ?? u.tipo_usuario}
+                              onChange={(e) =>
+                                setNuevoRolPorUsuario((prev) => ({ ...prev, [u.id_usuario]: e.target.value }))
+                              }
+                              style={{ padding: "0.25rem 0.4rem", fontSize: "0.85rem" }}
+                            >
+                              {ROLES_DISPONIBLES.map((r) => (
+                                <option key={r} value={r}>{r}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            u.tipo_usuario
+                          )}
+                        </td>
                         {isAdmin && (
                           <td>
                             {u.tipo_usuario === "Supervisor" && (
@@ -1147,6 +1193,17 @@ export function MainPage() {
                                 onClick={() => abrirAsignacionObras(u)}
                               >
                                 Asignar obras
+                              </button>
+                            )}
+                            {(nuevoRolPorUsuario[u.id_usuario] ?? u.tipo_usuario) !== u.tipo_usuario && (
+                              <button
+                                type="button"
+                                className="action-button create-button"
+                                style={{ padding: "0.35rem 0.6rem", fontSize: "0.8rem", marginLeft: "0.4rem" }}
+                                disabled={guardandoRolId === u.id_usuario}
+                                onClick={() => cambiarRolUsuario(u)}
+                              >
+                                {guardandoRolId === u.id_usuario ? "Guardando..." : "Guardar rol"}
                               </button>
                             )}
                           </td>
