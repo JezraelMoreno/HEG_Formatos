@@ -72,6 +72,14 @@ router.get(
   PedidosCtrl.historial
 );
 
+router.get(
+  "/pedidos/:pedidoId/pdf",
+  authenticateToken,
+  requireRole("Aprobador", "Superadmin", "Supervisor", "Visor"),
+  requireProjectAccess,
+  PedidosCtrl.generarPdf
+);
+
 router.delete(
   "/pedidos/:pedidoId",
   authenticateToken,

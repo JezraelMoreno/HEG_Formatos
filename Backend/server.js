@@ -15,7 +15,6 @@ import authRouter from "./routes/auth.routes.js";
 import pedidosRouter from "./routes/pedidos.routes.js";
 import supervisoresRouter from "./routes/supervisores.routes.js";
 import usuariosRouter from "./routes/usuarios.routes.js";
-import pdfTestRouter from "./routes/pdfTest.routes.js";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -5793,7 +5792,6 @@ app.delete("/facturas/:id", authenticateToken, FacturasCtrl.eliminar);
 app.use(pedidosRouter);
 app.use(supervisoresRouter);
 app.use(usuariosRouter);
-app.use(pdfTestRouter);
 
 app.listen(PORT, () => {
   console.log(` Servidor corriendo en http://localhost:${PORT}`);

@@ -1,4 +1,5 @@
 import ExcelJS from "exceljs";
+import PDFDocument from "pdfkit";
 import * as PedidoModel from "../models/pedido.model.js";
 import {
   normalizeTextValue,
@@ -11,6 +12,7 @@ import {
   parseSituacionEspecialInfo,
 } from "../helpers/utils.js";
 import { ASSETS_DIR } from "../helpers/excel.js";
+import { columnasPdfPorFamilia } from "../helpers/pedidoPdfColumnas.js";
 import path from "path";
 
 export async function listarPorProyecto(req, res) {
@@ -396,6 +398,199 @@ export async function historial(req, res) {
   } catch (err) {
     console.error("Error consultando historial del pedido:", err);
     return res.status(500).json({ success: false, message: "Error consultando el historial" });
+  }
+}
+
+const ESTADO_LABEL_PDF = { levantado: "Levantado", aprobado: "Aprobado", rechazado: "Rechazado" };
+
+function formatMoneyPdf(value) {
+  const num = Number(value || 0);
+  const safe = Number.isFinite(num) ? num : 0;
+  return `$ ${safe.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function formatFechaPdf(iso) {
+  if (!iso) return "-";
+  // Fecha-solo (YYYY-MM-DD, sin hora): construir con componentes locales en vez de parsear el
+  // string directo — Date(string) interpreta fechas sin hora como UTC medianoche, y formatear
+  // luego en timezone local del servidor puede recorrer un día hacia atrás.
+  const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return String(iso);
+  const date = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  if (Number.isNaN(date.getTime())) return String(iso);
+  return new Intl.DateTimeFormat("es-MX", { day: "2-digit", month: "short", year: "numeric" }).format(date);
+}
+
+function anchosColumnasPdf(columnas, anchoDisponible) {
+  const pesos = columnas.map((col, idx) => {
+    if (idx === 0) return 2.2;
+    return col.align === "left" ? 1.3 : 1.0;
+  });
+  const pesoTotal = pesos.reduce((a, b) => a + b, 0);
+  return pesos.map((p) => (p / pesoTotal) * anchoDisponible);
+}
+
+function dibujarEncabezadoTabla(doc, columnas, anchos, x, y) {
+  const alturaFila = 20;
+  doc.rect(x, y, anchos.reduce((a, b) => a + b, 0), alturaFila).fill("#224c84");
+  doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(8);
+  let cursorX = x;
+  columnas.forEach((col, idx) => {
+    doc.text(col.label, cursorX + 3, y + 6, { width: anchos[idx] - 6, align: col.align });
+    cursorX += anchos[idx];
+  });
+  doc.fillColor("#000000").font("Helvetica");
+  return y + alturaFila;
+}
+
+function dibujarFilaDetalle(doc, columnas, anchos, fila, x, y, zebra) {
+  const alturaFila = 18;
+  const anchoTotal = anchos.reduce((a, b) => a + b, 0);
+  if (zebra) doc.rect(x, y, anchoTotal, alturaFila).fill("#f8fafc");
+  doc.fillColor("#1e293b").font("Helvetica").fontSize(7.5);
+  let cursorX = x;
+  columnas.forEach((col, idx) => {
+    const raw = fila[col.key];
+    const texto = col.money
+      ? formatMoneyPdf(raw)
+      : raw === null || raw === undefined || raw === ""
+      ? "-"
+      : String(raw);
+    doc.text(texto, cursorX + 3, y + 5, { width: anchos[idx] - 6, align: col.align });
+    cursorX += anchos[idx];
+  });
+  return y + alturaFila;
+}
+
+/**
+ * Genera el PDF de solo lectura para el proveedor. Mismo shape de datos que ya consume
+ * pedidoPreview.tsx (pedido + detalles vía obtenerUno), mismas columnas por familia
+ * (helpers/pedidoPdfColumnas.js espeja utils/pedidoDetalleColumns.ts) y misma fórmula de
+ * totales que usePedidoTotales.ts / calcularImporteDesdeDetalles (subtotal → descuento % →
+ * IVA 16% → total, forzado a 0 si es salida a Tlatilco).
+ */
+export async function generarPdf(req, res) {
+  try {
+    const pedidoId = Number(req.params.pedidoId);
+    if (!Number.isInteger(pedidoId) || pedidoId <= 0) {
+      return res.status(400).json({ success: false, message: "Pedido inválido" });
+    }
+    const pedido = await PedidoModel.getPedidoById(pedidoId);
+    if (!pedido) {
+      return res.status(404).json({ success: false, message: "Pedido no encontrado" });
+    }
+    const detalles = await PedidoModel.getDetallesSegunFamilia(pedidoId, pedido.familia);
+    const columnas = columnasPdfPorFamilia(pedido.familia);
+
+    const subtotalBase = calcularSubtotalDetalles(detalles);
+    const { mathPct } = normalizePct(pedido.porcentaje_descuento);
+    const descuentoMonto = subtotalBase * (mathPct / 100);
+    const subtotalConDescuento = subtotalBase - descuentoMonto;
+    const ivaMonto = subtotalConDescuento * 0.16;
+    const totalFinal = isSalidaTlatilco(pedido.situaciones_especiales)
+      ? 0
+      : Math.max(0, subtotalConDescuento + ivaMonto);
+
+    const esPaisaje = columnas.length > 8;
+    const nombreSanitizado = `${normalizeTextValue(pedido.pedido) || pedidoId}_${normalizeTextValue(
+      pedido.nombre_proyecto
+    )}`.replace(/[^a-zA-Z0-9_-]+/g, "_");
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="Pedido_${nombreSanitizado}.pdf"`);
+
+    const doc = new PDFDocument({ size: "A4", layout: esPaisaje ? "landscape" : "portrait", margin: 36 });
+    doc.on("error", (err) => console.error("Error en stream de PDFDocument:", err));
+    doc.pipe(res);
+
+    const margenX = doc.page.margins.left;
+    const anchoDisponible = doc.page.width - margenX - doc.page.margins.right;
+
+    doc.fontSize(16).font("Helvetica-Bold").fillColor("#224c84").text("HEG Formatos", margenX, 36);
+    doc.fontSize(10).font("Helvetica").fillColor("#64748b").text("Pedido a proveedor — documento de solo lectura", margenX, 56);
+
+    doc.moveTo(margenX, 78).lineTo(margenX + anchoDisponible, 78).strokeColor("#e2e8f0").lineWidth(1).stroke();
+
+    const infoY = 90;
+    const colInfoAncho = anchoDisponible / 2;
+    doc.fillColor("#000000").fontSize(9);
+    const infoIzquierda = [
+      ["Proyecto", pedido.nombre_proyecto],
+      ["Pedido", pedido.pedido],
+      ["Clan", pedido.clan],
+      ["Familia", pedido.familia],
+    ];
+    const infoDerecha = [
+      ["Proveedor", pedido.proveedor],
+      ["Fecha", formatFechaPdf(pedido.fecha_aprobacion)],
+      ["Estado", ESTADO_LABEL_PDF[pedido.estado] || pedido.estado],
+      ["Concepto", pedido.concepto],
+    ];
+    infoIzquierda.forEach(([label, value], idx) => {
+      const y = infoY + idx * 16;
+      doc.font("Helvetica-Bold").text(`${label}:`, margenX, y, { continued: true, width: colInfoAncho });
+      doc.font("Helvetica").text(` ${value ?? "-"}`);
+    });
+    infoDerecha.forEach(([label, value], idx) => {
+      const y = infoY + idx * 16;
+      doc.font("Helvetica-Bold").text(`${label}:`, margenX + colInfoAncho, y, { continued: true, width: colInfoAncho });
+      doc.font("Helvetica").text(` ${value ?? "-"}`);
+    });
+
+    let cursorY = infoY + infoIzquierda.length * 16 + 6;
+    if (pedido.situaciones_especiales) {
+      doc.font("Helvetica-Bold").text("Situaciones especiales:", margenX, cursorY, { continued: true });
+      doc.font("Helvetica").text(` ${pedido.situaciones_especiales}`, { width: anchoDisponible });
+      cursorY = doc.y + 8;
+    } else {
+      cursorY += 8;
+    }
+
+    const anchos = anchosColumnasPdf(columnas, anchoDisponible);
+    const limiteInferior = doc.page.height - doc.page.margins.bottom;
+    cursorY = dibujarEncabezadoTabla(doc, columnas, anchos, margenX, cursorY);
+
+    detalles.forEach((fila, idx) => {
+      if (cursorY + 18 > limiteInferior) {
+        doc.addPage();
+        cursorY = dibujarEncabezadoTabla(doc, columnas, anchos, margenX, doc.page.margins.top);
+      }
+      cursorY = dibujarFilaDetalle(doc, columnas, anchos, fila, margenX, cursorY, idx % 2 === 1);
+    });
+
+    if (cursorY + 110 > limiteInferior) {
+      doc.addPage();
+      cursorY = doc.page.margins.top;
+    }
+    cursorY += 16;
+    const totalesAncho = 220;
+    const totalesX = margenX + anchoDisponible - totalesAncho;
+    const filasTotales = [
+      ["Subtotal", formatMoneyPdf(subtotalBase)],
+      [`Descuento (${mathPct.toFixed(2)}%)`, `- ${formatMoneyPdf(descuentoMonto)}`],
+      ["Subtotal con descuento", formatMoneyPdf(subtotalConDescuento)],
+      ["IVA (16%)", formatMoneyPdf(ivaMonto)],
+    ];
+    doc.fontSize(9);
+    filasTotales.forEach(([label, value], idx) => {
+      const y = cursorY + idx * 16;
+      doc.font("Helvetica").fillColor("#334155").text(label, totalesX, y, { width: 120 });
+      doc.text(value, totalesX + 120, y, { width: totalesAncho - 120, align: "right" });
+    });
+    const totalY = cursorY + filasTotales.length * 16 + 4;
+    doc.moveTo(totalesX, totalY).lineTo(totalesX + totalesAncho, totalY).strokeColor("#224c84").lineWidth(1).stroke();
+    doc.font("Helvetica-Bold").fontSize(11).fillColor("#224c84");
+    doc.text("Total", totalesX, totalY + 6, { width: 120 });
+    doc.text(formatMoneyPdf(totalFinal), totalesX + 120, totalY + 6, { width: totalesAncho - 120, align: "right" });
+
+    doc.end();
+  } catch (err) {
+    console.error("Error generando PDF del pedido:", err);
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, message: "Error generando el PDF" });
+    } else {
+      res.end();
+    }
   }
 }
 

@@ -7,6 +7,8 @@ import { Modal } from "../components/Modal";
 import { useAuth } from "../hooks/useAuth";
 import { usePedidoTotales } from "../hooks/usePedidoTotales";
 import { apiFetch } from "../api/client";
+import { authHeader } from "../auth";
+import API_URL from "../config";
 import { DetalleLineasEditor } from "./pedidos/DetalleLineasEditor";
 import type { DetalleUnion, EstadoPedido, HistorialEstadoItem, Pedido, TipoDetalle } from "../types/pedidos";
 import "./pedidos/PedidoFormModal.css";
@@ -76,6 +78,7 @@ export function PedidoPreview() {
   const [comentarioRechazo, setComentarioRechazo] = useState("");
   const [accionError, setAccionError] = useState("");
   const [accionMensaje, setAccionMensaje] = useState("");
+  const [descargandoPdf, setDescargandoPdf] = useState(false);
 
   const tipoDetalle = useMemo(() => tipoDetalleDeFamilia(pedido?.familia), [pedido?.familia]);
   const totales = usePedidoTotales(detalles, pedido?.porcentaje_descuento);
@@ -176,6 +179,35 @@ export function PedidoPreview() {
     cambiarEstado("rechazado", comentarioRechazo.trim());
   };
 
+  const descargarPdf = async () => {
+    if (!pedidoId) return;
+    setDescargandoPdf(true);
+    setAccionError("");
+    try {
+      const res = await fetch(`${API_URL}/pedidos/${pedidoId}/pdf`, { headers: { ...authHeader() } });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.message || "No se pudo generar el PDF");
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const disposition = res.headers.get("Content-Disposition") || "";
+      const match = disposition.match(/filename="?([^"]+)"?/);
+      const nombreArchivo = match ? match[1] : `Pedido_${pedido?.pedido || pedidoId}.pdf`;
+      const enlace = document.createElement("a");
+      enlace.href = url;
+      enlace.download = nombreArchivo;
+      document.body.appendChild(enlace);
+      enlace.click();
+      enlace.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setAccionError(e instanceof Error ? e.message : "No se pudo descargar el PDF");
+    } finally {
+      setDescargandoPdf(false);
+    }
+  };
+
   const sidebarItems = [
     { key: "pedidos", label: "Pedidos", active: true, onClick: () => navigate("/home") },
     { key: "contabilidad", label: "Contabilidad", active: false, onClick: () => navigate("/home") },
@@ -191,6 +223,9 @@ export function PedidoPreview() {
       <Topbar title={pedido ? `Pedido ${pedido.pedido}` : "Vista previa"} onBack={() => navigate(-1)}>
         <button type="button" className="btn-secondary" onClick={() => window.print()}>
           Imprimir
+        </button>
+        <button type="button" className="btn-secondary" onClick={descargarPdf} disabled={descargandoPdf || !pedido}>
+          {descargandoPdf ? "Generando PDF..." : "Descargar PDF"}
         </button>
       </Topbar>
 
@@ -325,10 +360,6 @@ export function PedidoPreview() {
                     </button>
                   </div>
                 )}
-
-                <div className="pedido-preview-pdf-note">
-                  El PDF de solo lectura para el proveedor comparte estos mismos datos (disponible en una próxima entrega).
-                </div>
 
                 <div className="pedido-preview-historial">
                   <h4>Historial de estados</h4>
