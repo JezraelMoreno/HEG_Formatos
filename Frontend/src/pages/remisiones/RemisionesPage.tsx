@@ -4,6 +4,7 @@ import { BackButton } from "../../components/BackButton";
 import { authHeader, getToken, isTokenValid } from "../../auth";
 import API_URL from "../../config";
 import { AgregarRemisionModal } from "./AgregarRemisionModal";
+import { HistorialEntregas } from "./HistorialEntregas";
 import "./RemisionesPage.css";
 
 // --- Types ---
@@ -240,6 +241,7 @@ export function RemisionesPage({ isGeneral = false }: RemisionesPageProps) {
 
   // Modals
   const [showAgregarRemision, setShowAgregarRemision] = useState(false);
+  const [showHistorial, setShowHistorial] = useState(false);
 
   // Build query params
   const buildQueryParams = useCallback(() => {
@@ -786,6 +788,14 @@ export function RemisionesPage({ isGeneral = false }: RemisionesPageProps) {
         <button className="rem-export-btn" onClick={exportarExcel}>
           Exportar Excel
         </button>
+        <button className="rem-export-btn" onClick={() => setShowHistorial(true)}>
+          Historial Entregas
+        </button>
+        {!isGeneral && (
+          <button className="rem-export-btn" onClick={() => navigate("/remisiones/general")}>
+            Vista General
+          </button>
+        )}
       </nav>
 
       {/* Filtros */}
@@ -858,6 +868,8 @@ export function RemisionesPage({ isGeneral = false }: RemisionesPageProps) {
           cargarDatos();
         }}
       />
+
+      {showHistorial && <HistorialEntregas onClose={() => setShowHistorial(false)} />}
     </div>
   );
 }

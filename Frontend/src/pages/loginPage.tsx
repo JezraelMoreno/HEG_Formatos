@@ -10,7 +10,7 @@ export function LoginPage() {
   useEffect(() => {
     const token = getToken();
     if (isTokenValid(token)) {
-      navigate("/home");
+      navigate("/proyectos");
     }
   }, [navigate]);
 
