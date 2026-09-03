@@ -717,55 +717,6 @@ export function MainPage() {
               </div>
             )}
 
-            {moduloSeleccionado === "dashboards" && (
-              <div className="module-selector">
-                <button
-                  className="module-card"
-                  type="button"
-                  onClick={() => navigate("/dashboards/ejecutivo")}
-                >
-                  <div className="module-content">
-                    <span className="module-chip">Ver</span>
-                    <h3>Dashboard Ejecutivo</h3>
-                    <p>Vista general del sistema de proyectos</p>
-                  </div>
-                </button>
-                <button
-                  className="module-card"
-                  type="button"
-                  onClick={() => navigate("/dashboards/presupuestos")}
-                >
-                  <div className="module-content">
-                    <span className="module-chip">Ver</span>
-                    <h3>Dashboard de Presupuestos</h3>
-                    <p>Análisis financiero y control presupuestal</p>
-                  </div>
-                </button>
-                <button
-                  className="module-card"
-                  type="button"
-                  onClick={() => navigate("/dashboards/proyectos")}
-                >
-                  <div className="module-content">
-                    <span className="module-chip">Ver</span>
-                    <h3>Dashboard de Proyectos</h3>
-                    <p>Seguimiento y control de proyectos</p>
-                  </div>
-                </button>
-                <button
-                  className="module-card"
-                  type="button"
-                  onClick={() => navigate("/dashboards/materiales")}
-                >
-                  <div className="module-content">
-                    <span className="module-chip">Ver</span>
-                    <h3>Dashboard de Materiales</h3>
-                    <p>Gestión de inventario y proyección de compras</p>
-                  </div>
-                </button>
-              </div>
-            )}
-
             {mostrarProyectos && (
               <div className="proyectos-wrapper">
                 {!loading && !error && (

@@ -1,57 +1,46 @@
 # Módulo de Dashboards
 
-Este módulo proporciona cuatro dashboards analíticos para el sistema de gestión de proyectos HEG Formatos.
+Este módulo proporciona dashboards analíticos por proyecto para el sistema de gestión de proyectos HEG Formatos.
 
-## Dashboards Disponibles
+## Flujo de navegación
 
-### 1. Dashboard Ejecutivo (`/dashboards/ejecutivo`)
-Vista general del sistema con métricas clave:
-- **KPIs**: Total de proyectos, proyectos activos, presupuesto total y ejecutado
-- **Gráficas**:
-  - Distribución de proyectos por estado (Pie Chart)
-  - Proyectos completados por mes (Bar Chart)
-  - Tendencia de presupuesto mensual (Line Chart)
-- **Alertas**: Notificaciones sobre presupuesto y estado de proyectos
+1. `/dashboards` → `ProjectSelector.tsx`: lista los proyectos (filtrados a los asignados si el usuario es Supervisor) y al elegir uno navega al dashboard Ejecutivo de ese proyecto.
+2. `/dashboards/:projectId/ejecutivo|presupuestos|general|materiales|cobranza` → cada dashboard, siempre scoped a un proyecto.
+3. `/dashboards/proyectos` → `DashboardProyectos.tsx`: vista agregada de portafolio (todos los proyectos), sin `:projectId`.
 
-### 2. Dashboard de Presupuestos (`/dashboards/presupuestos`)
-Análisis financiero detallado:
-- **KPIs**: Presupuesto total, ejecutado, disponible y eficiencia de gasto
-- **Gráficas**:
-  - Distribución por categoría (Cristal, Aluminio, Misceláneos)
-  - Top 10 proyectos por inversión
-  - Análisis de variación: Planeado vs Ejecutado
-- **Resumen**: Categoría con mayor gasto, proyecto más costoso, promedio por proyecto
+## Dashboards disponibles
 
-### 3. Dashboard de Proyectos (`/dashboards/proyectos`)
-Seguimiento y control de proyectos:
-- **KPIs**: Total de proyectos, en progreso, completados, tasa de completación
-- **Gráficas**:
-  - Distribución por estado
-  - Proyectos completados e iniciados por mes
-- **Proyectos Críticos**: Tabla con proyectos que requieren atención (presupuesto >60% o <30 días restantes)
-- **Insights**: Recomendaciones basadas en el estado actual
+### Dashboard Ejecutivo (`/dashboards/:projectId/ejecutivo`)
+Vista general del proyecto: KPIs de presupuesto/avance y gráficas de estado.
 
-### 4. Dashboard de Materiales (`/dashboards/materiales`)
-Gestión de inventario y explosión de insumos:
-- **KPIs**: Total de materiales, valor del inventario, materiales críticos, proveedores activos
-- **Gráficas**:
-  - Top 10 materiales más utilizados
-  - Distribución de costos por categoría
-  - Proveedores principales
-  - Tendencia de costos mensual
-- **Proyección de Compras**: Tabla con materiales requeridos vs disponibles, déficit y costo estimado
-- **Análisis**: Recomendaciones para optimización
+### Dashboard de Presupuestos (`/dashboards/:projectId/presupuestos`)
+Análisis financiero del proyecto: presupuesto por familia (cristal/aluminio/misceláneos), ejecutado vs disponible.
 
-## Estructura de Archivos
+### Dashboard General (`/dashboards/:projectId/general`)
+Estado y avance general del proyecto.
+
+### Dashboard de Materiales (`/dashboards/:projectId/materiales`)
+Gestión de inventario y explosión de insumos del proyecto.
+
+### Dashboard de Cobranza (`/dashboards/:projectId/cobranza`)
+Resumen y facturas de cobranza del proyecto.
+
+### Dashboard de Proyectos (`/dashboards/proyectos`)
+Vista de portafolio completo (todos los proyectos), no scoped a uno solo.
+
+## Estructura de archivos
 
 ```
 Frontend/src/pages/dashboards/
-├── DashboardEjecutivo.tsx      # Dashboard ejecutivo
-├── DashboardPresupuestos.tsx   # Dashboard de presupuestos
-├── DashboardProyectos.tsx      # Dashboard de proyectos
-├── DashboardMateriales.tsx     # Dashboard de materiales
+├── DashboardEjecutivo.tsx      # Dashboard ejecutivo (por proyecto)
+├── DashboardPresupuestos.tsx   # Dashboard de presupuestos (por proyecto)
+├── DashboardGeneral.tsx        # Dashboard general (por proyecto)
+├── DashboardMateriales.tsx     # Dashboard de materiales (por proyecto)
+├── DashboardCobranza.tsx       # Dashboard de cobranza (por proyecto)
+├── DashboardProyectos.tsx      # Dashboard de portafolio (todos los proyectos)
 ├── DashboardLayout.tsx         # Layout común con navegación
 ├── DashboardLayout.css         # Estilos del layout
+├── ProjectSelector.tsx         # Selector de proyecto, punto de entrada a /dashboards
 ├── dashboards.css              # Estilos compartidos
 └── README.md                   # Esta documentación
 
@@ -59,92 +48,30 @@ Frontend/src/components/charts/
 ├── KPICard.tsx                 # Componente para tarjetas KPI
 ├── BarChart.tsx                # Componente de gráfica de barras
 ├── PieChart.tsx                # Componente de gráfica circular
-├── LineChart.tsx               # Componente de gráfica de líneas
+├── LineChart.tsx                # Componente de gráfica de líneas
 └── styles/
-    ├── KPICard.css            # Estilos de KPI cards
-    └── charts.css             # Estilos de gráficas
-
-Frontend/src/components/
-└── DashboardNav.tsx            # Navegación a dashboards (para MainPage)
+    ├── KPICard.css             # Estilos de KPI cards
+    └── charts.css              # Estilos de gráficas
 ```
 
 ## API Endpoints
 
-Todos los endpoints requieren autenticación JWT:
+Todos requieren autenticación JWT; los endpoints por proyecto verifican además que un Supervisor tenga ese proyecto asignado:
 
-- `GET /api/dashboard/ejecutivo` - Datos del dashboard ejecutivo
-- `GET /api/dashboard/presupuestos` - Datos del dashboard de presupuestos
-- `GET /api/dashboard/proyectos` - Datos del dashboard de proyectos
-- `GET /api/dashboard/materiales` - Datos del dashboard de materiales
+- `GET /api/dashboard/proyecto/:id/ejecutivo`
+- `GET /api/dashboard/proyecto/:id/presupuestos`
+- `GET /api/dashboard/proyecto/:id/general`
+- `GET /api/dashboard/proyecto/:id/materiales`
+- `GET /proyectos/:id/cobranza-resumen` y `GET /proyectos/:id/cobranza-facturas`
+- `GET /api/dashboard/proyectos` (portafolio, sin scoping por proyecto)
 
 ## Dependencias
 
-- **recharts**: Biblioteca de gráficas para React
-- **react-router-dom**: Navegación entre dashboards
+- **recharts**: biblioteca de gráficas para React
+- **react-router-dom**: navegación entre dashboards
 
-## Uso
+## Características técnicas
 
-### Agregar navegación en MainPage
-
-```tsx
-import { DashboardNav } from '../components/DashboardNav';
-
-// Dentro del componente
-<DashboardNav />
-```
-
-### Navegar programáticamente
-
-```tsx
-import { useNavigate } from 'react-router-dom';
-
-const navigate = useNavigate();
-navigate('/dashboards/ejecutivo');
-```
-
-## Personalización
-
-### Colores de Gráficas
-
-Los colores se pueden personalizar en cada componente:
-
-```tsx
-<BarChart
-  data={data}
-  dataKey="cantidad"
-  xAxisKey="mes"
-  color="#custom-color"
-/>
-
-<PieChart
-  data={data}
-  dataKey="monto"
-  nameKey="categoria"
-  colors={['#color1', '#color2', '#color3']}
-/>
-```
-
-### Estilos
-
-Los estilos globales están en `dashboards.css`. Puedes modificar:
-- Colores de tema
-- Tamaños de grid
-- Espaciado
-- Responsive breakpoints
-
-## Características Técnicas
-
-- **Responsive**: Diseño adaptable a móviles y tablets
-- **Loading States**: Indicadores de carga mientras se obtienen datos
-- **Error Handling**: Manejo de errores con mensajes informativos
-- **TypeScript**: Totalmente tipado para mejor desarrollo
-- **Real-time Data**: Los datos se actualizan al cargar cada dashboard
-
-## Próximas Mejoras
-
-- [ ] Filtros por fecha
-- [ ] Exportación de datos a Excel/PDF
-- [ ] Actualización automática de datos (polling)
-- [ ] Comparativas entre periodos
-- [ ] Dashboards personalizables por usuario
-- [ ] Modo oscuro
+- Responsive, con loading/error states por dashboard.
+- TypeScript, totalmente tipado.
+- Los datos se obtienen al cargar cada dashboard (sin polling).
