@@ -1320,7 +1320,7 @@ async function insertAluminioDetallesRows(pedidoId, detallesRaw) {
 //------------------------------------------------------------
 
 // Get presupuestos de viáticos para un proyecto
-app.get("/proyectos/:id/viaticos-presupuestos", authenticateToken, async (req, res) => {
+app.get("/proyectos/:id/viaticos-presupuestos", authenticateToken, requireProjectAccessByProyectoId, async (req, res) => {
   try {
     const proyectoId = Number(req.params.id);
     if (!Number.isInteger(proyectoId) || proyectoId <= 0) {
@@ -1381,7 +1381,7 @@ app.post("/proyectos/:id/viaticos-presupuestos", authenticateToken, requireRole(
 });
 
 // Get movimientos de viáticos para un proyecto
-app.get("/proyectos/:id/viaticos-movimientos", authenticateToken, async (req, res) => {
+app.get("/proyectos/:id/viaticos-movimientos", authenticateToken, requireProjectAccessByProyectoId, async (req, res) => {
   try {
     const proyectoId = Number(req.params.id);
     const { familia, fecha_desde, fecha_hasta } = req.query;
@@ -1522,7 +1522,7 @@ app.delete("/proyectos/:id/viaticos-movimientos/:movimientoId", authenticateToke
 });
 
 // Export viaticos movements to Excel
-app.get("/proyectos/:id/viaticos-movimientos/export", authenticateToken, async (req, res) => {
+app.get("/proyectos/:id/viaticos-movimientos/export", authenticateToken, requireProjectAccessByProyectoId, async (req, res) => {
   const { id } = req.params;
   const { familia, fecha_desde, fecha_hasta } = req.query;
 
@@ -2271,7 +2271,7 @@ app.get("/api/dashboard/materiales", authenticateToken, async (req, res) => {
 // ==================== ENDPOINTS DE DASHBOARDS POR PROYECTO ====================
 
 // Dashboard Ejecutivo por Proyecto
-app.get("/api/dashboard/proyecto/:id/ejecutivo", authenticateToken, async (req, res) => {
+app.get("/api/dashboard/proyecto/:id/ejecutivo", authenticateToken, requireProjectAccessByProyectoId, async (req, res) => {
   const proyectoId = Number(req.params.id);
 
   if (!proyectoId || isNaN(proyectoId)) {
@@ -2378,7 +2378,7 @@ app.get("/api/dashboard/proyecto/:id/ejecutivo", authenticateToken, async (req, 
 // Dashboard Presupuestos por Proyecto
 // NOTA: Endpoints de dashboards movidos al final del archivo (l�neas 4128+)
 // Dashboard Materiales por Proyecto
-app.get("/api/dashboard/proyecto/:id/materiales", authenticateToken, async (req, res) => {
+app.get("/api/dashboard/proyecto/:id/materiales", authenticateToken, requireProjectAccessByProyectoId, async (req, res) => {
   const proyectoId = Number(req.params.id);
 
   if (!proyectoId || isNaN(proyectoId)) {
@@ -3136,7 +3136,7 @@ app.get("/cobranza-general", authenticateToken, async (req, res) => {
 });
 
 // Obtener cobranza de un proyecto específico
-app.get("/proyectos/:id/cobranza-resumen", authenticateToken, async (req, res) => {
+app.get("/proyectos/:id/cobranza-resumen", authenticateToken, requireProjectAccessByProyectoId, async (req, res) => {
   try {
     const proyectoId = Number(req.params.id);
     if (!Number.isInteger(proyectoId) || proyectoId <= 0) {
@@ -3287,7 +3287,7 @@ app.put("/proyectos/:id/cobranza-resumen", authenticateToken, requireRole("Conta
 });
 
 // Obtener facturas de cobranza de un proyecto
-app.get("/proyectos/:id/cobranza-facturas", authenticateToken, async (req, res) => {
+app.get("/proyectos/:id/cobranza-facturas", authenticateToken, requireProjectAccessByProyectoId, async (req, res) => {
   try {
     const proyectoId = Number(req.params.id);
     if (!Number.isInteger(proyectoId) || proyectoId <= 0) {
@@ -3478,7 +3478,7 @@ app.delete("/proyectos/:id/cobranza-facturas/:idFactura", authenticateToken, req
 // ============================================================================
 
 // Dashboard de Presupuestos por Proyecto
-app.get("/api/dashboard/proyecto/:id/presupuestos", authenticateToken, async (req, res) => {
+app.get("/api/dashboard/proyecto/:id/presupuestos", authenticateToken, requireProjectAccessByProyectoId, async (req, res) => {
   try {
     const proyectoId = Number(req.params.id);
     if (!Number.isInteger(proyectoId) || proyectoId <= 0) {
@@ -3594,7 +3594,7 @@ app.get("/api/dashboard/proyecto/:id/presupuestos", authenticateToken, async (re
 });
 
 // Dashboard General por Proyecto
-app.get("/api/dashboard/proyecto/:id/general", authenticateToken, async (req, res) => {
+app.get("/api/dashboard/proyecto/:id/general", authenticateToken, requireProjectAccessByProyectoId, async (req, res) => {
   try {
     const proyectoId = Number(req.params.id);
     if (!Number.isInteger(proyectoId) || proyectoId <= 0) {
@@ -3717,7 +3717,7 @@ app.get("/api/dashboard/proyecto/:id/general", authenticateToken, async (req, re
 // =============================================
 
 // Reporte Cristal - datos agregados de detalles cristal por proyecto
-app.get("/proyectos/:id/reportes/cristal", authenticateToken, async (req, res) => {
+app.get("/proyectos/:id/reportes/cristal", authenticateToken, requireProjectAccessByProyectoId, async (req, res) => {
   try {
     const proyectoId = Number(req.params.id);
     if (!Number.isInteger(proyectoId) || proyectoId <= 0) {
@@ -3818,7 +3818,7 @@ app.get("/proyectos/:id/reportes/cristal", authenticateToken, async (req, res) =
 });
 
 // Reporte Aluminio - datos agregados de detalles aluminio por proyecto
-app.get("/proyectos/:id/reportes/aluminio", authenticateToken, async (req, res) => {
+app.get("/proyectos/:id/reportes/aluminio", authenticateToken, requireProjectAccessByProyectoId, async (req, res) => {
   try {
     const proyectoId = Number(req.params.id);
     if (!Number.isInteger(proyectoId) || proyectoId <= 0) {
@@ -3923,7 +3923,7 @@ app.get("/proyectos/:id/reportes/aluminio", authenticateToken, async (req, res) 
 });
 
 // Exportar Reporte Cristal a Excel
-app.get("/proyectos/:id/reportes/cristal/export", authenticateToken, async (req, res) => {
+app.get("/proyectos/:id/reportes/cristal/export", authenticateToken, requireProjectAccessByProyectoId, async (req, res) => {
   try {
     const proyectoId = Number(req.params.id);
     if (!Number.isInteger(proyectoId) || proyectoId <= 0) {
@@ -4083,7 +4083,7 @@ app.get("/proyectos/:id/reportes/cristal/export", authenticateToken, async (req,
 });
 
 // Exportar Reporte Aluminio a Excel
-app.get("/proyectos/:id/reportes/aluminio/export", authenticateToken, async (req, res) => {
+app.get("/proyectos/:id/reportes/aluminio/export", authenticateToken, requireProjectAccessByProyectoId, async (req, res) => {
   try {
     const proyectoId = Number(req.params.id);
     if (!Number.isInteger(proyectoId) || proyectoId <= 0) {
@@ -4253,7 +4253,7 @@ app.get("/proyectos/:id/reportes/aluminio/export", authenticateToken, async (req
 // ============================================================
 
 // Listar control de entregas por proyecto (Aluminio + Cristal)
-app.get("/proyectos/:id/remisiones", authenticateToken, async (req, res) => {
+app.get("/proyectos/:id/remisiones", authenticateToken, requireProjectAccessByProyectoId, async (req, res) => {
   try {
     const { id } = req.params;
     const { prioridad, proveedor, search, tipo } = req.query;
@@ -4785,7 +4785,7 @@ app.put("/remisiones/:id", authenticateToken, async (req, res) => {
 });
 
 // Exportar remisiones a Excel
-app.get("/proyectos/:id/remisiones/export", authenticateToken, async (req, res) => {
+app.get("/proyectos/:id/remisiones/export", authenticateToken, requireProjectAccessByProyectoId, async (req, res) => {
   try {
     const { id } = req.params;
     const { prioridad, tipo } = req.query;
