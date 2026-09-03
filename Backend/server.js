@@ -4724,7 +4724,7 @@ app.get("/remisiones/resumen", authenticateToken, async (req, res) => {
 });
 
 // Actualizar control de entregas (aluminio o cristal)
-app.put("/remisiones/:id", authenticateToken, async (req, res) => {
+app.put("/remisiones/:id", authenticateToken, requireRole("Superadmin", "Contador"), async (req, res) => {
   try {
     const { id } = req.params;
     const {
@@ -5345,7 +5345,7 @@ app.get("/remisiones/detalles-pedido/:pedidoId", authenticateToken, async (req, 
 });
 
 // Registrar una entrega (acepta multipart/form-data para PDF adjunto opcional)
-app.post("/remisiones/registrar-entrega", authenticateToken, (req, res, next) => {
+app.post("/remisiones/registrar-entrega", authenticateToken, requireRole("Superadmin", "Contador"), (req, res, next) => {
   uploadRemision(req, res, (err) => {
     if (err) return res.status(400).json({ success: false, message: err.message });
     next();
@@ -5508,16 +5508,16 @@ app.get("/remisiones/historial-entregas/:id", authenticateToken, async (req, res
 // ---------------------------------------------------------------------------
 app.get("/facturas", authenticateToken, FacturasCtrl.listar);
 
-app.post("/facturas", authenticateToken, (req, res, next) => {
+app.post("/facturas", authenticateToken, requireRole("Superadmin", "Contador"), (req, res, next) => {
   uploadFactura(req, res, (err) => {
     if (err) return res.status(400).json({ success: false, message: err.message });
     next();
   });
 }, FacturasCtrl.crear);
 
-app.put("/facturas/:id", authenticateToken, FacturasCtrl.actualizar);
+app.put("/facturas/:id", authenticateToken, requireRole("Superadmin", "Contador"), FacturasCtrl.actualizar);
 
-app.delete("/facturas/:id", authenticateToken, FacturasCtrl.eliminar);
+app.delete("/facturas/:id", authenticateToken, requireRole("Superadmin", "Contador"), FacturasCtrl.eliminar);
 
 // Endpoints nuevos del flujo de pedidos (semana 2) — Router + controller/model.
 // Montados al final para que el :id/:pedidoId genérico de estos routers no intercepte
