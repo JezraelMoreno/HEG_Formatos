@@ -10,6 +10,7 @@ import { DashboardPresupuestos } from "./pages/dashboards/DashboardPresupuestos"
 import { DashboardGeneral } from "./pages/dashboards/DashboardGeneral";
 import { DashboardMateriales } from "./pages/dashboards/DashboardMateriales";
 import { DashboardCobranza } from "./pages/dashboards/DashboardCobranza";
+import { DashboardProyectos } from "./pages/dashboards/DashboardProyectos";
 import { ReportesProjectSelector } from "./pages/reportes/ReportesProjectSelector";
 import { ReportePage } from "./pages/reportes/ReportePage";
 import { RemisionesProjectSelector } from "./pages/remisiones/RemisionesProjectSelector";
@@ -92,6 +93,14 @@ function App() {
         element={
           <PrivateRoute>
             <DashboardCobranza />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/dashboards/proyectos"
+        element={
+          <PrivateRoute allowedRoles={["Superadmin"]}>
+            <DashboardProyectos />
           </PrivateRoute>
         }
       />

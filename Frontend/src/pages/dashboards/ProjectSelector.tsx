@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import './ProjectSelector.css';
 import API_URL from '../../config';
 import { BackButton } from '../../components/BackButton';
+import { useAuth } from '../../hooks/useAuth';
 
 interface Proyecto {
   id_proyecto: number;
@@ -16,6 +17,7 @@ interface Proyecto {
 
 export const ProjectSelector: React.FC = () => {
   const navigate = useNavigate();
+  const { isSuperadmin } = useAuth();
   const [proyectos, setProyectos] = useState<Proyecto[]>([]);
   const [loading, setLoading] = useState(true);
   const [busqueda, setBusqueda] = useState('');
@@ -93,6 +95,15 @@ export const ProjectSelector: React.FC = () => {
             <h1 className="ps-titulo">Seleccionar Proyecto</h1>
           </div>
           <div className="ps-actions">
+            {isSuperadmin && (
+              <button
+                type="button"
+                className="ps-filter-select"
+                onClick={() => navigate('/dashboards/proyectos')}
+              >
+                Ver resumen de portafolio
+              </button>
+            )}
             <div className="ps-search-bar">
               <input
                 type="text"

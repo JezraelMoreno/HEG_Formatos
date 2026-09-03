@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { DashboardLayout } from './DashboardLayout';
+import { BackButton } from '../../components/BackButton';
 import API_URL from '../../config';
 import { KPICard } from '../../components/charts/KPICard';
 import { BarChart } from '../../components/charts/BarChart';
@@ -58,22 +58,25 @@ export const DashboardProyectos: React.FC = () => {
 
   if (loading) {
     return (
-      <DashboardLayout>
+      <div className="dashboard-layout">
+        <BackButton />
         <div className="dashboard-loading">Cargando dashboard...</div>
-      </DashboardLayout>
+      </div>
     );
   }
 
   if (!data) {
     return (
-      <DashboardLayout>
+      <div className="dashboard-layout">
+        <BackButton />
         <div className="dashboard-error">Error al cargar los datos</div>
-      </DashboardLayout>
+      </div>
     );
   }
 
   return (
-    <DashboardLayout>
+    <div className="dashboard-layout">
+      <BackButton />
       <div className="dashboard-container">
       <div className="dashboard-header">
         <h1>Dashboard de Proyectos</h1>
@@ -228,6 +231,6 @@ export const DashboardProyectos: React.FC = () => {
         </div>
       </div>
     </div>
-    </DashboardLayout>
+    </div>
   );
 };
