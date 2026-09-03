@@ -8,6 +8,8 @@ import { Topbar } from "../components/Topbar";
 import { EstadoBadge } from "../components/EstadoBadge";
 import { PedidoFormModal } from "./pedidos/PedidoFormModal";
 import type { Pedido } from "../types/pedidos";
+import { useActiveProject } from "../context/useActiveProject";
+import { deriveIniciales } from "../utils/proyectoDisplay";
 
 import "./proyectoDetalle.css";
 
@@ -382,6 +384,7 @@ export function ProyectoDetalle() {
   const mostrarCobranza = moduloOrigen === "contabilidad";
   const nombreProyecto = proyectoInfo?.nombre || state?.nombre || "Proyecto";
   const { role, isSuperadmin: isAdmin, isVisor, isAprobador, isSupervisor } = useAuth();
+  const { proyectoActivo } = useActiveProject();
   const mostrarViaticos = moduloOrigen === "viaticos";
 
   // viáticos
@@ -1008,7 +1011,11 @@ export function ProyectoDetalle() {
   ];
 
   return (
-    <AppShell items={sidebarItems}>
+    <AppShell
+      items={sidebarItems}
+      activeProject={proyectoActivo ? { nombre: proyectoActivo.nombre, iniciales: deriveIniciales(proyectoActivo.nombre) } : null}
+      onChangeProject={() => navigate("/proyectos")}
+    >
       <Topbar title={nombreProyecto} onBack={() => navigate("/home")}>
           {(isAprobador || isAdmin) && id && (
           <button className="btn btn-primary" onClick={() => setModalNuevoPedido(true)}>

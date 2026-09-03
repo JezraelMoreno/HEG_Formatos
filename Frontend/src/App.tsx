@@ -4,7 +4,7 @@ import { LoginPage } from "./pages/loginPage";
 import { MainPage } from "./pages/mainPage";
 import { ProyectoDetalle } from "./pages/proyectoDetalle";
 import { PedidoPreview } from "./pages/pedidoPreview";
-import { ProjectSelector } from "./pages/dashboards/ProjectSelector";
+import { ProyectosSelectorPage } from "./pages/proyectos/ProyectosSelectorPage";
 import { DashboardEjecutivo } from "./pages/dashboards/DashboardEjecutivo";
 import { DashboardPresupuestos } from "./pages/dashboards/DashboardPresupuestos";
 import { DashboardGeneral } from "./pages/dashboards/DashboardGeneral";
@@ -13,22 +13,33 @@ import { DashboardCobranza } from "./pages/dashboards/DashboardCobranza";
 import { DashboardProyectos } from "./pages/dashboards/DashboardProyectos";
 import { ReportesProjectSelector } from "./pages/reportes/ReportesProjectSelector";
 import { ReportePage } from "./pages/reportes/ReportePage";
-import { RemisionesProjectSelector } from "./pages/remisiones/RemisionesProjectSelector";
 import { RemisionesPage } from "./pages/remisiones/RemisionesPage";
 import { ContabilidadPage } from "./pages/contabilidad/ContabilidadPage";
 import { PrivateRoute } from "./components/PrivateRoute";
+import { RequireProject } from "./components/RequireProject";
+import { ProjectProvider } from "./context/ProjectContext";
 
 function App() {
   return (
-    <>
+    <ProjectProvider>
       <UpdateBanner />
       <Routes>
       <Route path="/" element={<LoginPage />} />
       <Route
+        path="/proyectos"
+        element={
+          <PrivateRoute>
+            <ProyectosSelectorPage />
+          </PrivateRoute>
+        }
+      />
+      <Route
         path="/home"
         element={
           <PrivateRoute>
-            <MainPage />
+            <RequireProject>
+              <MainPage />
+            </RequireProject>
           </PrivateRoute>
         }
       />
@@ -45,14 +56,6 @@ function App() {
         element={
           <PrivateRoute>
             <PedidoPreview />
-          </PrivateRoute>
-        }
-      />
-      <Route
-        path="/dashboards"
-        element={
-          <PrivateRoute>
-            <ProjectSelector />
           </PrivateRoute>
         }
       />
@@ -122,14 +125,6 @@ function App() {
       />
       {/* Rutas de Remisiones */}
       <Route
-        path="/remisiones"
-        element={
-          <PrivateRoute>
-            <RemisionesProjectSelector />
-          </PrivateRoute>
-        }
-      />
-      <Route
         path="/remisiones/general"
         element={
           <PrivateRoute>
@@ -157,7 +152,7 @@ function App() {
       {/* Redirige cualquier ruta no existente al login */}
       <Route path="*" element={<Navigate to="/" />} />
     </Routes>
-    </>
+    </ProjectProvider>
   );
 }
 

@@ -26,7 +26,7 @@ export function LoginForm() {
         localStorage.setItem("usuario", email);
         setToken(data.token);
         setError("");
-        navigate("/home");
+        navigate("/proyectos");
         return;
       }
       setError(data?.message || "Credenciales incorrectas");
