@@ -38,19 +38,54 @@ const uploadRemision = createUploader({ subdir: "remisiones", allowedExts: [".pd
 const uploadFactura = createUploader({ subdir: "facturas", allowedExts: [".pdf", ".xml"] })
   .fields([{ name: "pdf", maxCount: 1 }, { name: "xml", maxCount: 1 }]);
 
-db.getConnection((err, connection) => {
-  if (err) throw err;
-  console.log("Conectado a la base de datos MySQL");
-  connection.release();
-});
-
-// Migración automática: agregar columnas manuales de cobranza si no existen
+// Migración automática: agregar columnas manuales de cobranza si no existen.
 // Usa errno 1060 (ER_DUP_FIELDNAME) para ignorar si la columna ya existe (compatible MySQL 5.7+)
-db.query(`ALTER TABLE cobranza_proyecto ADD COLUMN importe_contratado DECIMAL(15,2) DEFAULT 0.00`, (err) => {
-  if (err && err.errno !== 1060) console.warn("migrate importe_contratado:", err?.message);
-});
-db.query(`ALTER TABLE cobranza_proyecto ADD COLUMN aplicado DECIMAL(15,2) DEFAULT 0.00`, (err) => {
-  if (err && err.errno !== 1060) console.warn("migrate aplicado:", err?.message);
+async function migracionesAutomaticas() {
+  const alters = [
+    "ALTER TABLE cobranza_proyecto ADD COLUMN importe_contratado DECIMAL(15,2) DEFAULT 0.00",
+    "ALTER TABLE cobranza_proyecto ADD COLUMN aplicado DECIMAL(15,2) DEFAULT 0.00",
+  ];
+  for (const sql of alters) {
+    try {
+      await queryAsync(sql);
+    } catch (err) {
+      if (err?.errno !== 1060) console.warn("migración automática:", err?.message);
+    }
+  }
+}
+
+// Conexión a MySQL con reintentos: la red privada de Railway (mysql.railway.internal)
+// puede tardar unos segundos en resolverse cuando arranca el contenedor. No debe
+// tumbar el proceso, porque eso deja el healthcheck /health sin responder.
+async function conectarBaseDeDatos({ maxIntentos = 30, esperaMs = 3000 } = {}) {
+  for (let intento = 1; ; intento++) {
+    try {
+      const connection = await new Promise((resolve, reject) => {
+        db.getConnection((err, conn) => (err ? reject(err) : resolve(conn)));
+      });
+      connection.release();
+      console.log("Conectado a la base de datos MySQL");
+      await migracionesAutomaticas();
+      return;
+    } catch (err) {
+      if (intento >= maxIntentos) {
+        console.error(`No se pudo conectar a MySQL tras ${maxIntentos} intentos:`, err?.message);
+        return;
+      }
+      console.warn(
+        `Intento ${intento} de conexión a MySQL falló (${err?.code || err?.message}); reintento en ${esperaMs}ms`
+      );
+      await new Promise((r) => setTimeout(r, esperaMs));
+    }
+  }
+}
+
+conectarBaseDeDatos();
+
+// Un rechazo no manejado (p. ej. una query mientras la BD aún no está lista) no debe
+// tumbar el servidor en producción.
+process.on("unhandledRejection", (reason) => {
+  console.error("unhandledRejection:", reason);
 });
 
 // Ruta de login
