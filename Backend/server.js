@@ -1030,18 +1030,6 @@ function todayISO() {
   return `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
 }
 
-function parseSituacionEspecialInfo(texto) {
-  const val = normalizeTextValue(texto).toUpperCase();
-  if (!val) return { tipo: null, porcentaje: 0 };
-  const esAmort = val.includes("AMORT");
-  const esTrasp = val.includes("TRASP");
-  if (!esAmort && !esTrasp) return { tipo: null, porcentaje: 0 };
-  const m = val.match(/(-?\d+(?:[.,]\d+)?)\s*%/);
-  const pct = m ? Number(String(m[1]).replace(",", ".")) : 0;
-  const pctSeguro = Number.isFinite(pct) ? Math.max(0, Math.min(100, pct)) : 0;
-  return { tipo: esAmort ? "amortizacion" : "traspaso", porcentaje: pctSeguro };
-}
-
 function normalizePct(raw) {
   if (raw === null || raw === undefined) return { mathPct: 0, dbPct: null };
   let pct = Number(raw);
@@ -1057,14 +1045,6 @@ function normalizePct(raw) {
 function isSalidaTlatilco(texto) {
   const val = normalizeTextValue(texto).toUpperCase();
   return val.includes("SALIDA TLATILCO");
-}
-
-function calcularSubtotalDetalles(detalles = []) {
-  if (!Array.isArray(detalles) || !detalles.length) return 0;
-  return detalles.reduce((sum, det) => {
-    const importe = toFiniteNumber(det?.importe);
-    return sum + (Number.isFinite(importe) ? importe : 0);
-  }, 0);
 }
 
 function toFiniteNumber(value) {
@@ -1213,38 +1193,6 @@ async function registrarHistorialPresupuesto(idProyecto, { fecha, presupuesto_cr
   await queryAsync(sql, [proyectoId, fechaISO, cristal || 0, aluminio || 0, miscelaneos || 0, total]);
 }
 
-function prepareDetalleForInsert(detalle) {
-  const descripcion = normalizeTextValue(detalle?.descripcion) || "Detalle";
-  const unidad = normalizeTextValue(detalle?.unidad) || null;
-  const medida = normalizeTextValue(detalle?.medida) || null;
-  const clave = normalizeTextValue(detalle?.clave) || null;
-  const acabado = normalizeTextValue(detalle?.acabado) || null;
-  const cantidadBase = toFiniteNumber(detalle?.cantidad);
-  const cantidad = cantidadBase !== null ? Math.round(cantidadBase) : 0;
-  let precioUnitario = toFiniteNumber(detalle?.precio_unitario);
-  const importeDato = toFiniteNumber(detalle?.importe);
-  if ((precioUnitario === null || precioUnitario === 0) && importeDato !== null && cantidad) {
-    precioUnitario = Number((importeDato / cantidad).toFixed(2));
-  }
-  const importe = importeDato !== null ? importeDato : Number((cantidad * (precioUnitario || 0)).toFixed(2));
-  const ml = toFiniteNumber(detalle?.ml);
-  const kg = toFiniteNumber(detalle?.kg);
-  const precioKg = toFiniteNumber(detalle?.precio_x_kg);
-  return {
-    descripcion,
-    unidad,
-    medida,
-    cantidad,
-    precio_unitario: precioUnitario !== null ? precioUnitario : 0,
-    importe,
-    clave,
-    ml,
-    acabado,
-    kg,
-    precio_x_kg: precioKg,
-  };
-}
-
 function prepareCristalDetalleForInsert(detalle) {
   const descripcion = normalizeTextValue(detalle?.descripcion) || "Detalle cristal";
   const claveModelo = normalizeTextValue(detalle?.clave_modelo ?? detalle?.clave) || null;
@@ -1314,29 +1262,6 @@ function prepareAluminioDetalleForInsert(detalle) {
   };
 }
 
-async function insertPedidoDetallesRows(pedidoId, detallesRaw) {
-  if (!Array.isArray(detallesRaw) || detallesRaw.length === 0) return;
-  const sqlDetalle = "INSERT INTO pedidos_detalles_miscelaneos (id_pedido, descripcion, unidad, medida, cantidad, precio_unitario, importe, clave, ml, acabado, kg, precio_x_kg) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-  for (const detalleRaw of detallesRaw) {
-    const detalle = prepareDetalleForInsert(detalleRaw || {});
-    const values = [
-      pedidoId,
-      detalle.descripcion,
-      detalle.unidad,
-      detalle.medida,
-      detalle.cantidad,
-      detalle.precio_unitario,
-      detalle.importe,
-      detalle.clave,
-      detalle.ml,
-      detalle.acabado,
-      detalle.kg,
-      detalle.precio_x_kg,
-    ];
-    await queryAsync(sqlDetalle, values);
-  }
-}
-
 async function insertCristalDetallesRows(pedidoId, detallesRaw) {
   if (!Array.isArray(detallesRaw) || detallesRaw.length === 0) return 0;
   const sqlDetalle = "INSERT INTO pedidos_detalles_cristal (id_pedido, descripcion, clave_modelo, ancho, largo, m2_corte, piezas, m2_pedido, precio_unitario, importe) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
@@ -1389,196 +1314,6 @@ async function insertAluminioDetallesRows(pedidoId, detallesRaw) {
   }
   return inserted;
 }
-
-async function insertDetallesSegunFamilia(pedidoId, familia, detallesRaw) {
-  if (!Array.isArray(detallesRaw) || detallesRaw.length === 0) return;
-  const familiaVal = normalizeTextValue(familia).toUpperCase();
-  if (familiaVal === "CR") {
-    await insertCristalDetallesRows(pedidoId, detallesRaw);
-    return;
-  }
-  if (familiaVal === "AL" || familiaVal === "MQAL") {
-    await insertAluminioDetallesRows(pedidoId, detallesRaw);
-    return;
-  }
-  await insertPedidoDetallesRows(pedidoId, detallesRaw);
-}
-
-// Pedidos - carga masiva desde CSV (parseado en el frontend)
-app.post("/proyectos/:id/pedidos", authenticateToken, requireRole("Superadmin"), async (req, res) => {
-  try {
-    const { id } = req.params;
-    const proyectoId = Number(id);
-    const { pedidos } = req.body || {};
-    if (!Number.isInteger(proyectoId) || proyectoId <= 0) {
-      return res.status(400).json({ success: false, message: "Proyecto inválido" });
-    }
-    if (!Array.isArray(pedidos) || pedidos.length === 0) {
-      return res.status(400).json({ success: false, message: "No hay pedidos a insertar" });
-    }
-    const username = normalizeTextValue(req.user?.username);
-    if (!username) {
-      return res.status(400).json({ success: false, message: "Usuario inválido" });
-    }
-    const sql =
-      "INSERT INTO pedidos (id_proyecto, nombre_proyecto, pedido, clan, familia, proveedor, fecha_aprobacion, concepto, situaciones_especiales, porcentaje_descuento, importe_total, nombre_usuario) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-
-    const detailsLog = [];
-    let okCount = 0;
-    for (let idx = 0; idx < pedidos.length; idx += 1) {
-      const p = pedidos[idx] || {};
-      const fechaISO = parseDateToISO(p.fecha_aprobacion);
-      if (!fechaISO) {
-        detailsLog.push({ index: idx + 1, pedido: p.pedido || null, ok: false, replaced: false, error: "Fecha inválida" });
-        continue;
-      }
-      const pedidoNombre = normalizeTextValue(p.pedido);
-      if (!pedidoNombre) {
-        detailsLog.push({ index: idx + 1, pedido: null, ok: false, replaced: false, error: "Pedido sin nombre" });
-        continue;
-      }
-      const situacionesEspeciales = normalizeTextValue(p.situaciones_especiales) || null;
-      const familiaValor = normalizeTextValue(p.familia);
-
-      const parsePct = (raw) => {
-        const num = toFiniteNumber(raw);
-        if (num === null) return null;
-        return normalizePct(num);
-      };
-      let porcentajeDescuento = null; // usamos mathPct para cálculos
-      let porcentajeDescuentoDb = null; // usamos dbPct para DB
-      const posiblesDescuentos = [
-        p?.porcentaje_descuento,
-        p?.porcentaje,
-        p?.porcentaje_situacion_especial,
-        p?.["% situacion especial"],
-      ];
-      for (const candidato of posiblesDescuentos) {
-        const pct = parsePct(candidato);
-        if (pct !== null) {
-          porcentajeDescuento = pct.mathPct;
-          porcentajeDescuentoDb = pct.dbPct;
-          break;
-        }
-      }
-      if (porcentajeDescuento === null) {
-        const { porcentaje } = parseSituacionEspecialInfo(p.situaciones_especiales);
-        if (porcentaje > 0) {
-          const norm = normalizePct(porcentaje);
-          porcentajeDescuento = norm.mathPct;
-          porcentajeDescuentoDb = norm.dbPct;
-        }
-      }
-      if (porcentajeDescuento !== null && porcentajeDescuentoDb === null) {
-        const norm = normalizePct(porcentajeDescuento);
-        porcentajeDescuento = norm.mathPct;
-        porcentajeDescuentoDb = norm.dbPct;
-      }
-      const tieneSalidaTlatilco = isSalidaTlatilco(p.situaciones_especiales);
-      const subtotalDetalles = calcularSubtotalDetalles(p.detalles);
-      const importePedido = toFiniteNumber(p.importe);
-      const baseSinIva =
-        subtotalDetalles > 0
-          ? subtotalDetalles
-          : importePedido !== null && importePedido !== 0
-            ? importePedido
-            : 0;
-      const subtotalBase = Number(baseSinIva.toFixed(2));
-      const descuentoMonto = subtotalBase * ((porcentajeDescuento || 0) / 100);
-      const subtotalConDesc = subtotalBase - descuentoMonto;
-      const ivaMonto = subtotalConDesc * 0.16;
-      const importeTotal = tieneSalidaTlatilco ? 0 : Number(Math.max(0, subtotalConDesc + ivaMonto).toFixed(2));
-
-      let replacedExisting = false;
-      try {
-        const existingRows = await queryAsync(
-          "SELECT id, familia, situaciones_especiales, porcentaje_descuento, importe_total FROM pedidos WHERE id_proyecto = ? AND pedido = ? LIMIT 1",
-          [proyectoId, pedidoNombre]
-        );
-        if (Array.isArray(existingRows) && existingRows.length) {
-          const existingRow = existingRows[0];
-          let importePrevio = toFiniteNumber(existingRow.importe_total) || 0;
-          try {
-            const importeCalc = await calcularImporteDesdeDetalles(existingRow, { includeSubtotal: false });
-            if (Number.isFinite(importeCalc) && importeCalc !== null) {
-              importePrevio = Number(importeCalc);
-            }
-          } catch (calcErr) {
-            console.error("Error recalculando importe previo del pedido:", calcErr);
-          }
-          await queryAsync("DELETE FROM pedidos WHERE id = ? AND id_proyecto = ?", [existingRow.id, proyectoId]);
-          replacedExisting = true;
-        }
-      } catch (lookupErr) {
-        console.error("Error verificando pedido existente:", lookupErr);
-        detailsLog.push({ index: idx + 1, pedido: pedidoNombre, ok: false, replaced: false, error: "No se pudo validar duplicados" });
-        continue;
-      }
-
-      const values = [
-        proyectoId,
-        normalizeTextValue(p.nombre_proyecto),
-        pedidoNombre,
-        normalizeTextValue(p.clan),
-        familiaValor,
-        normalizeTextValue(p.proveedor),
-        fechaISO,
-        normalizeTextValue(p.concepto),
-        situacionesEspeciales,
-        porcentajeDescuentoDb,
-        importeTotal,
-        username,
-      ];
-      try {
-        const result = await queryAsync(sql, values);
-        const pedidoId = result.insertId;
-        await insertDetallesSegunFamilia(pedidoId, p.familia, p.detalles);
-        let importeFinal = importeTotal;
-        try {
-          const calc = await calcularImporteDesdeDetalles(
-            {
-              id: pedidoId,
-              familia: familiaValor,
-              situaciones_especiales: situacionesEspeciales,
-              porcentaje_descuento: porcentajeDescuentoDb,
-            },
-            { includeSubtotal: true }
-          );
-          if (calc && Number.isFinite(calc.total)) {
-            importeFinal = Number(calc.total);
-          }
-        } catch (calcErr) {
-          console.error("No se pudo recalcular el importe del pedido insertado:", calcErr);
-        }
-        const importeFinalSeguro = Number(
-          Number.isFinite(importeFinal) ? importeFinal.toFixed(2) : Number(importeTotal.toFixed(2))
-        );
-        try {
-          await queryAsync("UPDATE pedidos SET importe_total = ? WHERE id = ?", [importeFinalSeguro, pedidoId]);
-        } catch (updErr) {
-          console.error("No se pudo actualizar el importe_total del pedido:", updErr);
-        }
-        okCount += 1;
-        detailsLog.push({ index: idx + 1, pedido: pedidoNombre, ok: true, replaced: replacedExisting, error: null });
-      } catch (err) {
-        console.error("Error insertando pedido:", err);
-        detailsLog.push({ index: idx + 1, pedido: pedidoNombre, ok: false, replaced: replacedExisting, error: String(err?.message || err) });
-      }
-    }
-
-    const failCount = detailsLog.length - okCount;
-    return res.json({
-      success: okCount > 0,
-      inserted: okCount,
-      failed: failCount,
-      message: `Pedidos insertados: ${okCount}${failCount ? ", fallidos: " + failCount : ""}`,
-      details: detailsLog,
-    });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ success: false, message: "Error interno del servidor" });
-  }
-});
 
 //------------------------------------------------------------
 // VIÁTICOS ENDPOINTS
