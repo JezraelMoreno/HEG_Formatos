@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Modal } from "../../components/Modal";
 import { DetalleLineasEditor } from "./DetalleLineasEditor";
 import { usePedidoTotales } from "../../hooks/usePedidoTotales";
 import { apiFetch } from "../../api/client";
 import type { DetalleUnion, Pedido, TipoDetalle } from "../../types/pedidos";
+import type { ContextoAluminio } from "../../utils/pedidoDetalleColumns";
 import "./PedidoFormModal.css";
 
 type Props = {
@@ -22,6 +23,11 @@ type FormState = {
   concepto: string;
   porcentaje_descuento: string;
   situaciones_especiales: string;
+  descripcion_general: string;
+  moneda_aluminio: "USD" | "MXN";
+  tipo_cambio: string;
+  precio_aluminio_kg: string;
+  precio_pintura_m2: string;
 };
 
 const FORM_INICIAL: FormState = {
@@ -33,6 +39,11 @@ const FORM_INICIAL: FormState = {
   concepto: "",
   porcentaje_descuento: "",
   situaciones_especiales: "",
+  descripcion_general: "",
+  moneda_aluminio: "MXN",
+  tipo_cambio: "",
+  precio_aluminio_kg: "",
+  precio_pintura_m2: "",
 };
 
 const FAMILIA_DEFAULT: Record<TipoDetalle, string> = {
@@ -49,6 +60,16 @@ export function PedidoFormModal({ isOpen, onClose, idProyecto, onCreated }: Prop
   const [error, setError] = useState("");
 
   const totales = usePedidoTotales(detalles, Number(form.porcentaje_descuento || 0));
+
+  const contextoAluminio: ContextoAluminio = useMemo(
+    () => ({
+      monedaAluminio: form.moneda_aluminio,
+      tipoCambio: Number(form.tipo_cambio || 1),
+      precioAluminioKg: form.precio_aluminio_kg.trim() === "" ? null : Number(form.precio_aluminio_kg),
+      precioPinturaM2: form.precio_pintura_m2.trim() === "" ? null : Number(form.precio_pintura_m2),
+    }),
+    [form.moneda_aluminio, form.tipo_cambio, form.precio_aluminio_kg, form.precio_pintura_m2]
+  );
 
   const cambiarTipoDetalle = (tipo: TipoDetalle) => {
     setTipoDetalle(tipo);
@@ -73,6 +94,10 @@ export function PedidoFormModal({ isOpen, onClose, idProyecto, onCreated }: Prop
       setError("Completa los datos requeridos del pedido antes de guardar.");
       return;
     }
+    if (tipoDetalle === "aluminio" && form.moneda_aluminio === "USD" && !(Number(form.tipo_cambio) > 0)) {
+      setError("Indica un tipo de cambio válido (mayor a 0) cuando el aluminio se cotiza en USD.");
+      return;
+    }
     setGuardando(true);
     try {
       const payload = {
@@ -83,7 +108,12 @@ export function PedidoFormModal({ isOpen, onClose, idProyecto, onCreated }: Prop
         fecha_aprobacion: form.fecha_aprobacion,
         concepto: form.concepto.trim(),
         situaciones_especiales: form.situaciones_especiales.trim() || null,
+        descripcion_general: tipoDetalle === "cristal" ? form.descripcion_general.trim() || null : null,
         porcentaje_descuento: form.porcentaje_descuento ? Number(form.porcentaje_descuento) : null,
+        moneda_aluminio: form.moneda_aluminio,
+        tipo_cambio: form.moneda_aluminio === "USD" ? Number(form.tipo_cambio) : null,
+        precio_aluminio_kg: form.precio_aluminio_kg.trim() === "" ? null : Number(form.precio_aluminio_kg),
+        precio_pintura_m2: form.precio_pintura_m2.trim() === "" ? null : Number(form.precio_pintura_m2),
         detalles,
       };
       const pedidoCreado = await apiFetch<Pedido>(`/proyectos/${idProyecto}/pedidos/nuevo`, {
@@ -192,6 +222,68 @@ export function PedidoFormModal({ isOpen, onClose, idProyecto, onCreated }: Prop
                 rows={2}
               />
             </label>
+            {tipoDetalle === "cristal" && (
+              <label className="span-4">
+                Descripción general
+                <textarea
+                  value={form.descripcion_general}
+                  onChange={(e) => setForm((prev) => ({ ...prev, descripcion_general: e.target.value }))}
+                  placeholder="Descripción general del pedido (opcional)"
+                  rows={2}
+                />
+              </label>
+            )}
+            {tipoDetalle === "aluminio" && (
+              <>
+                <label>
+                  Moneda del aluminio
+                  <select
+                    value={form.moneda_aluminio}
+                    onChange={(e) =>
+                      setForm((prev) => ({ ...prev, moneda_aluminio: e.target.value as "USD" | "MXN" }))
+                    }
+                  >
+                    <option value="MXN">Pesos (MXN)</option>
+                    <option value="USD">Dólares (USD)</option>
+                  </select>
+                </label>
+                {form.moneda_aluminio === "USD" && (
+                  <label>
+                    Tipo de cambio*
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.0001"
+                      value={form.tipo_cambio}
+                      onChange={(e) => setForm((prev) => ({ ...prev, tipo_cambio: e.target.value }))}
+                      placeholder="Ej. 19.00"
+                    />
+                  </label>
+                )}
+                <label>
+                  Precio aluminio ($/kg)
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={form.precio_aluminio_kg}
+                    onChange={(e) => setForm((prev) => ({ ...prev, precio_aluminio_kg: e.target.value }))}
+                    placeholder="Ej. 4.95"
+                  />
+                </label>
+                <label>
+                  Precio pintura ($/m²)
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={form.precio_pintura_m2}
+                    onChange={(e) => setForm((prev) => ({ ...prev, precio_pintura_m2: e.target.value }))}
+                    placeholder="Ej. 3.04"
+                  />
+                </label>
+              </>
+            )}
           </div>
         </div>
 
@@ -211,7 +303,12 @@ export function PedidoFormModal({ isOpen, onClose, idProyecto, onCreated }: Prop
               ))}
             </div>
           </div>
-          <DetalleLineasEditor tipoDetalle={tipoDetalle} detalles={detalles} onChange={setDetalles} />
+          <DetalleLineasEditor
+            tipoDetalle={tipoDetalle}
+            detalles={detalles}
+            onChange={setDetalles}
+            contextoAluminio={tipoDetalle === "aluminio" ? contextoAluminio : undefined}
+          />
         </div>
 
         <div className="pedido-form-totales">

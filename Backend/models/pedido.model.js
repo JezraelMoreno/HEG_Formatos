@@ -14,7 +14,7 @@ import {
 
 export async function findByProyecto(id, filters = {}) {
   let sql =
-    "SELECT id, id_proyecto, nombre_proyecto, pedido, clan, familia, proveedor, nombre_usuario, DATE_FORMAT(fecha_aprobacion, '%Y-%m-%d') AS fecha_aprobacion, concepto, situaciones_especiales, porcentaje_descuento, importe_total AS importe, estado, id_aprobador, DATE_FORMAT(fecha_levantado, '%Y-%m-%d %H:%i:%s') AS fecha_levantado, DATE_FORMAT(fecha_resolucion, '%Y-%m-%d %H:%i:%s') AS fecha_resolucion FROM pedidos WHERE id_proyecto = ?";
+    "SELECT id, id_proyecto, nombre_proyecto, pedido, clan, familia, proveedor, nombre_usuario, DATE_FORMAT(fecha_aprobacion, '%Y-%m-%d') AS fecha_aprobacion, concepto, situaciones_especiales, descripcion_general, porcentaje_descuento, moneda_aluminio, tipo_cambio, precio_aluminio_kg, precio_pintura_m2, importe_total AS importe, estado, id_aprobador, DATE_FORMAT(fecha_levantado, '%Y-%m-%d %H:%i:%s') AS fecha_levantado, DATE_FORMAT(fecha_resolucion, '%Y-%m-%d %H:%i:%s') AS fecha_resolucion FROM pedidos WHERE id_proyecto = ?";
   const params = [id];
   const toList = (v) => Array.isArray(v) ? v : (typeof v === 'string' ? v.split('||').map(s => s.trim()).filter(Boolean) : []);
   const addMulti = (field, values) => {
@@ -78,7 +78,7 @@ export async function getResumen(fechaFiltro, rawUsuario) {
 }
 
 export async function getDetallesMiscelaneos(pedidoId) {
-  const sql = `SELECT id_detalle, id_pedido, descripcion, unidad, medida, cantidad, precio_unitario, importe, clave, ml, acabado, kg, precio_x_kg
+  const sql = `SELECT id_detalle, id_pedido, descripcion, concepto_detalle, unidad, medida, cantidad, precio_unitario, importe, clave, ml, acabado, kg, precio_x_kg
                FROM pedidos_detalles_miscelaneos
                WHERE id_pedido = ?
                ORDER BY id_detalle ASC`;
@@ -87,6 +87,7 @@ export async function getDetallesMiscelaneos(pedidoId) {
     id_detalle: r.id_detalle,
     id_pedido: r.id_pedido,
     descripcion: r.descripcion,
+    concepto_detalle: r.concepto_detalle,
     unidad: r.unidad,
     medida: r.medida,
     cantidad: Number(r.cantidad || 0),
@@ -182,14 +183,14 @@ export async function insertCristalDetallesRows(pedidoId, detallesRaw) {
   return inserted;
 }
 
-export async function insertAluminioDetallesRows(pedidoId, detallesRaw) {
+export async function insertAluminioDetallesRows(pedidoId, detallesRaw, pedidoContext = {}) {
   if (!Array.isArray(detallesRaw) || detallesRaw.length === 0) return 0;
   const sqlDetalle = `INSERT INTO pedidos_detalles_aluminio
     (id_pedido, numero_perfil, descripcion, medida_tramo, unidad, peso_kg_ml, perimetro_m2_ml, acabado, total_tramos, ml, kg, m2, importe)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
   let inserted = 0;
   for (const detalleRaw of detallesRaw) {
-    const detalle = prepareAluminioDetalleForInsert(detalleRaw || {});
+    const detalle = prepareAluminioDetalleForInsert(detalleRaw || {}, pedidoContext);
     const values = [
       pedidoId,
       detalle.numero_perfil,
@@ -213,12 +214,13 @@ export async function insertAluminioDetallesRows(pedidoId, detallesRaw) {
 
 export async function insertPedidoDetallesRows(pedidoId, detallesRaw) {
   if (!Array.isArray(detallesRaw) || detallesRaw.length === 0) return;
-  const sqlDetalle = "INSERT INTO pedidos_detalles_miscelaneos (id_pedido, descripcion, unidad, medida, cantidad, precio_unitario, importe, clave, ml, acabado, kg, precio_x_kg) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+  const sqlDetalle = "INSERT INTO pedidos_detalles_miscelaneos (id_pedido, descripcion, concepto_detalle, unidad, medida, cantidad, precio_unitario, importe, clave, ml, acabado, kg, precio_x_kg) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
   for (const detalleRaw of detallesRaw) {
     const detalle = prepareDetalleForInsert(detalleRaw || {});
     const values = [
       pedidoId,
       detalle.descripcion,
+      detalle.concepto_detalle,
       detalle.unidad,
       detalle.medida,
       detalle.cantidad,
@@ -234,7 +236,7 @@ export async function insertPedidoDetallesRows(pedidoId, detallesRaw) {
   }
 }
 
-export async function insertDetallesSegunFamilia(pedidoId, familia, detallesRaw) {
+export async function insertDetallesSegunFamilia(pedidoId, familia, detallesRaw, pedidoContext = {}) {
   if (!Array.isArray(detallesRaw) || detallesRaw.length === 0) return;
   const familiaVal = normalizeTextValue(familia).toUpperCase();
   if (familiaVal === "CR") {
@@ -242,7 +244,7 @@ export async function insertDetallesSegunFamilia(pedidoId, familia, detallesRaw)
     return;
   }
   if (familiaVal === "AL" || familiaVal === "MQAL") {
-    await insertAluminioDetallesRows(pedidoId, detallesRaw);
+    await insertAluminioDetallesRows(pedidoId, detallesRaw, pedidoContext);
     return;
   }
   await insertPedidoDetallesRows(pedidoId, detallesRaw);
@@ -309,15 +311,16 @@ export async function proyectoExists(id) {
 
 export async function insertPedidoDirecto(values) {
   const sql = `INSERT INTO pedidos
-    (id_proyecto, nombre_proyecto, pedido, clan, familia, proveedor, fecha_aprobacion, concepto, situaciones_especiales, porcentaje_descuento, importe_total, nombre_usuario, estado, fecha_levantado)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'levantado', NOW())`;
+    (id_proyecto, nombre_proyecto, pedido, clan, familia, proveedor, fecha_aprobacion, concepto, situaciones_especiales, descripcion_general, porcentaje_descuento, moneda_aluminio, tipo_cambio, precio_aluminio_kg, precio_pintura_m2, importe_total, nombre_usuario, estado, fecha_levantado)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'levantado', NOW())`;
   return queryAsync(sql, values);
 }
 
 export async function getPedidoById(pedidoId) {
   const sql = `SELECT id, id_proyecto, nombre_proyecto, pedido, clan, familia, proveedor,
       DATE_FORMAT(fecha_aprobacion, '%Y-%m-%d') AS fecha_aprobacion, concepto, situaciones_especiales,
-      porcentaje_descuento, importe_total AS importe, nombre_usuario, estado, id_aprobador,
+      descripcion_general, porcentaje_descuento, moneda_aluminio, tipo_cambio, precio_aluminio_kg, precio_pintura_m2,
+      importe_total AS importe, nombre_usuario, estado, id_aprobador,
       DATE_FORMAT(fecha_levantado, '%Y-%m-%d %H:%i:%s') AS fecha_levantado,
       DATE_FORMAT(fecha_resolucion, '%Y-%m-%d %H:%i:%s') AS fecha_resolucion
     FROM pedidos WHERE id = ? LIMIT 1`;
@@ -345,7 +348,8 @@ export async function deleteDetallesSegunFamilia(pedidoId, familia) {
 
 export async function updatePedidoMetadata(pedidoId, fields) {
   const sql = `UPDATE pedidos SET pedido = ?, clan = ?, familia = ?, proveedor = ?, fecha_aprobacion = ?,
-    concepto = ?, situaciones_especiales = ?, porcentaje_descuento = ? WHERE id = ?`;
+    concepto = ?, situaciones_especiales = ?, descripcion_general = ?, porcentaje_descuento = ?,
+    moneda_aluminio = ?, tipo_cambio = ?, precio_aluminio_kg = ?, precio_pintura_m2 = ? WHERE id = ?`;
   const values = [
     fields.pedido,
     fields.clan,
@@ -354,7 +358,12 @@ export async function updatePedidoMetadata(pedidoId, fields) {
     fields.fecha_aprobacion,
     fields.concepto,
     fields.situaciones_especiales,
+    fields.descripcion_general,
     fields.porcentaje_descuento,
+    fields.moneda_aluminio,
+    fields.tipo_cambio,
+    fields.precio_aluminio_kg,
+    fields.precio_pintura_m2,
     pedidoId,
   ];
   return queryAsync(sql, values);
@@ -385,13 +394,15 @@ export async function getHistorialByPedido(pedidoId) {
   return queryAsync(sql, [pedidoId]);
 }
 
-export async function getConteoPendientes(idUsuarioSupervisor = null) {
+// idUsuarioRestringido: id de cualquier usuario no-Superadmin (antes solo Supervisor) cuya
+// visibilidad de proyectos debe respetarse; null = sin restricción (ej. Superadmin).
+export async function getConteoPendientes(idUsuarioRestringido = null) {
   const sql = `SELECT COUNT(*) AS total FROM pedidos p
     WHERE p.estado = 'levantado'
-    ${idUsuarioSupervisor
+    ${idUsuarioRestringido
       ? "AND p.id_proyecto IN (SELECT id_proyecto FROM supervisores_proyectos WHERE id_usuario = ?)"
       : ""}`;
-  const rows = await queryAsync(sql, idUsuarioSupervisor ? [idUsuarioSupervisor] : []);
+  const rows = await queryAsync(sql, idUsuarioRestringido ? [idUsuarioRestringido] : []);
   return rows?.[0]?.total ?? 0;
 }
 

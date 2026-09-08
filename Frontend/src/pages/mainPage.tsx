@@ -727,14 +727,14 @@ export function MainPage() {
                         </td>
                         {isAdmin && (
                           <td>
-                            {u.tipo_usuario === "Supervisor" && (
+                            {u.tipo_usuario !== "Superadmin" && (
                               <button
                                 type="button"
                                 className="action-button secondary-button"
                                 style={{ padding: "0.35rem 0.6rem", fontSize: "0.8rem" }}
                                 onClick={() => abrirAsignacionObras(u)}
                               >
-                                Asignar obras
+                                Restringir proyectos
                               </button>
                             )}
                             {(nuevoRolPorUsuario[u.id_usuario] ?? u.tipo_usuario) !== u.tipo_usuario && (
@@ -761,7 +761,10 @@ export function MainPage() {
 
             {usuarioParaAsignar && (
               <div>
-                <h4 style={{ marginBottom: "0.5rem" }}>Obras asignadas — {usuarioParaAsignar.nombre_usuario}</h4>
+                <h4 style={{ marginBottom: "0.5rem" }}>Proyectos visibles — {usuarioParaAsignar.nombre_usuario}</h4>
+                <p style={{ fontSize: "0.85rem", color: "#666", marginTop: 0 }}>
+                  Si no se marca ningún proyecto, este usuario no verá ningún proyecto.
+                </p>
                 {cargandoAsignacion ? (
                   <p>Cargando...</p>
                 ) : (

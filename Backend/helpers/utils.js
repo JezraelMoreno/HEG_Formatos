@@ -113,6 +113,13 @@ export function redondearMoneda(value) {
   return Number(num.toFixed(2));
 }
 
+export function redondearDecimales(value, decimales = 2) {
+  const num = Number(value || 0);
+  if (!Number.isFinite(num)) return 0;
+  const factor = 10 ** decimales;
+  return Math.round(num * factor) / factor;
+}
+
 export function claveExplosion(clan, familia) {
   const familiaVal = normalizeTextValue(familia).toUpperCase();
   if (familiaVal) return familiaVal;
@@ -136,6 +143,7 @@ export function acumularGastoPorFamilia(rows = []) {
 
 export function prepareDetalleForInsert(detalle) {
   const descripcion = normalizeTextValue(detalle?.descripcion) || "Detalle";
+  const conceptoDetalle = normalizeTextValue(detalle?.concepto_detalle) || null;
   const unidad = normalizeTextValue(detalle?.unidad) || null;
   const medida = normalizeTextValue(detalle?.medida) || null;
   const clave = normalizeTextValue(detalle?.clave) || null;
@@ -153,6 +161,7 @@ export function prepareDetalleForInsert(detalle) {
   const precioKg = toFiniteNumber(detalle?.precio_x_kg);
   return {
     descripcion,
+    concepto_detalle: conceptoDetalle,
     unidad,
     medida,
     cantidad,
@@ -205,7 +214,46 @@ export function prepareCristalDetalleForInsert(detalle) {
   };
 }
 
-export function prepareAluminioDetalleForInsert(detalle) {
+// Fórmula real del proveedor (ver Documentacion/PED-01 ALUBIN aluminio...csv):
+//   ml = medida_tramo × total_tramos
+//   kg = ml × peso_kg_ml
+//   m2 = ml × perimetro_m2_ml
+//   importe = (kg × precio_aluminio_kg + m2 × precio_pintura_m2) × tipo_cambio
+// precio_aluminio_kg/precio_pintura_m2 son un único par por pedido (no por línea).
+// Si el pedido no tiene precio_aluminio_kg configurado (pedidos históricos, previos a esta
+// función), se respeta lo que mande el cliente — modo manual heredado.
+export function calcularCamposAluminio(detalle, pedidoContext = {}) {
+  const precioAluminioKg = toFiniteNumber(pedidoContext?.precioAluminioKg);
+  if (precioAluminioKg === null) {
+    return {
+      ml: toFiniteNumber(detalle?.ml),
+      kg: toFiniteNumber(detalle?.kg),
+      m2: toFiniteNumber(detalle?.m2),
+      importe: toFiniteNumber(detalle?.importe) || 0,
+    };
+  }
+
+  const medidaTramo = toFiniteNumber(detalle?.medida_tramo) || 0;
+  const totalTramosBase = toFiniteNumber(detalle?.total_tramos);
+  const totalTramos = totalTramosBase !== null ? Math.max(0, Math.round(totalTramosBase)) : 0;
+  const pesoKgMl = toFiniteNumber(detalle?.peso_kg_ml) || 0;
+  const perimetroM2Ml = toFiniteNumber(detalle?.perimetro_m2_ml) || 0;
+
+  const ml = redondearDecimales(medidaTramo * totalTramos, 3);
+  const kg = redondearDecimales(ml * pesoKgMl, 3);
+  const m2 = redondearDecimales(ml * perimetroM2Ml, 3);
+
+  const precioPinturaM2 = toFiniteNumber(pedidoContext?.precioPinturaM2) || 0;
+  const monedaAluminio = pedidoContext?.monedaAluminio === "USD" ? "USD" : "MXN";
+  const tipoCambioRaw = toFiniteNumber(pedidoContext?.tipoCambio);
+  const tipoCambio = monedaAluminio === "USD" && tipoCambioRaw && tipoCambioRaw > 0 ? tipoCambioRaw : 1;
+
+  const importe = redondearMoneda((kg * precioAluminioKg + m2 * precioPinturaM2) * tipoCambio);
+
+  return { ml, kg, m2, importe };
+}
+
+export function prepareAluminioDetalleForInsert(detalle, pedidoContext = {}) {
   const descripcion = normalizeTextValue(detalle?.descripcion) || "Detalle aluminio";
   const numeroPerfil = normalizeTextValue(detalle?.numero_perfil) || null;
   const medidaTramo = toFiniteNumber(detalle?.medida_tramo);
@@ -215,10 +263,7 @@ export function prepareAluminioDetalleForInsert(detalle) {
   const acabado = normalizeTextValue(detalle?.acabado) || null;
   const totalTramosBase = toFiniteNumber(detalle?.total_tramos);
   const totalTramos = totalTramosBase !== null ? Math.max(0, Math.round(totalTramosBase)) : null;
-  const ml = toFiniteNumber(detalle?.ml);
-  const kg = toFiniteNumber(detalle?.kg);
-  const m2 = toFiniteNumber(detalle?.m2);
-  const importe = toFiniteNumber(detalle?.importe) || 0;
+  const { ml, kg, m2, importe } = calcularCamposAluminio(detalle, pedidoContext);
   return {
     numero_perfil: numeroPerfil,
     descripcion,

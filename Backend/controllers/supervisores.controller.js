@@ -32,8 +32,8 @@ export async function asignar(req, res) {
       return res.status(404).json({ success: false, message: "Usuario no encontrado" });
     }
     const rolUsuario = await UsuarioModel.getRoleNombreByUsuarioId(idUsuario);
-    if (String(rolUsuario || "").toLowerCase() !== "supervisor") {
-      return res.status(400).json({ success: false, message: "El usuario debe tener el rol Supervisor" });
+    if (String(rolUsuario || "").toLowerCase() === "superadmin") {
+      return res.status(400).json({ success: false, message: "No se puede restringir el acceso de un Superadmin" });
     }
     await SupervisorModel.asignar(idProyecto, idUsuario);
     return res.status(201).json({ success: true, message: "Supervisor asignado" });

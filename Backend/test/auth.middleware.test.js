@@ -32,20 +32,33 @@ test("requireRole rechaza cuando no hay rol en el token", async () => {
   assert.equal(result.statusCode, 403);
 });
 
-test("requireProjectAccess deja pasar directo a roles distintos de Supervisor (sin tocar BD)", async () => {
+// La restricción de proyectos por usuario se generalizó a cualquier rol no-Superadmin (antes
+// solo Supervisor) — ver Base_de_Datos/migrations/007_backfill_acceso_proyectos.sql. Ahora
+// únicamente Superadmin pasa directo sin tocar la BD; cualquier otro rol pasa por el chequeo
+// de supervisores_proyectos.
+test("requireProjectAccess deja pasar directo a Superadmin (sin tocar BD)", async () => {
   const result = await runMiddleware(requireProjectAccess, {
-    user: { role: "Aprobador" },
+    user: { role: "Superadmin" },
     params: { pedidoId: "999999999" },
   });
   assert.equal(result.nextCalled, true);
 });
 
-test("requireProjectAccessByProyectoId deja pasar directo a roles distintos de Supervisor (sin tocar BD)", async () => {
+test("requireProjectAccessByProyectoId deja pasar directo a Superadmin (sin tocar BD)", async () => {
   const result = await runMiddleware(requireProjectAccessByProyectoId, {
     user: { role: "Superadmin" },
     params: { id: "999999999" },
   });
   assert.equal(result.nextCalled, true);
+});
+
+test("requireProjectAccess NO deja pasar directo a un rol restringible como Aprobador (toca BD y responde 404 para un pedido inexistente)", async () => {
+  const result = await runMiddleware(requireProjectAccess, {
+    user: { role: "Aprobador", sub: 1 },
+    params: { pedidoId: "999999999" },
+  });
+  assert.equal(result.nextCalled, false);
+  assert.equal(result.statusCode, 404);
 });
 
 // Requiere datos de Backend/scripts/seedDummyData.js (`npm run seed`): el usuario

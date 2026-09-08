@@ -89,7 +89,17 @@ CREATE TABLE IF NOT EXISTS pedidos (
   fecha_aprobacion DATE NOT NULL,
   concepto VARCHAR(100) NOT NULL,
   situaciones_especiales VARCHAR(100),
+  -- Descripción general del pedido, hoy usada solo para cristal (ver
+  -- Base_de_Datos/migrations/010_pedidos_descripcion_general.sql).
+  descripcion_general TEXT NULL,
   porcentaje_descuento DECIMAL (6,2),
+
+  -- Precio de aluminio (ver Base_de_Datos/migrations/008_pedidos_aluminio_precio_moneda.sql).
+  -- Un solo precio USD/MXN por pedido completo (no por línea), tal como lo cotiza el proveedor.
+  moneda_aluminio ENUM('USD','MXN') NOT NULL DEFAULT 'MXN',
+  tipo_cambio DECIMAL(10,4) NOT NULL DEFAULT 1.0000,
+  precio_aluminio_kg DECIMAL(12,4) NULL,
+  precio_pintura_m2 DECIMAL(12,4) NULL,
 
   importe_total DECIMAL(15,2) DEFAULT 0.00,
   nombre_usuario VARCHAR(50) NOT NULL,
@@ -125,6 +135,7 @@ CREATE TABLE IF NOT EXISTS pedidos_detalles_miscelaneos (
   id_pedido INT NOT NULL,
 
   descripcion VARCHAR(255) NOT NULL,
+  concepto_detalle VARCHAR(150) DEFAULT NULL,
   unidad VARCHAR(100),
   medida VARCHAR(100),
 

@@ -14,8 +14,13 @@ export type Pedido = {
   fecha_aprobacion: string; // YYYY-MM-DD
   concepto: string;
   situaciones_especiales?: string | null;
+  descripcion_general?: string | null;
   importe: number;
   porcentaje_descuento?: number | null;
+  moneda_aluminio?: "USD" | "MXN";
+  tipo_cambio?: number | null;
+  precio_aluminio_kg?: number | null;
+  precio_pintura_m2?: number | null;
   estado: EstadoPedido;
   id_aprobador?: number | null;
   fecha_levantado?: string | null;
@@ -25,6 +30,7 @@ export type Pedido = {
 export type PedidoDetalleItem = {
   id_detalle: number;
   descripcion: string;
+  concepto_detalle?: string | null;
   unidad?: string | null;
   medida?: string | null;
   cantidad: number;

@@ -15,6 +15,39 @@ import { ASSETS_DIR } from "../helpers/excel.js";
 import { columnasPdfPorFamilia } from "../helpers/pedidoPdfColumnas.js";
 import path from "path";
 
+// Extrae y valida moneda/tipo de cambio/precios de aluminio del body de un pedido. `existing`
+// (pedido ya guardado) se usa como fallback en edición cuando el campo no viene en el body,
+// igual que ya se hace con situaciones_especiales/porcentaje_descuento. precio_aluminio_kg en
+// null es válido: significa "modo manual heredado" (ver calcularCamposAluminio en utils.js).
+function extraerContextoAluminio(body, familia, existing = {}) {
+  const familiaVal = normalizeTextValue(familia).toUpperCase();
+  const esAluminio = familiaVal === "AL" || familiaVal === "MQAL";
+
+  let monedaAluminio = body.moneda_aluminio !== undefined
+    ? normalizeTextValue(body.moneda_aluminio).toUpperCase()
+    : normalizeTextValue(existing.moneda_aluminio).toUpperCase();
+  if (monedaAluminio !== "USD" && monedaAluminio !== "MXN") monedaAluminio = "MXN";
+
+  let tipoCambio = body.tipo_cambio !== undefined ? toFiniteNumber(body.tipo_cambio) : toFiniteNumber(existing.tipo_cambio);
+  if (monedaAluminio === "USD") {
+    if (esAluminio && (tipoCambio === null || tipoCambio <= 0)) {
+      return { error: "Se requiere un tipo de cambio válido (mayor a 0) cuando el aluminio se cotiza en USD" };
+    }
+    if (tipoCambio === null || tipoCambio <= 0) tipoCambio = 1;
+  } else {
+    tipoCambio = 1;
+  }
+
+  const precioAluminioKg = body.precio_aluminio_kg !== undefined
+    ? toFiniteNumber(body.precio_aluminio_kg)
+    : toFiniteNumber(existing.precio_aluminio_kg);
+  const precioPinturaM2 = body.precio_pintura_m2 !== undefined
+    ? toFiniteNumber(body.precio_pintura_m2)
+    : toFiniteNumber(existing.precio_pintura_m2);
+
+  return { monedaAluminio, tipoCambio, precioAluminioKg, precioPinturaM2 };
+}
+
 export async function listarPorProyecto(req, res) {
   try {
     const { id } = req.params;
@@ -68,8 +101,9 @@ export async function resumen(req, res) {
 
 export async function conteoPendientes(req, res) {
   try {
-    const esSupervisor = String(req.user?.role || "").toLowerCase() === "supervisor";
-    const total = await PedidoModel.getConteoPendientes(esSupervisor ? req.user.sub : null);
+    const rol = String(req.user?.role || "").toLowerCase();
+    const esRestringible = rol !== "" && rol !== "superadmin";
+    const total = await PedidoModel.getConteoPendientes(esRestringible ? req.user.sub : null);
     return res.json({ success: true, data: { total } });
   } catch (err) {
     console.error("Error consultando conteo de pedidos pendientes:", err);
@@ -195,7 +229,12 @@ export async function crearDirecto(req, res) {
       return res.status(404).json({ success: false, message: "Proyecto no encontrado" });
     }
     const situacionesEspeciales = normalizeTextValue(body.situaciones_especiales) || null;
+    const descripcionGeneral = normalizeTextValue(body.descripcion_general) || null;
     const { dbPct: porcentajeDescuentoDb } = normalizePct(toFiniteNumber(body.porcentaje_descuento));
+    const pedidoContext = extraerContextoAluminio(body, familia);
+    if (pedidoContext.error) {
+      return res.status(400).json({ success: false, message: pedidoContext.error });
+    }
     const username = normalizeTextValue(req.user?.username);
     if (!username) {
       return res.status(400).json({ success: false, message: "Usuario inválido" });
@@ -212,7 +251,12 @@ export async function crearDirecto(req, res) {
       fechaISO,
       concepto,
       situacionesEspeciales,
+      descripcionGeneral,
       porcentajeDescuentoDb,
+      pedidoContext.monedaAluminio,
+      pedidoContext.tipoCambio,
+      pedidoContext.precioAluminioKg,
+      pedidoContext.precioPinturaM2,
       0,
       username,
     ];
@@ -231,7 +275,7 @@ export async function crearDirecto(req, res) {
 
     const detalles = Array.isArray(body.detalles) ? body.detalles : [];
     if (detalles.length > 0) {
-      await PedidoModel.insertDetallesSegunFamilia(pedidoId, familia, detalles);
+      await PedidoModel.insertDetallesSegunFamilia(pedidoId, familia, detalles, pedidoContext);
     }
     let importeFinal = 0;
     try {
@@ -294,9 +338,16 @@ export async function actualizar(req, res) {
     const situacionesEspeciales = body.situaciones_especiales !== undefined
       ? (normalizeTextValue(body.situaciones_especiales) || null)
       : existing.situaciones_especiales;
+    const descripcionGeneral = body.descripcion_general !== undefined
+      ? (normalizeTextValue(body.descripcion_general) || null)
+      : existing.descripcion_general;
     const porcentajeDescuentoDb = body.porcentaje_descuento !== undefined
       ? normalizePct(toFiniteNumber(body.porcentaje_descuento)).dbPct
       : existing.porcentaje_descuento;
+    const pedidoContext = extraerContextoAluminio(body, familia, existing);
+    if (pedidoContext.error) {
+      return res.status(400).json({ success: false, message: pedidoContext.error });
+    }
 
     try {
       await PedidoModel.updatePedidoMetadata(pedidoId, {
@@ -307,7 +358,12 @@ export async function actualizar(req, res) {
         fecha_aprobacion: fechaISO,
         concepto,
         situaciones_especiales: situacionesEspeciales,
+        descripcion_general: descripcionGeneral,
         porcentaje_descuento: porcentajeDescuentoDb,
+        moneda_aluminio: pedidoContext.monedaAluminio,
+        tipo_cambio: pedidoContext.tipoCambio,
+        precio_aluminio_kg: pedidoContext.precioAluminioKg,
+        precio_pintura_m2: pedidoContext.precioPinturaM2,
       });
     } catch (err) {
       if (err.code === "ER_DUP_ENTRY") {
@@ -323,7 +379,7 @@ export async function actualizar(req, res) {
         // pedido cambió de familia (p.ej. Cristal -> Aluminio) en esta misma edición.
         await PedidoModel.deleteDetallesSegunFamilia(pedidoId, existing.familia);
       }
-      await PedidoModel.insertDetallesSegunFamilia(pedidoId, familia, detalles);
+      await PedidoModel.insertDetallesSegunFamilia(pedidoId, familia, detalles, pedidoContext);
     }
 
     let importeFinal = Number(existing.importe) || 0;
@@ -544,6 +600,25 @@ export async function generarPdf(req, res) {
       cursorY = doc.y + 8;
     } else {
       cursorY += 8;
+    }
+    const familiaNorm = normalizeTextValue(pedido.familia).toUpperCase();
+    if (familiaNorm === "CR" && pedido.descripcion_general) {
+      doc.font("Helvetica-Bold").text("Descripción general:", margenX, cursorY, { continued: true });
+      doc.font("Helvetica").text(` ${pedido.descripcion_general}`, { width: anchoDisponible });
+      cursorY = doc.y + 8;
+    }
+    if ((familiaNorm === "AL" || familiaNorm === "MQAL") && pedido.precio_aluminio_kg) {
+      const monedaLabel = pedido.moneda_aluminio === "USD"
+        ? `USD @ ${Number(pedido.tipo_cambio).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`
+        : "MXN";
+      doc.font("Helvetica-Bold").text("Precio aluminio:", margenX, cursorY, { continued: true });
+      doc.font("Helvetica").text(
+        ` $${Number(pedido.precio_aluminio_kg).toLocaleString(undefined, { minimumFractionDigits: 2 })}/kg` +
+        (pedido.precio_pintura_m2 ? ` + $${Number(pedido.precio_pintura_m2).toLocaleString(undefined, { minimumFractionDigits: 2 })}/m² pintura` : "") +
+        ` (${monedaLabel})`,
+        { width: anchoDisponible }
+      );
+      cursorY = doc.y + 8;
     }
 
     const anchos = anchosColumnasPdf(columnas, anchoDisponible);

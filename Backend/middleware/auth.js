@@ -34,6 +34,8 @@ function requireRole(...roles) {
   };
 }
 
+// Nombre histórico (originalmente solo para Supervisor); hoy es un chequeo genérico de
+// acceso usuario↔proyecto vía supervisores_proyectos, usado para cualquier rol restringible.
 async function supervisorTieneAcceso(idUsuario, idProyecto) {
   const rows = await queryAsync(
     "SELECT 1 FROM supervisores_proyectos WHERE id_usuario = ? AND id_proyecto = ? LIMIT 1",
@@ -42,12 +44,12 @@ async function supervisorTieneAcceso(idUsuario, idProyecto) {
   return Array.isArray(rows) && rows.length > 0;
 }
 
-// Para rutas con :pedidoId en la URL (no :id de proyecto). Si el rol es Supervisor, valida
-// que tenga asignado (en supervisores_proyectos) el proyecto dueño de ese pedido antes de
-// dejarlo pasar; cualquier otro rol permitido por el requireRole(...) previo pasa directo.
+// Para rutas con :pedidoId en la URL (no :id de proyecto). Cualquier rol distinto de
+// Superadmin valida que tenga asignado (en supervisores_proyectos) el proyecto dueño de ese
+// pedido antes de dejarlo pasar; Superadmin siempre pasa directo (nunca restringible).
 function requireProjectAccess(req, res, next) {
   const role = String((req.user && req.user.role) || "").toLowerCase();
-  if (role !== "supervisor") return next();
+  if (!role || role === "superadmin") return next();
 
   const pedidoId = Number(req.params.pedidoId);
   if (!Number.isInteger(pedidoId) || pedidoId <= 0) {
@@ -75,7 +77,7 @@ function requireProjectAccess(req, res, next) {
 // criterio que requireProjectAccess pero sin tener que resolver primero un pedido.
 function requireProjectAccessByProyectoId(req, res, next) {
   const role = String((req.user && req.user.role) || "").toLowerCase();
-  if (role !== "supervisor") return next();
+  if (!role || role === "superadmin") return next();
 
   const proyectoId = Number(req.params.id);
   if (!Number.isInteger(proyectoId) || proyectoId <= 0) {

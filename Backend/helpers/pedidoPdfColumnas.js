@@ -30,6 +30,7 @@ export const COLUMNAS_ALUMINIO = [
 export const COLUMNAS_MISCELANEOS = [
   { key: "unidad", label: "Unidad", align: "left" },
   { key: "medida", label: "Medida", align: "left" },
+  { key: "concepto_detalle", label: "Concepto", align: "left" },
   { key: "cantidad", label: "Cantidad", align: "right" },
   { key: "precio_unitario", label: "P. unitario", align: "right", money: true },
   { key: "importe", label: "Importe", align: "right", money: true },

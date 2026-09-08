@@ -27,10 +27,12 @@ export const COLUMNAS_CRISTAL: ColumnaDetalle[] = [
   { key: "importe", label: "Importe", align: "right", tipo: "number", auto: true },
 ];
 
-// Aluminio: el detalle no incluye ningún campo de precio unitario (ni en el mockup ni en la
-// tabla `pedidos_detalles_aluminio`), así que no hay fórmula derivable — el importe se captura
-// manualmente, igual que en la era CSV. No se marca `auto`.
-export const COLUMNAS_ALUMINIO: ColumnaDetalle[] = [
+// Aluminio: ml/kg/m2/importe se auto-calculan cuando el pedido tiene precio_aluminio_kg
+// configurado (ver ContextoAluminio/calcularCamposAluminio abajo). Si el pedido NO tiene
+// precio configurado (pedidos históricos, modo manual heredado), se usa la variante sin
+// `auto` para que esas celdas sigan siendo editables a mano — columnasPorTipo() elige entre
+// las dos según el contexto de aluminio recibido.
+const COLUMNAS_ALUMINIO_BASE: Omit<ColumnaDetalle, "auto">[] = [
   { key: "numero_perfil", label: "N° perfil", align: "left", tipo: "text" },
   { key: "medida_tramo", label: "Medida", align: "right", tipo: "number" },
   { key: "unidad", label: "Unidad", align: "left", tipo: "text" },
@@ -44,10 +46,20 @@ export const COLUMNAS_ALUMINIO: ColumnaDetalle[] = [
   { key: "importe", label: "Importe", align: "right", tipo: "number" },
 ];
 
+const CAMPOS_AUTO_ALUMINIO = new Set(["ml", "kg", "m2", "importe"]);
+
+export const COLUMNAS_ALUMINIO_MANUAL: ColumnaDetalle[] = COLUMNAS_ALUMINIO_BASE.map((c) => ({ ...c }));
+
+export const COLUMNAS_ALUMINIO: ColumnaDetalle[] = COLUMNAS_ALUMINIO_BASE.map((c) => ({
+  ...c,
+  auto: CAMPOS_AUTO_ALUMINIO.has(c.key) || undefined,
+}));
+
 // Misceláneos: importe = cantidad * precio_unitario (confirmado con datos de ejemplo del mockup).
 export const COLUMNAS_MISCELANEOS: ColumnaDetalle[] = [
   { key: "unidad", label: "Unidad", align: "left", tipo: "text" },
   { key: "medida", label: "Medida", align: "left", tipo: "text" },
+  { key: "concepto_detalle", label: "Concepto", align: "left", tipo: "text" },
   { key: "cantidad", label: "Cantidad", align: "right", tipo: "number" },
   { key: "precio_unitario", label: "P. unitario", align: "right", tipo: "number" },
   { key: "importe", label: "Importe", align: "right", tipo: "number", auto: true },
@@ -58,9 +70,22 @@ export const COLUMNAS_MISCELANEOS: ColumnaDetalle[] = [
   { key: "precio_x_kg", label: "Precio × Kg", align: "right", tipo: "number" },
 ];
 
-export function columnasPorTipo(tipo: TipoDetalle): ColumnaDetalle[] {
+export type ContextoAluminio = {
+  monedaAluminio: "USD" | "MXN";
+  tipoCambio: number;
+  precioAluminioKg: number | null;
+  precioPinturaM2: number | null;
+};
+
+function tienePrecioConfigurado(contexto?: ContextoAluminio): boolean {
+  return contexto?.precioAluminioKg !== null && contexto?.precioAluminioKg !== undefined;
+}
+
+export function columnasPorTipo(tipo: TipoDetalle, contextoAluminio?: ContextoAluminio): ColumnaDetalle[] {
   if (tipo === "cristal") return COLUMNAS_CRISTAL;
-  if (tipo === "aluminio") return COLUMNAS_ALUMINIO;
+  if (tipo === "aluminio") {
+    return tienePrecioConfigurado(contextoAluminio) ? COLUMNAS_ALUMINIO : COLUMNAS_ALUMINIO_MANUAL;
+  }
   return COLUMNAS_MISCELANEOS;
 }
 
@@ -101,6 +126,7 @@ export function filaVaciaMiscelaneos(idTemp: number): PedidoDetalleItem {
   return {
     id_detalle: idTemp,
     descripcion: "",
+    concepto_detalle: "",
     unidad: "",
     medida: "",
     cantidad: 0,
@@ -132,9 +158,45 @@ export function calcularImporteMisc(fila: PedidoDetalleItem): number {
   return Number((cantidad * precio).toFixed(2));
 }
 
-/** Recalcula el importe auto-calculado de una fila según el tipo de detalle (aluminio no aplica). */
-export function recalcularImporte(tipo: TipoDetalle, fila: DetalleUnion): number {
-  if (tipo === "cristal") return calcularImporteCristal(fila as PedidoDetalleCristalItem);
-  if (tipo === "miscelaneos") return calcularImporteMisc(fila as PedidoDetalleItem);
-  return Number((fila as PedidoDetalleAluminioItem).importe || 0);
+function redondear(value: number, decimales: number): number {
+  if (!Number.isFinite(value)) return 0;
+  const factor = 10 ** decimales;
+  return Math.round(value * factor) / factor;
+}
+
+// Misma fórmula que Backend/helpers/utils.js calcularCamposAluminio — mantener ambas en
+// sincronía. Si el pedido no tiene precio_aluminio_kg configurado (modo manual heredado), no
+// se toca nada y se respetan los valores que el usuario haya escrito a mano.
+export function calcularCamposAluminio(
+  fila: PedidoDetalleAluminioItem,
+  contexto?: ContextoAluminio
+): Partial<PedidoDetalleAluminioItem> {
+  if (!tienePrecioConfigurado(contexto)) return {};
+  const precioAluminioKg = Number(contexto!.precioAluminioKg);
+
+  const medidaTramo = Number(fila.medida_tramo || 0);
+  const totalTramos = Math.max(0, Math.round(Number(fila.total_tramos || 0)));
+  const pesoKgMl = Number(fila.peso_kg_ml || 0);
+  const perimetroM2Ml = Number(fila.perimetro_m2_ml || 0);
+
+  const ml = redondear(medidaTramo * totalTramos, 3);
+  const kg = redondear(ml * pesoKgMl, 3);
+  const m2 = redondear(ml * perimetroM2Ml, 3);
+
+  const precioPinturaM2 = Number(contexto!.precioPinturaM2 || 0);
+  const tipoCambio = contexto!.monedaAluminio === "USD" && contexto!.tipoCambio > 0 ? contexto!.tipoCambio : 1;
+  const importe = redondear((kg * precioAluminioKg + m2 * precioPinturaM2) * tipoCambio, 2);
+
+  return { ml, kg, m2, importe };
+}
+
+/** Recalcula los campos auto-calculados de una fila según el tipo de detalle. */
+export function recalcularCamposAuto(
+  tipo: TipoDetalle,
+  fila: DetalleUnion,
+  contextoAluminio?: ContextoAluminio
+): Partial<DetalleUnion> {
+  if (tipo === "cristal") return { importe: calcularImporteCristal(fila as PedidoDetalleCristalItem) };
+  if (tipo === "miscelaneos") return { importe: calcularImporteMisc(fila as PedidoDetalleItem) };
+  return calcularCamposAluminio(fila as PedidoDetalleAluminioItem, contextoAluminio);
 }

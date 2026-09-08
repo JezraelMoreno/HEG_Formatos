@@ -213,9 +213,11 @@ async function main() {
 
   const idAprobador = idsUsuarios["aprobador_demo"];
   let pedidosCreados = 0;
+  const idsProyectos = [];
 
   for (const p of PROYECTOS) {
     const idProyecto = await findOrCreateProyecto(p);
+    idsProyectos.push(idProyecto);
     for (const nombreSupervisor of p.supervisores) {
       await asignarSupervisor(idProyecto, idsUsuarios[nombreSupervisor]);
     }
@@ -225,6 +227,19 @@ async function main() {
       if (esNuevo) pedidosCreados += 1;
     }
     console.log(`  - Proyecto "${p.nombre}" (id ${idProyecto}, ${p.estado}) listo`);
+  }
+
+  // La visibilidad de proyectos ahora es restringida por defecto para cualquier rol
+  // no-Superadmin (ver Base_de_Datos/migrations/007_backfill_acceso_proyectos.sql). Los
+  // usuarios demo que no sean Superadmin/Supervisor (que ya se asignan arriba vía
+  // p.supervisores) necesitan acceso explícito a los proyectos DEMO para poder probar la
+  // app con ellos, igual que se hizo con los usuarios reales existentes en el backfill.
+  const rolesYaAsignados = new Set(["superadmin", "supervisor"]);
+  for (const u of USUARIOS) {
+    if (rolesYaAsignados.has(u.rol.toLowerCase())) continue;
+    for (const idProyecto of idsProyectos) {
+      await asignarSupervisor(idProyecto, idsUsuarios[u.nombre_usuario]);
+    }
   }
 
   console.log(`Pedidos nuevos insertados: ${pedidosCreados}`);

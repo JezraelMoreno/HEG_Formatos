@@ -1,6 +1,11 @@
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import type { DetalleUnion, TipoDetalle } from "../../types/pedidos";
-import { columnasPorTipo, filaVaciaPorTipo, recalcularImporte } from "../../utils/pedidoDetalleColumns";
+import {
+  columnasPorTipo,
+  filaVaciaPorTipo,
+  recalcularCamposAuto,
+  type ContextoAluminio,
+} from "../../utils/pedidoDetalleColumns";
 import "./DetalleLineasEditor.css";
 
 type Props = {
@@ -8,13 +13,20 @@ type Props = {
   detalles: DetalleUnion[];
   onChange: (detalles: DetalleUnion[]) => void;
   disabled?: boolean;
+  contextoAluminio?: ContextoAluminio;
 };
 
 type DetalleRecord = Record<string, string | number | null | undefined>;
 
-export function DetalleLineasEditor({ tipoDetalle, detalles, onChange, disabled = false }: Props) {
+export function DetalleLineasEditor({
+  tipoDetalle,
+  detalles,
+  onChange,
+  disabled = false,
+  contextoAluminio,
+}: Props) {
   const tempIdRef = useRef(0);
-  const columnas = columnasPorTipo(tipoDetalle);
+  const columnas = columnasPorTipo(tipoDetalle, contextoAluminio);
 
   const agregarFila = () => {
     tempIdRef.current -= 1;
@@ -30,11 +42,31 @@ export function DetalleLineasEditor({ tipoDetalle, detalles, onChange, disabled 
       if (i !== index) return fila;
       const valorParsed = esNumero ? (rawValue === "" ? null : Number(rawValue)) : rawValue;
       const actualizada = { ...(fila as DetalleRecord), [key]: valorParsed } as unknown as DetalleUnion;
-      const importe = recalcularImporte(tipoDetalle, actualizada);
-      return { ...(actualizada as DetalleRecord), importe } as unknown as DetalleUnion;
+      const camposAuto = recalcularCamposAuto(tipoDetalle, actualizada, contextoAluminio);
+      return { ...(actualizada as DetalleRecord), ...camposAuto } as unknown as DetalleUnion;
     });
     onChange(nuevas);
   };
+
+  // Si el precio/moneda/tipo de cambio de aluminio cambia después de haber llenado renglones
+  // (o al cargar un pedido ya guardado), recalcula ml/kg/m2/importe de todas las filas para
+  // que las celdas auto-calculadas no queden desfasadas del contexto vigente.
+  useEffect(() => {
+    if (tipoDetalle !== "aluminio" || detalles.length === 0) return;
+    if (contextoAluminio?.precioAluminioKg === null || contextoAluminio?.precioAluminioKg === undefined) return;
+    const recalculadas = detalles.map((fila) => {
+      const camposAuto = recalcularCamposAuto(tipoDetalle, fila, contextoAluminio);
+      return { ...(fila as DetalleRecord), ...camposAuto } as unknown as DetalleUnion;
+    });
+    onChange(recalculadas);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    tipoDetalle,
+    contextoAluminio?.monedaAluminio,
+    contextoAluminio?.tipoCambio,
+    contextoAluminio?.precioAluminioKg,
+    contextoAluminio?.precioPinturaM2,
+  ]);
 
   return (
     <div className="detalle-lineas-editor">

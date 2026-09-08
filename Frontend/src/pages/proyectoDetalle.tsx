@@ -338,6 +338,11 @@ export function ProyectoDetalle() {
     return copia;
   }, [pedidos, ordenColumna, ordenDireccion]);
 
+  const totalImportePedidos = useMemo(
+    () => pedidosOrdenados.reduce((sum, p) => sum + Number(p.importe || 0), 0),
+    [pedidosOrdenados]
+  );
+
   const manejarOrdenColumna = useCallback((columna: keyof Pedido) => {
     if (ordenColumna === columna) {
       setOrdenDireccion((prev) => (prev === "asc" ? "desc" : "asc"));
@@ -1322,6 +1327,15 @@ export function ProyectoDetalle() {
                       </tr>
                     ))}
                   </tbody>
+                  <tfoot>
+                    <tr style={{ fontWeight: 'bold', background: '#f3f4f6' }}>
+                      <td colSpan={7}>TOTALES ({pedidosOrdenados.length})</td>
+                      <td style={{ textAlign: 'right' }}>
+                        {totalImportePedidos.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                      <td></td>
+                    </tr>
+                  </tfoot>
                 </table>
               )}
             </div>

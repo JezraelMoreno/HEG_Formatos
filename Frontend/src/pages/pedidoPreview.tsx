@@ -10,6 +10,7 @@ import { apiFetch } from "../api/client";
 import { authHeader } from "../auth";
 import API_URL from "../config";
 import { DetalleLineasEditor } from "./pedidos/DetalleLineasEditor";
+import type { ContextoAluminio } from "../utils/pedidoDetalleColumns";
 import type { DetalleUnion, EstadoPedido, HistorialEstadoItem, Pedido, TipoDetalle } from "../types/pedidos";
 import "./pedidos/PedidoFormModal.css";
 import "./pedidoPreview.css";
@@ -84,6 +85,16 @@ export function PedidoPreview() {
   const totales = usePedidoTotales(detalles, pedido?.porcentaje_descuento);
   const puedeEditarAhora = puedeGestionar && pedido?.estado !== "rechazado";
 
+  const contextoAluminio: ContextoAluminio = useMemo(
+    () => ({
+      monedaAluminio: pedido?.moneda_aluminio === "USD" ? "USD" : "MXN",
+      tipoCambio: Number(pedido?.tipo_cambio || 1),
+      precioAluminioKg: pedido?.precio_aluminio_kg ?? null,
+      precioPinturaM2: pedido?.precio_pintura_m2 ?? null,
+    }),
+    [pedido?.moneda_aluminio, pedido?.tipo_cambio, pedido?.precio_aluminio_kg, pedido?.precio_pintura_m2]
+  );
+
   const cargar = useCallback(async () => {
     if (!pedidoId) return;
     setCargando(true);
@@ -120,6 +131,11 @@ export function PedidoPreview() {
     setAccionError("");
     setAccionMensaje("");
     try {
+      if (tipoDetalle === "aluminio" && pedido.moneda_aluminio === "USD" && !(Number(pedido.tipo_cambio) > 0)) {
+        setAccionError("Indica un tipo de cambio válido (mayor a 0) cuando el aluminio se cotiza en USD.");
+        setGuardando(false);
+        return;
+      }
       const payload = {
         pedido: pedido.pedido,
         clan: pedido.clan,
@@ -128,7 +144,12 @@ export function PedidoPreview() {
         fecha_aprobacion: pedido.fecha_aprobacion,
         concepto: pedido.concepto,
         situaciones_especiales: pedido.situaciones_especiales,
+        descripcion_general: tipoDetalle === "cristal" ? pedido.descripcion_general : null,
         porcentaje_descuento: pedido.porcentaje_descuento,
+        moneda_aluminio: pedido.moneda_aluminio || "MXN",
+        tipo_cambio: pedido.moneda_aluminio === "USD" ? Number(pedido.tipo_cambio) : null,
+        precio_aluminio_kg: pedido.precio_aluminio_kg ?? null,
+        precio_pintura_m2: pedido.precio_pintura_m2 ?? null,
         detalles,
         reemplazar: true,
       };
@@ -303,12 +324,79 @@ export function PedidoPreview() {
                         rows={2}
                       />
                     </label>
+                    {tipoDetalle === "cristal" && (
+                      <label className="span-4">
+                        Descripción general
+                        <textarea
+                          value={pedido.descripcion_general || ""}
+                          disabled={!puedeEditarAhora}
+                          onChange={(e) => actualizarCampo("descripcion_general", e.target.value)}
+                          rows={2}
+                        />
+                      </label>
+                    )}
+                    {tipoDetalle === "aluminio" && (
+                      <>
+                        <label>
+                          Moneda del aluminio
+                          <select
+                            value={pedido.moneda_aluminio || "MXN"}
+                            disabled={!puedeEditarAhora}
+                            onChange={(e) => actualizarCampo("moneda_aluminio", e.target.value)}
+                          >
+                            <option value="MXN">Pesos (MXN)</option>
+                            <option value="USD">Dólares (USD)</option>
+                          </select>
+                        </label>
+                        {pedido.moneda_aluminio === "USD" && (
+                          <label>
+                            Tipo de cambio*
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.0001"
+                              value={pedido.tipo_cambio ?? ""}
+                              disabled={!puedeEditarAhora}
+                              onChange={(e) => actualizarCampo("tipo_cambio", e.target.value)}
+                            />
+                          </label>
+                        )}
+                        <label>
+                          Precio aluminio ($/kg)
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={pedido.precio_aluminio_kg ?? ""}
+                            disabled={!puedeEditarAhora}
+                            onChange={(e) => actualizarCampo("precio_aluminio_kg", e.target.value)}
+                          />
+                        </label>
+                        <label>
+                          Precio pintura ($/m²)
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={pedido.precio_pintura_m2 ?? ""}
+                            disabled={!puedeEditarAhora}
+                            onChange={(e) => actualizarCampo("precio_pintura_m2", e.target.value)}
+                          />
+                        </label>
+                      </>
+                    )}
                   </div>
                 </div>
 
                 <div className="pedido-form-card">
                   <h4>Líneas de detalle</h4>
-                  <DetalleLineasEditor tipoDetalle={tipoDetalle} detalles={detalles} onChange={setDetalles} disabled={!puedeEditarAhora} />
+                  <DetalleLineasEditor
+                    tipoDetalle={tipoDetalle}
+                    detalles={detalles}
+                    onChange={setDetalles}
+                    disabled={!puedeEditarAhora}
+                    contextoAluminio={tipoDetalle === "aluminio" ? contextoAluminio : undefined}
+                  />
                 </div>
 
                 <div className="pedido-form-totales">

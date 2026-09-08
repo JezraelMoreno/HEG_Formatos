@@ -97,7 +97,8 @@ app.use(globalAuth);
 // Proyectos - listar
 app.get("/proyectos", authenticateToken, async (req, res) => {
   try {
-    const esSupervisor = String(req.user?.role || "").toLowerCase() === "supervisor";
+    const rol = String(req.user?.role || "").toLowerCase();
+    const esRestringible = rol !== "" && rol !== "superadmin";
     const query = `
       SELECT
         p.id_proyecto,
@@ -128,11 +129,11 @@ app.get("/proyectos", authenticateToken, async (req, res) => {
         ), 0) AS presupuesto_disponible
       FROM proyectos p
       LEFT JOIN pedidos pe ON pe.id_proyecto = p.id_proyecto
-      ${esSupervisor ? "WHERE p.id_proyecto IN (SELECT sp.id_proyecto FROM supervisores_proyectos sp WHERE sp.id_usuario = ?)" : ""}
+      ${esRestringible ? "WHERE p.id_proyecto IN (SELECT sp.id_proyecto FROM supervisores_proyectos sp WHERE sp.id_usuario = ?)" : ""}
       GROUP BY p.id_proyecto, p.nombre, p.fecha_proyecto, p.estado, p.presupuesto, p.presupuesto_cristal, p.presupuesto_aluminio, p.presupuesto_miscelaneos, p.presupuesto_total
       ORDER BY p.id_proyecto DESC
     `;
-    const params = esSupervisor ? [req.user.sub] : [];
+    const params = esRestringible ? [req.user.sub] : [];
     const results = await queryAsync(query, params);
     res.json({ success: true, data: results });
   } catch (err) {
