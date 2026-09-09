@@ -48,12 +48,12 @@ export function DetalleLineasEditor({
     onChange(nuevas);
   };
 
-  // Si el precio/moneda/tipo de cambio de aluminio cambia después de haber llenado renglones
-  // (o al cargar un pedido ya guardado), recalcula ml/kg/m2/importe de todas las filas para
-  // que las celdas auto-calculadas no queden desfasadas del contexto vigente.
+  // ml/kg/m2 siempre se recalculan para aluminio (geometría/peso, no dependen del precio); el
+  // importe además se recalcula si el precio/moneda/tipo de cambio del pedido cambia después de
+  // haber llenado renglones (o al cargar un pedido ya guardado), para que ninguna celda
+  // auto-calculada quede desfasada del contexto vigente.
   useEffect(() => {
     if (tipoDetalle !== "aluminio" || detalles.length === 0) return;
-    if (contextoAluminio?.precioAluminioKg === null || contextoAluminio?.precioAluminioKg === undefined) return;
     const recalculadas = detalles.map((fila) => {
       const camposAuto = recalcularCamposAuto(tipoDetalle, fila, contextoAluminio);
       return { ...(fila as DetalleRecord), ...camposAuto } as unknown as DetalleUnion;

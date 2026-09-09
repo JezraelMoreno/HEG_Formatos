@@ -27,11 +27,11 @@ export const COLUMNAS_CRISTAL: ColumnaDetalle[] = [
   { key: "importe", label: "Importe", align: "right", tipo: "number", auto: true },
 ];
 
-// Aluminio: ml/kg/m2/importe se auto-calculan cuando el pedido tiene precio_aluminio_kg
-// configurado (ver ContextoAluminio/calcularCamposAluminio abajo). Si el pedido NO tiene
-// precio configurado (pedidos históricos, modo manual heredado), se usa la variante sin
-// `auto` para que esas celdas sigan siendo editables a mano — columnasPorTipo() elige entre
-// las dos según el contexto de aluminio recibido.
+// Aluminio: ml/kg/m2 son pura geometría/peso (medida_tramo × total_tramos, etc.) y se
+// auto-calculan SIEMPRE, sin importar si el pedido tiene precio configurado. El importe
+// depende del precio del pedido (ver ContextoAluminio/calcularCamposAluminio abajo): si no
+// hay precio_aluminio_kg configurado, esa celda sigue siendo editable a mano (modo manual
+// heredado solo para el importe) — columnasPorTipo() elige la variante según el contexto.
 const COLUMNAS_ALUMINIO_BASE: Omit<ColumnaDetalle, "auto">[] = [
   { key: "numero_perfil", label: "N° perfil", align: "left", tipo: "text" },
   { key: "medida_tramo", label: "Medida", align: "right", tipo: "number" },
@@ -46,13 +46,16 @@ const COLUMNAS_ALUMINIO_BASE: Omit<ColumnaDetalle, "auto">[] = [
   { key: "importe", label: "Importe", align: "right", tipo: "number" },
 ];
 
-const CAMPOS_AUTO_ALUMINIO = new Set(["ml", "kg", "m2", "importe"]);
+const CAMPOS_AUTO_ALUMINIO_SIEMPRE = new Set(["ml", "kg", "m2"]);
 
-export const COLUMNAS_ALUMINIO_MANUAL: ColumnaDetalle[] = COLUMNAS_ALUMINIO_BASE.map((c) => ({ ...c }));
+export const COLUMNAS_ALUMINIO_MANUAL: ColumnaDetalle[] = COLUMNAS_ALUMINIO_BASE.map((c) => ({
+  ...c,
+  auto: CAMPOS_AUTO_ALUMINIO_SIEMPRE.has(c.key) || undefined,
+}));
 
 export const COLUMNAS_ALUMINIO: ColumnaDetalle[] = COLUMNAS_ALUMINIO_BASE.map((c) => ({
   ...c,
-  auto: CAMPOS_AUTO_ALUMINIO.has(c.key) || undefined,
+  auto: CAMPOS_AUTO_ALUMINIO_SIEMPRE.has(c.key) || c.key === "importe" || undefined,
 }));
 
 // Misceláneos: importe = cantidad * precio_unitario (confirmado con datos de ejemplo del mockup).
@@ -165,15 +168,13 @@ function redondear(value: number, decimales: number): number {
 }
 
 // Misma fórmula que Backend/helpers/utils.js calcularCamposAluminio — mantener ambas en
-// sincronía. Si el pedido no tiene precio_aluminio_kg configurado (modo manual heredado), no
-// se toca nada y se respetan los valores que el usuario haya escrito a mano.
+// sincronía. ml/kg/m2 se calculan siempre (geometría/peso, no dependen del precio). El
+// importe solo se calcula si el pedido tiene precio_aluminio_kg configurado; si no, se
+// respeta el importe que el usuario haya escrito a mano (modo manual heredado).
 export function calcularCamposAluminio(
   fila: PedidoDetalleAluminioItem,
   contexto?: ContextoAluminio
 ): Partial<PedidoDetalleAluminioItem> {
-  if (!tienePrecioConfigurado(contexto)) return {};
-  const precioAluminioKg = Number(contexto!.precioAluminioKg);
-
   const medidaTramo = Number(fila.medida_tramo || 0);
   const totalTramos = Math.max(0, Math.round(Number(fila.total_tramos || 0)));
   const pesoKgMl = Number(fila.peso_kg_ml || 0);
@@ -183,6 +184,11 @@ export function calcularCamposAluminio(
   const kg = redondear(ml * pesoKgMl, 3);
   const m2 = redondear(ml * perimetroM2Ml, 3);
 
+  if (!tienePrecioConfigurado(contexto)) {
+    return { ml, kg, m2, importe: Number(fila.importe || 0) };
+  }
+
+  const precioAluminioKg = Number(contexto!.precioAluminioKg);
   const precioPinturaM2 = Number(contexto!.precioPinturaM2 || 0);
   const tipoCambio = contexto!.monedaAluminio === "USD" && contexto!.tipoCambio > 0 ? contexto!.tipoCambio : 1;
   const importe = redondear((kg * precioAluminioKg + m2 * precioPinturaM2) * tipoCambio, 2);

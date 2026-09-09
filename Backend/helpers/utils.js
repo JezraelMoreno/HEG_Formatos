@@ -219,20 +219,11 @@ export function prepareCristalDetalleForInsert(detalle) {
 //   kg = ml × peso_kg_ml
 //   m2 = ml × perimetro_m2_ml
 //   importe = (kg × precio_aluminio_kg + m2 × precio_pintura_m2) × tipo_cambio
-// precio_aluminio_kg/precio_pintura_m2 son un único par por pedido (no por línea).
-// Si el pedido no tiene precio_aluminio_kg configurado (pedidos históricos, previos a esta
-// función), se respeta lo que mande el cliente — modo manual heredado.
+// ml/kg/m2 son pura geometría/peso — se calculan SIEMPRE, sin importar si el pedido tiene
+// precio configurado. Solo el importe depende del precio: si el pedido no tiene
+// precio_aluminio_kg configurado (pedidos históricos, o mientras el usuario aún no lo
+// captura), el importe se sigue capturando a mano — modo manual heredado solo para ese campo.
 export function calcularCamposAluminio(detalle, pedidoContext = {}) {
-  const precioAluminioKg = toFiniteNumber(pedidoContext?.precioAluminioKg);
-  if (precioAluminioKg === null) {
-    return {
-      ml: toFiniteNumber(detalle?.ml),
-      kg: toFiniteNumber(detalle?.kg),
-      m2: toFiniteNumber(detalle?.m2),
-      importe: toFiniteNumber(detalle?.importe) || 0,
-    };
-  }
-
   const medidaTramo = toFiniteNumber(detalle?.medida_tramo) || 0;
   const totalTramosBase = toFiniteNumber(detalle?.total_tramos);
   const totalTramos = totalTramosBase !== null ? Math.max(0, Math.round(totalTramosBase)) : 0;
@@ -243,12 +234,17 @@ export function calcularCamposAluminio(detalle, pedidoContext = {}) {
   const kg = redondearDecimales(ml * pesoKgMl, 3);
   const m2 = redondearDecimales(ml * perimetroM2Ml, 3);
 
-  const precioPinturaM2 = toFiniteNumber(pedidoContext?.precioPinturaM2) || 0;
-  const monedaAluminio = pedidoContext?.monedaAluminio === "USD" ? "USD" : "MXN";
-  const tipoCambioRaw = toFiniteNumber(pedidoContext?.tipoCambio);
-  const tipoCambio = monedaAluminio === "USD" && tipoCambioRaw && tipoCambioRaw > 0 ? tipoCambioRaw : 1;
-
-  const importe = redondearMoneda((kg * precioAluminioKg + m2 * precioPinturaM2) * tipoCambio);
+  const precioAluminioKg = toFiniteNumber(pedidoContext?.precioAluminioKg);
+  let importe;
+  if (precioAluminioKg === null) {
+    importe = toFiniteNumber(detalle?.importe) || 0;
+  } else {
+    const precioPinturaM2 = toFiniteNumber(pedidoContext?.precioPinturaM2) || 0;
+    const monedaAluminio = pedidoContext?.monedaAluminio === "USD" ? "USD" : "MXN";
+    const tipoCambioRaw = toFiniteNumber(pedidoContext?.tipoCambio);
+    const tipoCambio = monedaAluminio === "USD" && tipoCambioRaw && tipoCambioRaw > 0 ? tipoCambioRaw : 1;
+    importe = redondearMoneda((kg * precioAluminioKg + m2 * precioPinturaM2) * tipoCambio);
+  }
 
   return { ml, kg, m2, importe };
 }
