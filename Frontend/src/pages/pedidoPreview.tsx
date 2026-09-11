@@ -38,6 +38,14 @@ const formatFechaHora = (iso: string | null | undefined) => {
   return new Intl.DateTimeFormat("es-MX", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(date);
 };
 
+const formatFechaLarga = (iso: string | null | undefined) => {
+  if (!iso) return "Cd. de México";
+  const date = new Date(`${iso}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return "Cd. de México";
+  const fmt = new Intl.DateTimeFormat("es-MX", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
+  return `Cd. de México a ${fmt.format(date)}`;
+};
+
 const tipoDetalleDeFamilia = (familia: string | null | undefined): TipoDetalle => {
   const f = (familia || "").trim().toUpperCase();
   if (f === "CR") return "cristal";
@@ -87,6 +95,10 @@ export function PedidoPreview() {
   const [accionError, setAccionError] = useState("");
   const [accionMensaje, setAccionMensaje] = useState("");
   const [descargandoPdf, setDescargandoPdf] = useState(false);
+  const [vistaActiva, setVistaActiva] = useState<"ingeniero" | "proveedor">("ingeniero");
+  const [pdfProveedorUrl, setPdfProveedorUrl] = useState<string | null>(null);
+  const [cargandoPdfProveedor, setCargandoPdfProveedor] = useState(false);
+  const [pdfProveedorError, setPdfProveedorError] = useState("");
   const [anticiposDisponibles, setAnticiposDisponibles] = useState<AnticipoDisponible[]>([]);
   const [idAnticipoSeleccionado, setIdAnticipoSeleccionado] = useState<number | "">("");
   const [montoAplicadoAnticipo, setMontoAplicadoAnticipo] = useState("");
@@ -134,6 +146,18 @@ export function PedidoPreview() {
   useEffect(() => {
     cargar();
   }, [cargar]);
+
+  useEffect(() => {
+    setVistaActiva("ingeniero");
+    setPdfProveedorUrl(null);
+    setPdfProveedorError("");
+  }, [pedidoId]);
+
+  useEffect(() => {
+    return () => {
+      if (pdfProveedorUrl) URL.revokeObjectURL(pdfProveedorUrl);
+    };
+  }, [pdfProveedorUrl]);
 
   useEffect(() => {
     setIdAnticipoSeleccionado("");
@@ -261,19 +285,22 @@ export function PedidoPreview() {
     cambiarEstado("rechazado", comentarioRechazo.trim());
   };
 
+  const obtenerBlobPdf = async () => {
+    const res = await fetch(`${API_URL}/pedidos/${pedidoId}/pdf`, { headers: { ...authHeader() } });
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      throw new Error(data?.message || "No se pudo generar el PDF");
+    }
+    return { blob: await res.blob(), disposition: res.headers.get("Content-Disposition") || "" };
+  };
+
   const descargarPdf = async () => {
     if (!pedidoId) return;
     setDescargandoPdf(true);
     setAccionError("");
     try {
-      const res = await fetch(`${API_URL}/pedidos/${pedidoId}/pdf`, { headers: { ...authHeader() } });
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        throw new Error(data?.message || "No se pudo generar el PDF");
-      }
-      const blob = await res.blob();
+      const { blob, disposition } = await obtenerBlobPdf();
       const url = URL.createObjectURL(blob);
-      const disposition = res.headers.get("Content-Disposition") || "";
       const match = disposition.match(/filename="?([^"]+)"?/);
       const nombreArchivo = match ? match[1] : `Pedido_${pedido?.pedido || pedidoId}.pdf`;
       const enlace = document.createElement("a");
@@ -290,6 +317,25 @@ export function PedidoPreview() {
     }
   };
 
+  const alternarVista = async () => {
+    if (vistaActiva === "proveedor") {
+      setVistaActiva("ingeniero");
+      return;
+    }
+    setVistaActiva("proveedor");
+    if (pdfProveedorUrl || !pedidoId) return;
+    setCargandoPdfProveedor(true);
+    setPdfProveedorError("");
+    try {
+      const { blob } = await obtenerBlobPdf();
+      setPdfProveedorUrl(URL.createObjectURL(blob));
+    } catch (e) {
+      setPdfProveedorError(e instanceof Error ? e.message : "No se pudo generar la vista del proveedor");
+    } finally {
+      setCargandoPdfProveedor(false);
+    }
+  };
+
   const sidebarItems = [
     { key: "pedidos", label: "Pedidos", active: true, onClick: () => navigate("/home") },
     { key: "contabilidad", label: "Contabilidad", active: false, onClick: () => navigate("/home") },
@@ -303,9 +349,14 @@ export function PedidoPreview() {
   return (
     <AppShell items={sidebarItems}>
       <Topbar title={pedido ? `Pedido ${pedido.pedido}` : "Vista previa"} onBack={() => navigate(-1)}>
-        <button type="button" className="btn-secondary" onClick={() => window.print()}>
-          Imprimir
+        <button type="button" className="btn-secondary" onClick={alternarVista} disabled={!pedido || cargandoPdfProveedor}>
+          {vistaActiva === "proveedor" ? "Ver vista ingeniero" : "Ver vista proveedor"}
         </button>
+        {vistaActiva === "ingeniero" && (
+          <button type="button" className="btn-secondary" onClick={() => window.print()}>
+            Imprimir
+          </button>
+        )}
         <button type="button" className="btn-secondary" onClick={descargarPdf} disabled={descargandoPdf || !pedido}>
           {descargandoPdf ? "Generando PDF..." : "Descargar PDF"}
         </button>
@@ -337,119 +388,277 @@ export function PedidoPreview() {
 
             <div className="pedido-preview-grid">
               <div className="pedido-preview-main">
-                <div className="pedido-form-card">
-                  <h4>Datos del pedido</h4>
-                  <div className="pedido-form-grid">
-                    <label>
-                      Pedido
-                      <input type="text" value={pedido.pedido || ""} disabled={!puedeEditarAhora} onChange={(e) => actualizarCampo("pedido", e.target.value)} />
-                    </label>
-                    <label>
-                      Clan
-                      <input type="text" value={pedido.clan || ""} disabled={!puedeEditarAhora} onChange={(e) => actualizarCampo("clan", e.target.value.toUpperCase())} />
-                    </label>
-                    <label>
-                      Familia
-                      <input type="text" value={pedido.familia || ""} disabled={!puedeEditarAhora} onChange={(e) => actualizarCampo("familia", e.target.value.toUpperCase())} />
-                    </label>
-                    <label>
-                      Fecha de aprobación
-                      <input type="date" value={pedido.fecha_aprobacion || ""} disabled={!puedeEditarAhora} onChange={(e) => actualizarCampo("fecha_aprobacion", e.target.value)} />
-                    </label>
-                    <label className="span-2">
-                      Proveedor
-                      <input type="text" value={pedido.proveedor || ""} disabled={!puedeEditarAhora} onChange={(e) => actualizarCampo("proveedor", e.target.value)} />
-                    </label>
-                    <label>
-                      Concepto
-                      <input type="text" value={pedido.concepto || ""} disabled={!puedeEditarAhora} onChange={(e) => actualizarCampo("concepto", e.target.value)} />
-                    </label>
-                    <label>
-                      % Descuento
-                      <input
-                        type="number"
-                        min="0"
-                        max="100"
-                        step="0.01"
-                        value={pedido.porcentaje_descuento ?? ""}
-                        disabled={!puedeEditarAhora}
-                        onChange={(e) => actualizarCampo("porcentaje_descuento", e.target.value)}
-                      />
-                    </label>
-                    <label className="span-4">
-                      Situaciones especiales
-                      <textarea
-                        value={pedido.situaciones_especiales || ""}
-                        disabled={!puedeEditarAhora}
-                        onChange={(e) => actualizarCampo("situaciones_especiales", e.target.value)}
-                        rows={2}
-                      />
-                    </label>
+                {vistaActiva === "ingeniero" ? (
+                  <div className="pedido-preview-sheet">
+                    <div className="pedido-preview-sheet-top">
+                      <div className="pedido-preview-logo">
+                        <img src={`${API_URL}/assets/heg_logo.jpg`} alt="HEG" />
+                      </div>
+                      <div className="pedido-preview-sheet-top-info">
+                        <div className="pedido-preview-fecha-larga">{formatFechaLarga(pedido.fecha_aprobacion)}</div>
+                        <div className="pedido-preview-provider-box">
+                          <div className="pedido-preview-provider-label">Proveedor:</div>
+                          <input
+                            className="pedido-preview-input pedido-preview-provider-name"
+                            type="text"
+                            value={pedido.proveedor || ""}
+                            disabled={!puedeEditarAhora}
+                            onChange={(e) => actualizarCampo("proveedor", e.target.value)}
+                          />
+                          <div className="pedido-preview-provider-meta">
+                            <span>Proyecto:</span>
+                            <strong>{pedido.nombre_proyecto || "-"}</strong>
+                          </div>
+                          <div className="pedido-preview-provider-meta">
+                            <span>Clan:</span>
+                            <strong>{pedido.clan || "-"}</strong>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="pedido-preview-company">HEG Diseño e Instalación</div>
+
+                    <div className="pedido-preview-meta-grid">
+                      <div className="pedido-preview-meta-table">
+                        <div className="pedido-preview-meta-row">
+                          <span>Pedido</span>
+                          <input className="pedido-preview-input" type="text" value={pedido.pedido || ""} disabled={!puedeEditarAhora}
+                            onChange={(e) => actualizarCampo("pedido", e.target.value)} />
+                        </div>
+                        <div className="pedido-preview-meta-row">
+                          <span>Familia</span>
+                          <input className="pedido-preview-input" type="text" value={pedido.familia || ""} disabled={!puedeEditarAhora}
+                            onChange={(e) => actualizarCampo("familia", e.target.value.toUpperCase())} />
+                        </div>
+                        <div className="pedido-preview-meta-row">
+                          <span>Concepto</span>
+                          <input className="pedido-preview-input" type="text" value={pedido.concepto || ""} disabled={!puedeEditarAhora}
+                            onChange={(e) => actualizarCampo("concepto", e.target.value)} />
+                        </div>
+                      </div>
+                      <div className="pedido-preview-meta-table">
+                        <div className="pedido-preview-meta-row">
+                          <span>Proyecto</span>
+                          <strong>{pedido.nombre_proyecto || "-"}</strong>
+                        </div>
+                        <div className="pedido-preview-meta-row">
+                          <span>Clan</span>
+                          <input className="pedido-preview-input" type="text" value={pedido.clan || ""} disabled={!puedeEditarAhora}
+                            onChange={(e) => actualizarCampo("clan", e.target.value.toUpperCase())} />
+                        </div>
+                        <div className="pedido-preview-meta-row">
+                          <span>Entregar en</span>
+                          <strong>{pedido.situaciones_especiales?.trim() || "-"}</strong>
+                        </div>
+                      </div>
+                      {!esAnticipo && tipoDetalle === "aluminio" && (
+                        <div className="pedido-preview-meta-table">
+                          <div className="pedido-preview-meta-row">
+                            <span>Moneda</span>
+                            <select
+                              className="pedido-preview-input"
+                              value={pedido.moneda_aluminio || "MXN"}
+                              disabled={!puedeEditarAhora}
+                              onChange={(e) => actualizarCampo("moneda_aluminio", e.target.value)}
+                            >
+                              <option value="MXN">MXN</option>
+                              <option value="USD">USD</option>
+                            </select>
+                          </div>
+                          {pedido.moneda_aluminio === "USD" && (
+                            <div className="pedido-preview-meta-row">
+                              <span>Tipo de cambio</span>
+                              <input
+                                className="pedido-preview-input"
+                                type="number"
+                                min="0"
+                                step="0.0001"
+                                value={pedido.tipo_cambio ?? ""}
+                                disabled={!puedeEditarAhora}
+                                onChange={(e) => actualizarCampo("tipo_cambio", e.target.value)}
+                              />
+                            </div>
+                          )}
+                          <div className="pedido-preview-meta-row">
+                            <span>Precio Al ($/kg)</span>
+                            <input
+                              className="pedido-preview-input"
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={pedido.precio_aluminio_kg ?? ""}
+                              disabled={!puedeEditarAhora}
+                              onChange={(e) => actualizarCampo("precio_aluminio_kg", e.target.value)}
+                            />
+                          </div>
+                          <div className="pedido-preview-meta-row">
+                            <span>Precio pintura ($/m²)</span>
+                            <input
+                              className="pedido-preview-input"
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={pedido.precio_pintura_m2 ?? ""}
+                              disabled={!puedeEditarAhora}
+                              onChange={(e) => actualizarCampo("precio_pintura_m2", e.target.value)}
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
                     {tipoDetalle === "cristal" && (
-                      <label className="span-4">
-                        Descripción general
+                      <div className="pedido-preview-descripciones">
+                        <h4>Descripciones</h4>
                         <textarea
+                          className="pedido-preview-input solo-pantalla"
+                          rows={2}
                           value={pedido.descripcion_general || ""}
                           disabled={!puedeEditarAhora}
                           onChange={(e) => actualizarCampo("descripcion_general", e.target.value)}
-                          rows={2}
                         />
-                      </label>
+                        <div className="solo-impresion">{pedido.descripcion_general?.trim() || "-"}</div>
+                      </div>
                     )}
-                    {!esAnticipo && tipoDetalle === "aluminio" && (
-                      <>
-                        <label>
-                          Moneda del aluminio
-                          <select
-                            value={pedido.moneda_aluminio || "MXN"}
-                            disabled={!puedeEditarAhora}
-                            onChange={(e) => actualizarCampo("moneda_aluminio", e.target.value)}
-                          >
-                            <option value="MXN">Pesos (MXN)</option>
-                            <option value="USD">Dólares (USD)</option>
-                          </select>
-                        </label>
-                        {pedido.moneda_aluminio === "USD" && (
-                          <label>
-                            Tipo de cambio*
+
+                    <div className="pedido-preview-detalle">
+                      <DetalleLineasEditor
+                        tipoDetalle={tipoDetalle}
+                        detalles={detalles}
+                        onChange={setDetalles}
+                        disabled={!puedeEditarAhora}
+                        contextoAluminio={!esAnticipo && tipoDetalle === "aluminio" ? contextoAluminio : undefined}
+                        esAnticipo={esAnticipo}
+                      />
+                    </div>
+
+                    <div className="pedido-preview-payment">
+                      <div className="pedido-preview-payment-title">Pagos inmediatos</div>
+                      <EstadoBadge estado={pedido.estado} />
+                      <div className="pedido-preview-payment-date">
+                        <span>Fecha de aprobación</span>
+                        <input
+                          className="pedido-preview-input"
+                          type="date"
+                          value={pedido.fecha_aprobacion || ""}
+                          disabled={!puedeEditarAhora}
+                          onChange={(e) => actualizarCampo("fecha_aprobacion", e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="pedido-preview-totals-wrap">
+                      <div className="pedido-preview-totals-table">
+                        <div className="pedido-preview-totals-row">
+                          <span>Importe</span>
+                          <strong>{formatCurrency(totales.subtotalBase)}</strong>
+                        </div>
+                        <div className="pedido-preview-totals-row">
+                          <span>Descuento</span>
+                          <strong className="pedido-preview-totals-row-descuento">
+                            {formatCurrency(totales.descuentoMonto)} (
                             <input
+                              className="pedido-preview-input pedido-preview-inline-input"
                               type="number"
                               min="0"
-                              step="0.0001"
-                              value={pedido.tipo_cambio ?? ""}
+                              max="100"
+                              step="0.01"
+                              value={pedido.porcentaje_descuento ?? ""}
                               disabled={!puedeEditarAhora}
-                              onChange={(e) => actualizarCampo("tipo_cambio", e.target.value)}
+                              onChange={(e) => actualizarCampo("porcentaje_descuento", e.target.value)}
                             />
-                          </label>
+                            %)
+                          </strong>
+                        </div>
+                        <div className="pedido-preview-totals-row">
+                          <span>Subtotal</span>
+                          <strong>{formatCurrency(totales.subtotalConDescuento)}</strong>
+                        </div>
+                        <div className="pedido-preview-totals-row">
+                          <span>IVA</span>
+                          <strong>{formatCurrency(totales.ivaMonto)}</strong>
+                        </div>
+                        <div className={`pedido-preview-totals-row${esAnticipo || !(Number(pedido.monto_cubierto_anticipo) > 0) ? " total" : ""}`}>
+                          <span>{esAnticipo ? "Total" : "Valor del material"}</span>
+                          <strong>{formatCurrency(totales.totalFinal)}</strong>
+                        </div>
+                        {!esAnticipo && Number(pedido.monto_cubierto_anticipo) > 0 && (
+                          <>
+                            <div className="pedido-preview-totals-row">
+                              <span>Cubierto por anticipo</span>
+                              <strong>- {formatCurrency(pedido.monto_cubierto_anticipo)}</strong>
+                            </div>
+                            <div className="pedido-preview-totals-row total">
+                              <span>Total a pagar</span>
+                              <strong>{formatCurrency(totales.totalAPagar)}</strong>
+                            </div>
+                          </>
                         )}
-                        <label>
-                          Precio aluminio ($/kg)
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={pedido.precio_aluminio_kg ?? ""}
-                            disabled={!puedeEditarAhora}
-                            onChange={(e) => actualizarCampo("precio_aluminio_kg", e.target.value)}
-                          />
-                        </label>
-                        <label>
-                          Precio pintura ($/m²)
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={pedido.precio_pintura_m2 ?? ""}
-                            disabled={!puedeEditarAhora}
-                            onChange={(e) => actualizarCampo("precio_pintura_m2", e.target.value)}
-                          />
-                        </label>
-                      </>
-                    )}
-                  </div>
-                </div>
+                      </div>
+                      <div className="pedido-preview-special">
+                        <span>Situaciones especiales</span>
+                        <textarea
+                          className="pedido-preview-input solo-pantalla"
+                          rows={2}
+                          value={pedido.situaciones_especiales || ""}
+                          disabled={!puedeEditarAhora}
+                          onChange={(e) => actualizarCampo("situaciones_especiales", e.target.value)}
+                        />
+                        <div className="solo-impresion">{pedido.situaciones_especiales?.trim() || "-"}</div>
+                      </div>
+                    </div>
 
-                <div className="pedido-form-card">
+                    <div className="pedido-preview-footer-doc">
+                      <div className="pedido-preview-footer-doc-label">Formuló</div>
+                      <div className="pedido-preview-footer-doc-value">{pedido.nombre_usuario?.trim() || "No capturado"}</div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="pedido-preview-proveedor-view">
+                    {cargandoPdfProveedor ? (
+                      <p className="pedido-preview-proveedor-status">Generando vista del proveedor...</p>
+                    ) : pdfProveedorError ? (
+                      <p className="alert error">{pdfProveedorError}</p>
+                    ) : pdfProveedorUrl ? (
+                      <iframe title="Pedido para proveedor" src={pdfProveedorUrl} className="pedido-preview-proveedor-iframe" />
+                    ) : null}
+                  </div>
+                )}
+              </div>
+
+              <aside className="pedido-preview-rail">
+                {accionError && <p className="alert error">{accionError}</p>}
+                {accionMensaje && <p className="alert success">{accionMensaje}</p>}
+
+                {puedeEditarAhora && (
+                  <div className="pedido-preview-actions">
+                    <button type="button" className="btn-primary" onClick={guardarCambios} disabled={guardando}>
+                      {guardando ? "Guardando..." : "Guardar cambios"}
+                    </button>
+                    <button type="button" className="pedido-preview-approve" onClick={aprobar} disabled={cambiandoEstado || pedido.estado === "aprobado"}>
+                      Aprobar
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-danger"
+                      onClick={() => {
+                        setAccionError("");
+                        setModalRechazo(true);
+                      }}
+                      disabled={cambiandoEstado || (esAnticipo && (pedido.aplicaciones?.length ?? 0) > 0)}
+                      title={
+                        esAnticipo && (pedido.aplicaciones?.length ?? 0) > 0
+                          ? "No se puede rechazar un anticipo con aplicaciones registradas"
+                          : undefined
+                      }
+                    >
+                      Rechazar
+                    </button>
+                  </div>
+                )}
+
+                <div className="pedido-preview-anticipo">
                   <h4>Anticipo</h4>
                   {anticipoError && <p className="alert error">{anticipoError}</p>}
                   {esAnticipo ? (
@@ -540,85 +749,6 @@ export function PedidoPreview() {
                     <p className="pedido-preview-historial-vacio">Sin anticipo aplicado.</p>
                   )}
                 </div>
-
-                <div className="pedido-form-card">
-                  <h4>Líneas de detalle</h4>
-                  <DetalleLineasEditor
-                    tipoDetalle={tipoDetalle}
-                    detalles={detalles}
-                    onChange={setDetalles}
-                    disabled={!puedeEditarAhora}
-                    contextoAluminio={!esAnticipo && tipoDetalle === "aluminio" ? contextoAluminio : undefined}
-                    esAnticipo={esAnticipo}
-                  />
-                </div>
-
-                <div className="pedido-form-totales">
-                  <div>
-                    <span>Importe</span>
-                    <strong>{formatCurrency(totales.subtotalBase)}</strong>
-                  </div>
-                  <div>
-                    <span>Descuento ({totales.porcentajeDescuento.toFixed(2)}%)</span>
-                    <strong>{formatCurrency(totales.descuentoMonto)}</strong>
-                  </div>
-                  <div>
-                    <span>Subtotal</span>
-                    <strong>{formatCurrency(totales.subtotalConDescuento)}</strong>
-                  </div>
-                  <div>
-                    <span>IVA 16%</span>
-                    <strong>{formatCurrency(totales.ivaMonto)}</strong>
-                  </div>
-                  <div className={esAnticipo || !(Number(pedido.monto_cubierto_anticipo) > 0) ? "pedido-form-total-final" : ""}>
-                    <span>{esAnticipo ? "Total" : "Valor del material"}</span>
-                    <strong>{formatCurrency(totales.totalFinal)}</strong>
-                  </div>
-                  {!esAnticipo && Number(pedido.monto_cubierto_anticipo) > 0 && (
-                    <>
-                      <div>
-                        <span>Cubierto por anticipo</span>
-                        <strong>- {formatCurrency(pedido.monto_cubierto_anticipo)}</strong>
-                      </div>
-                      <div className="pedido-form-total-final">
-                        <span>Total a pagar</span>
-                        <strong>{formatCurrency(totales.totalAPagar)}</strong>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              <aside className="pedido-preview-rail">
-                {accionError && <p className="alert error">{accionError}</p>}
-                {accionMensaje && <p className="alert success">{accionMensaje}</p>}
-
-                {puedeEditarAhora && (
-                  <div className="pedido-preview-actions">
-                    <button type="button" className="btn-primary" onClick={guardarCambios} disabled={guardando}>
-                      {guardando ? "Guardando..." : "Guardar cambios"}
-                    </button>
-                    <button type="button" className="pedido-preview-approve" onClick={aprobar} disabled={cambiandoEstado || pedido.estado === "aprobado"}>
-                      Aprobar
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-danger"
-                      onClick={() => {
-                        setAccionError("");
-                        setModalRechazo(true);
-                      }}
-                      disabled={cambiandoEstado || (esAnticipo && (pedido.aplicaciones?.length ?? 0) > 0)}
-                      title={
-                        esAnticipo && (pedido.aplicaciones?.length ?? 0) > 0
-                          ? "No se puede rechazar un anticipo con aplicaciones registradas"
-                          : undefined
-                      }
-                    >
-                      Rechazar
-                    </button>
-                  </div>
-                )}
 
                 <div className="pedido-preview-historial">
                   <h4>Historial de estados</h4>

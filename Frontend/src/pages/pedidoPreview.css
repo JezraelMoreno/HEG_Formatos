@@ -129,6 +129,12 @@
   cursor: not-allowed;
 }
 
+.pedido-preview-anticipo {
+  border-top: 1px solid var(--color-border);
+  padding-top: 14px;
+}
+
+.pedido-preview-anticipo h4,
 .pedido-preview-historial h4 {
   margin: 0 0 10px;
   font-size: 13px;
@@ -311,10 +317,546 @@
   }
 }
 
+/* ===== Documento clásico (vista ingeniero) ===== */
+
+.pedido-preview-sheet {
+  position: relative;
+  width: 100%;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-input);
+  box-shadow: var(--shadow-md);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-sizing: border-box;
+}
+
+.pedido-preview-sheet-top {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 14px;
+}
+
+.pedido-preview-logo {
+  width: 150px;
+  height: 100px;
+  border: 2px solid var(--color-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: var(--color-surface);
+}
+
+.pedido-preview-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.pedido-preview-sheet-top-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-end;
+}
+
+.pedido-preview-fecha-larga {
+  font-weight: 600;
+  font-size: 13.5px;
+  text-transform: capitalize;
+}
+
+.pedido-preview-provider-box {
+  border: 1px solid var(--color-text-secondary);
+  padding: 6px 10px;
+  width: 100%;
+  max-width: 380px;
+  background: var(--color-bg-alt);
+  box-sizing: border-box;
+}
+
+.pedido-preview-provider-label {
+  font-size: 11px;
+  margin-bottom: 2px;
+}
+
+.pedido-preview-provider-name {
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.pedido-preview-provider-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  border-top: 1px solid var(--color-border-input);
+  padding-top: 3px;
+  margin-top: 3px;
+}
+
+.pedido-preview-company {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  font-size: 13.5px;
+}
+
+.pedido-preview-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 10px;
+}
+
+.pedido-preview-meta-table {
+  border: 1px solid var(--color-text);
+}
+
+.pedido-preview-meta-row {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  border-bottom: 1px solid var(--color-text);
+  min-height: 26px;
+  align-items: center;
+}
+
+.pedido-preview-meta-row:last-child {
+  border-bottom: none;
+}
+
+.pedido-preview-meta-row > span {
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 11px;
+  padding: 4px 6px;
+  border-right: 1px solid var(--color-text);
+  background: var(--color-border-light);
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+}
+
+.pedido-preview-meta-row > strong,
+.pedido-preview-meta-row > input,
+.pedido-preview-meta-row > select {
+  padding: 4px 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.pedido-preview-descripciones {
+  border: 1px solid var(--color-border-input);
+  background: var(--color-bg-alt);
+  padding: 6px 10px;
+}
+
+.pedido-preview-descripciones h4 {
+  margin: 0 0 4px;
+  font-size: 12.5px;
+}
+
+.pedido-preview-detalle {
+  border: 1px solid var(--color-text);
+}
+
+.pedido-preview-payment {
+  text-align: center;
+}
+
+.pedido-preview-payment-title {
+  color: var(--color-danger);
+  font-weight: 800;
+  text-transform: uppercase;
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+
+.pedido-preview-payment .hf-estado-badge {
+  font-size: 13px;
+  padding: 5px 14px;
+  border-radius: 4px;
+}
+
+.pedido-preview-payment-date {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  border: 1px solid var(--color-text);
+  padding: 4px 10px;
+  background: var(--color-bg-alt);
+}
+
+.pedido-preview-payment-date span {
+  font-size: 11px;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.pedido-preview-totals-wrap {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr;
+  gap: 12px;
+  align-items: start;
+}
+
+.pedido-preview-totals-table {
+  border: 1px solid var(--color-text);
+  max-width: 320px;
+  margin-left: auto;
+  width: 100%;
+}
+
+.pedido-preview-totals-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-bottom: 1px solid var(--color-text);
+}
+
+.pedido-preview-totals-row:last-child {
+  border-bottom: none;
+}
+
+.pedido-preview-totals-row > span {
+  padding: 4px 8px;
+  font-weight: 700;
+  border-right: 1px solid var(--color-text);
+  font-size: 12px;
+}
+
+.pedido-preview-totals-row > strong {
+  padding: 4px 8px;
+  text-align: right;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.pedido-preview-totals-row.total {
+  background: var(--color-border-light);
+}
+
+.pedido-preview-totals-row-descuento {
+  white-space: nowrap;
+}
+
+input.pedido-preview-inline-input.pedido-preview-input {
+  display: inline-block;
+  width: 44px;
+  text-align: right;
+}
+
+.pedido-preview-special {
+  border: 1px solid var(--color-text);
+  padding: 6px 8px;
+  background: var(--color-surface);
+}
+
+.pedido-preview-special > span {
+  display: block;
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 11px;
+  margin-bottom: 4px;
+}
+
+.pedido-preview-footer-doc {
+  border: 1px solid var(--color-text);
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  align-items: center;
+}
+
+.pedido-preview-footer-doc-label {
+  border-right: 1px solid var(--color-text);
+  padding: 6px 8px;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.pedido-preview-footer-doc-value {
+  padding: 6px 10px;
+  font-weight: 700;
+  font-size: 12.5px;
+}
+
+/* Inputs "invisibles" incrustados en las celdas del documento */
+.pedido-preview-input {
+  border: none;
+  background: transparent;
+  padding: 2px 4px;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  width: 100%;
+  box-sizing: border-box;
+  resize: none;
+}
+
+.pedido-preview-input:disabled {
+  color: inherit;
+  opacity: 1;
+}
+
+.pedido-preview-input:not(:disabled):hover,
+.pedido-preview-input:not(:disabled):focus {
+  background: var(--color-primary-light);
+  border-radius: 4px;
+  outline: none;
+}
+
+.pedido-preview-input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+.pedido-preview-input[type="number"]::-webkit-outer-spin-button,
+.pedido-preview-input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* Espejo de solo lectura para textareas largas (situaciones especiales, descripción
+   general): un <textarea> no crece para mostrar todo su contenido al imprimir, así que en
+   impresión se oculta y se muestra este <div> en su lugar. */
+.solo-impresion {
+  display: none;
+  white-space: pre-wrap;
+  font-size: 12.5px;
+}
+
+/* Reskin scoped de DetalleLineasEditor: solo dentro de esta página, sin tocar su CSS
+   compartido con PedidoFormModal (creación de pedidos). */
+.pedido-preview-detalle .detalle-lineas-editor {
+  border: none;
+  border-radius: 0;
+  overflow-x: auto;
+}
+
+.pedido-preview-detalle .detalle-lineas-tabla {
+  min-width: 0;
+  width: 100%;
+  font-size: 11.5px;
+}
+
+.pedido-preview-detalle .detalle-lineas-tabla th,
+.pedido-preview-detalle .detalle-lineas-tabla td {
+  border: 1px solid var(--color-text);
+  padding: 3px 5px;
+  text-align: center;
+}
+
+.pedido-preview-detalle .detalle-lineas-tabla th {
+  background: var(--color-border-light);
+  color: var(--color-text);
+  font-size: 10px;
+  white-space: normal;
+}
+
+.pedido-preview-detalle .detalle-lineas-tabla td:nth-child(2) {
+  text-align: left;
+}
+
+.pedido-preview-detalle .detalle-lineas-tabla .celda-texto input,
+.pedido-preview-detalle .detalle-lineas-tabla input[type="number"] {
+  border: none;
+  background: transparent;
+  padding: 1px 2px;
+  font-size: 11.5px;
+}
+
+.pedido-preview-detalle .detalle-lineas-tabla .celda-auto {
+  background: var(--color-border-light);
+}
+
+.pedido-preview-detalle .detalle-lineas-agregar {
+  margin: 6px;
+}
+
+/* ===== Vista proveedor (PDF embebido) ===== */
+
+.pedido-preview-proveedor-view {
+  width: 100%;
+  min-height: 70vh;
+  display: flex;
+}
+
+.pedido-preview-proveedor-iframe {
+  width: 100%;
+  min-height: 70vh;
+  border: 1px solid var(--color-border-input);
+  border-radius: var(--radius-md);
+}
+
+.pedido-preview-proveedor-status {
+  margin: auto;
+  padding: 24px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
 @media print {
+  @page {
+    size: A4;
+    margin: 10mm 8mm;
+  }
+
+  /* AppShell usa CSS Grid de 2 columnas fijas (232px 1fr). Al ocultar .sidebar, el único
+     hijo visible caería en la primera columna (232px) por auto-placement, comprimiendo
+     todo el documento en una franja angosta — se neutraliza forzando 1 sola columna. Esta
+     es la única pantalla de la app que llama window.print(), así que es seguro acotar el
+     fix aquí sin tocar AppShell.css. */
+  .app-shell {
+    grid-template-columns: 1fr !important;
+  }
+  .app-shell-content {
+    padding: 0 !important;
+  }
+
   .sidebar,
   .topbar,
+  .pedido-preview-header,
   .pedido-preview-rail {
     display: none !important;
+  }
+
+  .pedido-preview-layout {
+    max-width: 100% !important;
+    gap: 0 !important;
+  }
+  .pedido-preview-grid {
+    grid-template-columns: 1fr !important;
+    gap: 0 !important;
+  }
+
+  .pedido-preview-sheet {
+    box-shadow: none !important;
+    border: none !important;
+    padding: 4px !important;
+    gap: 6px !important;
+  }
+
+  .pedido-preview-logo {
+    width: 90px;
+    height: 60px;
+  }
+
+  .pedido-preview-company {
+    font-size: 11px;
+  }
+
+  .pedido-preview-fecha-larga {
+    font-size: 10.5px;
+  }
+
+  .pedido-preview-provider-name {
+    font-size: 10.5px;
+  }
+
+  .pedido-preview-meta-grid {
+    gap: 6px;
+  }
+
+  .pedido-preview-meta-row {
+    min-height: 18px;
+  }
+
+  .pedido-preview-meta-row > span,
+  .pedido-preview-meta-row > strong,
+  .pedido-preview-meta-row > input,
+  .pedido-preview-meta-row > select {
+    padding: 2px 5px;
+    font-size: 9px;
+  }
+
+  .pedido-preview-descripciones {
+    padding: 4px 6px;
+  }
+  .pedido-preview-descripciones h4 {
+    font-size: 10px;
+    margin-bottom: 2px;
+  }
+
+  .pedido-preview-detalle .detalle-lineas-tabla {
+    font-size: 8px;
+  }
+  .pedido-preview-detalle .detalle-lineas-tabla th,
+  .pedido-preview-detalle .detalle-lineas-tabla td {
+    padding: 2px 3px;
+  }
+  .pedido-preview-detalle .detalle-lineas-tabla thead {
+    display: table-header-group;
+  }
+  .pedido-preview-detalle .detalle-lineas-tabla tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .pedido-preview-detalle .detalle-lineas-agregar,
+  .pedido-preview-detalle .col-acciones {
+    display: none !important;
+  }
+
+  .pedido-preview-payment-title {
+    font-size: 10px;
+  }
+  .pedido-preview-payment .hf-estado-badge {
+    font-size: 10px;
+    padding: 3px 10px;
+  }
+  .pedido-preview-payment-date {
+    padding: 2px 6px;
+  }
+  .pedido-preview-payment-date span,
+  .pedido-preview-payment-date strong {
+    font-size: 9px;
+  }
+
+  .pedido-preview-totals-wrap {
+    gap: 6px;
+  }
+  .pedido-preview-totals-row > span,
+  .pedido-preview-totals-row > strong {
+    padding: 2px 6px;
+    font-size: 9px;
+  }
+
+  .pedido-preview-special {
+    padding: 4px 6px;
+  }
+  .pedido-preview-special > span {
+    font-size: 9px;
+    margin-bottom: 2px;
+  }
+
+  .pedido-preview-footer-doc-label,
+  .pedido-preview-footer-doc-value {
+    padding: 3px 6px;
+    font-size: 9px;
+  }
+
+  /* Evitar que estas cajas se partan a la mitad entre páginas */
+  .pedido-preview-meta-table,
+  .pedido-preview-descripciones,
+  .pedido-preview-payment,
+  .pedido-preview-totals-wrap,
+  .pedido-preview-special,
+  .pedido-preview-footer-doc {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .pedido-preview-input,
+  .pedido-preview-input:hover,
+  .pedido-preview-input:focus {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    outline: none !important;
+  }
+
+  /* Espejo textarea → texto plano al imprimir */
+  .solo-pantalla {
+    display: none !important;
+  }
+  .solo-impresion {
+    display: block !important;
   }
 }
