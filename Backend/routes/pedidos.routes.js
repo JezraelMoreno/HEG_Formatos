@@ -43,6 +43,14 @@ router.get(
 );
 
 router.get(
+  "/proyectos/:id/anticipos-disponibles",
+  authenticateToken,
+  requireRole("Aprobador", "Superadmin", "Supervisor", "Visor"),
+  requireProjectAccessByProyectoId,
+  PedidosCtrl.listarAnticiposDisponibles
+);
+
+router.get(
   "/pedidos/:pedidoId",
   authenticateToken,
   requireRole("Aprobador", "Superadmin", "Supervisor", "Visor"),
@@ -62,6 +70,20 @@ router.patch(
   authenticateToken,
   requireRole("Aprobador", "Superadmin"),
   PedidosCtrl.cambiarEstado
+);
+
+router.post(
+  "/pedidos/:pedidoId/anticipo",
+  authenticateToken,
+  requireRole("Aprobador", "Superadmin"),
+  PedidosCtrl.aplicarAnticipo
+);
+
+router.delete(
+  "/pedidos/:pedidoId/anticipo",
+  authenticateToken,
+  requireRole("Aprobador", "Superadmin"),
+  PedidosCtrl.quitarAnticipo
 );
 
 router.get(

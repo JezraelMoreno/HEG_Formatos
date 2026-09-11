@@ -11,7 +11,14 @@ import { authHeader } from "../auth";
 import API_URL from "../config";
 import { DetalleLineasEditor } from "./pedidos/DetalleLineasEditor";
 import type { ContextoAluminio } from "../utils/pedidoDetalleColumns";
-import type { DetalleUnion, EstadoPedido, HistorialEstadoItem, Pedido, TipoDetalle } from "../types/pedidos";
+import type {
+  AnticipoDisponible,
+  DetalleUnion,
+  EstadoPedido,
+  HistorialEstadoItem,
+  Pedido,
+  TipoDetalle,
+} from "../types/pedidos";
 import "./pedidos/PedidoFormModal.css";
 import "./pedidoPreview.css";
 
@@ -80,10 +87,17 @@ export function PedidoPreview() {
   const [accionError, setAccionError] = useState("");
   const [accionMensaje, setAccionMensaje] = useState("");
   const [descargandoPdf, setDescargandoPdf] = useState(false);
+  const [anticiposDisponibles, setAnticiposDisponibles] = useState<AnticipoDisponible[]>([]);
+  const [idAnticipoSeleccionado, setIdAnticipoSeleccionado] = useState<number | "">("");
+  const [montoAplicadoAnticipo, setMontoAplicadoAnticipo] = useState("");
+  const [anticipoProcesando, setAnticipoProcesando] = useState(false);
+  const [anticipoError, setAnticipoError] = useState("");
 
   const tipoDetalle = useMemo(() => tipoDetalleDeFamilia(pedido?.familia), [pedido?.familia]);
-  const totales = usePedidoTotales(detalles, pedido?.porcentaje_descuento);
+  const esAnticipo = !!pedido?.es_anticipo;
+  const totales = usePedidoTotales(detalles, pedido?.porcentaje_descuento, esAnticipo ? 0 : pedido?.monto_cubierto_anticipo);
   const puedeEditarAhora = puedeGestionar && pedido?.estado !== "rechazado";
+  const anticipoSeleccionado = anticiposDisponibles.find((a) => a.id === idAnticipoSeleccionado);
 
   const contextoAluminio: ContextoAluminio = useMemo(
     () => ({
@@ -120,6 +134,53 @@ export function PedidoPreview() {
   useEffect(() => {
     cargar();
   }, [cargar]);
+
+  useEffect(() => {
+    setIdAnticipoSeleccionado("");
+    setMontoAplicadoAnticipo("");
+    setAnticipoError("");
+    if (!pedido || esAnticipo || pedido.aplicacion_anticipo || !puedeEditarAhora || !pedido.familia) {
+      setAnticiposDisponibles([]);
+      return;
+    }
+    apiFetch<AnticipoDisponible[]>(
+      `/proyectos/${pedido.id_proyecto}/anticipos-disponibles?familia=${encodeURIComponent(pedido.familia)}`
+    )
+      .then((data) => setAnticiposDisponibles(Array.isArray(data) ? data : []))
+      .catch(() => setAnticiposDisponibles([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pedido?.id, pedido?.familia, pedido?.aplicacion_anticipo, puedeEditarAhora, esAnticipo]);
+
+  const aplicarAnticipoSeleccionado = async () => {
+    if (!pedidoId || idAnticipoSeleccionado === "" || !(Number(montoAplicadoAnticipo) > 0)) return;
+    setAnticipoProcesando(true);
+    setAnticipoError("");
+    try {
+      await apiFetch(`/pedidos/${pedidoId}/anticipo`, {
+        method: "POST",
+        body: JSON.stringify({ id_pedido_anticipo: idAnticipoSeleccionado, monto_aplicado: Number(montoAplicadoAnticipo) }),
+      });
+      await cargar();
+    } catch (e) {
+      setAnticipoError(e instanceof Error ? e.message : "No se pudo aplicar el anticipo");
+    } finally {
+      setAnticipoProcesando(false);
+    }
+  };
+
+  const quitarAnticipoAplicado = async () => {
+    if (!pedidoId) return;
+    setAnticipoProcesando(true);
+    setAnticipoError("");
+    try {
+      await apiFetch(`/pedidos/${pedidoId}/anticipo`, { method: "DELETE" });
+      await cargar();
+    } catch (e) {
+      setAnticipoError(e instanceof Error ? e.message : "No se pudo quitar el anticipo aplicado");
+    } finally {
+      setAnticipoProcesando(false);
+    }
+  };
 
   const actualizarCampo = (campo: keyof Pedido, valor: string) => {
     setPedido((prev) => (prev ? ({ ...prev, [campo]: valor } as Pedido) : prev));
@@ -335,7 +396,7 @@ export function PedidoPreview() {
                         />
                       </label>
                     )}
-                    {tipoDetalle === "aluminio" && (
+                    {!esAnticipo && tipoDetalle === "aluminio" && (
                       <>
                         <label>
                           Moneda del aluminio
@@ -389,13 +450,106 @@ export function PedidoPreview() {
                 </div>
 
                 <div className="pedido-form-card">
+                  <h4>Anticipo</h4>
+                  {anticipoError && <p className="alert error">{anticipoError}</p>}
+                  {esAnticipo ? (
+                    <>
+                      <div className="anticipo-saldo">
+                        <span>Saldo disponible</span>
+                        <strong>{formatCurrency(pedido.saldo_anticipo?.saldo_disponible)}</strong>
+                        <span className="anticipo-saldo-detalle">
+                          de {formatCurrency(pedido.saldo_anticipo?.monto_total)} — aplicado {formatCurrency(pedido.saldo_anticipo?.monto_aplicado)}
+                        </span>
+                      </div>
+                      {pedido.aplicaciones && pedido.aplicaciones.length > 0 ? (
+                        <ul className="anticipo-aplicaciones-lista">
+                          {pedido.aplicaciones.map((a) => (
+                            <li key={a.id}>
+                              <div>
+                                <strong>Pedido {a.pedido_destino}</strong>
+                                <span className="historial-meta">{a.concepto_destino}</span>
+                              </div>
+                              <div className="anticipo-aplicaciones-monto">
+                                <strong>{formatCurrency(a.monto_aplicado)}</strong>
+                                <span className="historial-meta">{formatFechaHora(a.fecha_registro)} · {a.nombre_usuario}</span>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="pedido-preview-historial-vacio">Aún no se ha aplicado a ningún pedido.</p>
+                      )}
+                    </>
+                  ) : pedido.aplicacion_anticipo ? (
+                    <div className="anticipo-cubierto">
+                      <div>
+                        <span>Cubierto por anticipo {pedido.aplicacion_anticipo.pedido_anticipo}</span>
+                        <strong>{formatCurrency(pedido.aplicacion_anticipo.monto_aplicado)}</strong>
+                      </div>
+                      {puedeEditarAhora && (
+                        <button type="button" className="btn-secondary" onClick={quitarAnticipoAplicado} disabled={anticipoProcesando}>
+                          {anticipoProcesando ? "Quitando..." : "Quitar"}
+                        </button>
+                      )}
+                    </div>
+                  ) : puedeEditarAhora && anticiposDisponibles.length > 0 ? (
+                    <div className="pedido-form-grid">
+                      <label className="span-2">
+                        Anticipo disponible
+                        <select
+                          value={idAnticipoSeleccionado}
+                          onChange={(e) => {
+                            setIdAnticipoSeleccionado(e.target.value === "" ? "" : Number(e.target.value));
+                            setMontoAplicadoAnticipo("");
+                          }}
+                        >
+                          <option value="">Sin aplicar</option>
+                          {anticiposDisponibles.map((a) => (
+                            <option key={a.id} value={a.id}>
+                              Pedido {a.pedido} — saldo {a.saldo_disponible.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      {idAnticipoSeleccionado !== "" && (
+                        <>
+                          <label className="span-2">
+                            Monto a aplicar
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              max={Math.min(anticipoSeleccionado?.saldo_disponible ?? 0, totales.totalFinal)}
+                              value={montoAplicadoAnticipo}
+                              onChange={(e) => setMontoAplicadoAnticipo(e.target.value)}
+                              placeholder="0.00"
+                            />
+                          </label>
+                          <button
+                            type="button"
+                            className="btn-primary span-2"
+                            onClick={aplicarAnticipoSeleccionado}
+                            disabled={anticipoProcesando || !(Number(montoAplicadoAnticipo) > 0)}
+                          >
+                            {anticipoProcesando ? "Aplicando..." : "Aplicar anticipo"}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="pedido-preview-historial-vacio">Sin anticipo aplicado.</p>
+                  )}
+                </div>
+
+                <div className="pedido-form-card">
                   <h4>Líneas de detalle</h4>
                   <DetalleLineasEditor
                     tipoDetalle={tipoDetalle}
                     detalles={detalles}
                     onChange={setDetalles}
                     disabled={!puedeEditarAhora}
-                    contextoAluminio={tipoDetalle === "aluminio" ? contextoAluminio : undefined}
+                    contextoAluminio={!esAnticipo && tipoDetalle === "aluminio" ? contextoAluminio : undefined}
+                    esAnticipo={esAnticipo}
                   />
                 </div>
 
@@ -416,10 +570,22 @@ export function PedidoPreview() {
                     <span>IVA 16%</span>
                     <strong>{formatCurrency(totales.ivaMonto)}</strong>
                   </div>
-                  <div className="pedido-form-total-final">
-                    <span>Total</span>
+                  <div className={esAnticipo || !(Number(pedido.monto_cubierto_anticipo) > 0) ? "pedido-form-total-final" : ""}>
+                    <span>{esAnticipo ? "Total" : "Valor del material"}</span>
                     <strong>{formatCurrency(totales.totalFinal)}</strong>
                   </div>
+                  {!esAnticipo && Number(pedido.monto_cubierto_anticipo) > 0 && (
+                    <>
+                      <div>
+                        <span>Cubierto por anticipo</span>
+                        <strong>- {formatCurrency(pedido.monto_cubierto_anticipo)}</strong>
+                      </div>
+                      <div className="pedido-form-total-final">
+                        <span>Total a pagar</span>
+                        <strong>{formatCurrency(totales.totalAPagar)}</strong>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -442,7 +608,12 @@ export function PedidoPreview() {
                         setAccionError("");
                         setModalRechazo(true);
                       }}
-                      disabled={cambiandoEstado}
+                      disabled={cambiandoEstado || (esAnticipo && (pedido.aplicaciones?.length ?? 0) > 0)}
+                      title={
+                        esAnticipo && (pedido.aplicaciones?.length ?? 0) > 0
+                          ? "No se puede rechazar un anticipo con aplicaciones registradas"
+                          : undefined
+                      }
                     >
                       Rechazar
                     </button>

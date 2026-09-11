@@ -383,7 +383,7 @@ app.get("/proyectos/:id", authenticateToken, requireProjectAccessByProyectoId, a
     };
     try {
       const pedidosRows = await queryAsync(
-        "SELECT id, familia, situaciones_especiales, porcentaje_descuento FROM pedidos WHERE id_proyecto = ?",
+        "SELECT id, familia, es_anticipo, situaciones_especiales, porcentaje_descuento, monto_cubierto_anticipo FROM pedidos WHERE id_proyecto = ?",
         [id]
       );
       let totalRecalc = 0;
@@ -1096,10 +1096,14 @@ function decimalOrNull(value) {
 async function calcularImporteDesdeDetalles(row, { includeSubtotal = false } = {}) {
   const pedidoId = Number(row?.id);
   if (!Number.isFinite(pedidoId) || pedidoId <= 0) return 0;
-  const familia = normalizeTextValue(row?.familia).toUpperCase();
   let table = "pedidos_detalles_miscelaneos";
-  if (familia === "CR") table = "pedidos_detalles_cristal";
-  if (familia === "AL" || familia === "MQAL") table = "pedidos_detalles_aluminio";
+  if (row?.es_anticipo) {
+    table = "pedidos_detalles_anticipo";
+  } else {
+    const familia = normalizeTextValue(row?.familia).toUpperCase();
+    if (familia === "CR") table = "pedidos_detalles_cristal";
+    if (familia === "AL" || familia === "MQAL") table = "pedidos_detalles_aluminio";
+  }
   const sumRows = await queryAsync(`SELECT SUM(importe) AS subtotal FROM ${table} WHERE id_pedido = ?`, [pedidoId]);
   const subtotal = Number(sumRows?.[0]?.subtotal || 0);
   const subtotalBase = Number(subtotal.toFixed(2));
@@ -1108,7 +1112,9 @@ async function calcularImporteDesdeDetalles(row, { includeSubtotal = false } = {
   const descuentoMonto = subtotalBase * (mathPct / 100);
   const subtotalConDesc = subtotalBase - descuentoMonto;
   const ivaMonto = subtotalConDesc * 0.16;
-  const total = salidaTlatilco ? 0 : Number(Math.max(0, subtotalConDesc + ivaMonto).toFixed(2));
+  const totalMaterial = Number(Math.max(0, subtotalConDesc + ivaMonto).toFixed(2));
+  const cubierto = Number(row?.monto_cubierto_anticipo || 0);
+  const total = salidaTlatilco ? 0 : Number(Math.max(0, totalMaterial - cubierto).toFixed(2));
   if (includeSubtotal) return { subtotal: subtotalBase, total };
   return total;
 }

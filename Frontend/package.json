@@ -1,8 +1,8 @@
 {
-  "name": "heg-formatos",
+  "name": "heg-diseno-e-instalacion",
   "private": true,
   "version": "1.0.15",
-  "description": "HEG Formatos - Sistema de gestión de proyectos y presupuestos",
+  "description": "HEG Diseño e Instalación - Sistema de gestión de proyectos y presupuestos",
   "author": "HEG",
   "type": "module",
   "main": "electron/main.cjs",
@@ -50,7 +50,7 @@
   },
   "build": {
     "appId": "com.heg.formatos",
-    "productName": "HEG Formatos",
+    "productName": "HEG Diseño e Instalación",
     "publish": {
       "provider": "github",
       "owner": "JezraelMoreno",
@@ -65,7 +65,7 @@
       "electron/**/*"
     ],
     "win": {
-      "artifactName": "HEG-Formatos-Setup-${version}.${ext}",
+      "artifactName": "HEG-Diseno-e-Instalacion-Setup-${version}.${ext}",
       "target": [
         {
           "target": "nsis",

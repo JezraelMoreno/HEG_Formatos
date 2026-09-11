@@ -1,9 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Modal } from "../../components/Modal";
 import { DetalleLineasEditor } from "./DetalleLineasEditor";
 import { usePedidoTotales } from "../../hooks/usePedidoTotales";
 import { apiFetch } from "../../api/client";
-import type { DetalleUnion, Pedido, TipoDetalle } from "../../types/pedidos";
+import type { AnticipoDisponible, DetalleUnion, Pedido, TipoDetalle } from "../../types/pedidos";
 import type { ContextoAluminio } from "../../utils/pedidoDetalleColumns";
 import "./PedidoFormModal.css";
 
@@ -58,8 +58,33 @@ export function PedidoFormModal({ isOpen, onClose, idProyecto, onCreated }: Prop
   const [detalles, setDetalles] = useState<DetalleUnion[]>([]);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
+  const [esAnticipo, setEsAnticipo] = useState(false);
+  const [anticiposDisponibles, setAnticiposDisponibles] = useState<AnticipoDisponible[]>([]);
+  const [idAnticipoSeleccionado, setIdAnticipoSeleccionado] = useState<number | "">("");
+  const [montoAplicadoAnticipo, setMontoAplicadoAnticipo] = useState("");
 
-  const totales = usePedidoTotales(detalles, Number(form.porcentaje_descuento || 0));
+  const totales = usePedidoTotales(
+    detalles,
+    Number(form.porcentaje_descuento || 0),
+    esAnticipo ? 0 : Number(montoAplicadoAnticipo || 0)
+  );
+  const anticipoSeleccionado = anticiposDisponibles.find((a) => a.id === idAnticipoSeleccionado);
+
+  useEffect(() => {
+    if (esAnticipo || !form.familia.trim()) {
+      setAnticiposDisponibles([]);
+      setIdAnticipoSeleccionado("");
+      setMontoAplicadoAnticipo("");
+      return;
+    }
+    const familia = form.familia.trim();
+    const timer = setTimeout(() => {
+      apiFetch<AnticipoDisponible[]>(`/proyectos/${idProyecto}/anticipos-disponibles?familia=${encodeURIComponent(familia)}`)
+        .then((data) => setAnticiposDisponibles(Array.isArray(data) ? data : []))
+        .catch(() => setAnticiposDisponibles([]));
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [esAnticipo, form.familia, idProyecto]);
 
   const contextoAluminio: ContextoAluminio = useMemo(
     () => ({
@@ -82,8 +107,18 @@ export function PedidoFormModal({ isOpen, onClose, idProyecto, onCreated }: Prop
     setForm(FORM_INICIAL);
     setDetalles([]);
     setTipoDetalle("cristal");
+    setEsAnticipo(false);
+    setIdAnticipoSeleccionado("");
+    setMontoAplicadoAnticipo("");
     setError("");
     onClose();
+  };
+
+  const cambiarEsAnticipo = (valor: boolean) => {
+    setEsAnticipo(valor);
+    setDetalles([]);
+    setIdAnticipoSeleccionado("");
+    setMontoAplicadoAnticipo("");
   };
 
   const guardar = async () => {
@@ -94,9 +129,16 @@ export function PedidoFormModal({ isOpen, onClose, idProyecto, onCreated }: Prop
       setError("Completa los datos requeridos del pedido antes de guardar.");
       return;
     }
-    if (tipoDetalle === "aluminio" && form.moneda_aluminio === "USD" && !(Number(form.tipo_cambio) > 0)) {
+    if (!esAnticipo && tipoDetalle === "aluminio" && form.moneda_aluminio === "USD" && !(Number(form.tipo_cambio) > 0)) {
       setError("Indica un tipo de cambio válido (mayor a 0) cuando el aluminio se cotiza en USD.");
       return;
+    }
+    if (!esAnticipo && idAnticipoSeleccionado && Number(montoAplicadoAnticipo) > 0) {
+      const tope = Math.min(anticipoSeleccionado?.saldo_disponible ?? 0, totales.totalFinal);
+      if (Number(montoAplicadoAnticipo) > tope + 0.005) {
+        setError(`El monto aplicado del anticipo no puede superar ${tope.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.`);
+        return;
+      }
     }
     setGuardando(true);
     try {
@@ -104,17 +146,21 @@ export function PedidoFormModal({ isOpen, onClose, idProyecto, onCreated }: Prop
         pedido: form.pedido.trim(),
         clan: form.clan.trim(),
         familia: form.familia.trim(),
+        es_anticipo: esAnticipo,
         proveedor: form.proveedor.trim(),
         fecha_aprobacion: form.fecha_aprobacion,
         concepto: form.concepto.trim(),
         situaciones_especiales: form.situaciones_especiales.trim() || null,
         descripcion_general: tipoDetalle === "cristal" ? form.descripcion_general.trim() || null : null,
         porcentaje_descuento: form.porcentaje_descuento ? Number(form.porcentaje_descuento) : null,
-        moneda_aluminio: form.moneda_aluminio,
-        tipo_cambio: form.moneda_aluminio === "USD" ? Number(form.tipo_cambio) : null,
-        precio_aluminio_kg: form.precio_aluminio_kg.trim() === "" ? null : Number(form.precio_aluminio_kg),
-        precio_pintura_m2: form.precio_pintura_m2.trim() === "" ? null : Number(form.precio_pintura_m2),
+        moneda_aluminio: esAnticipo ? "MXN" : form.moneda_aluminio,
+        tipo_cambio: !esAnticipo && form.moneda_aluminio === "USD" ? Number(form.tipo_cambio) : null,
+        precio_aluminio_kg: esAnticipo || form.precio_aluminio_kg.trim() === "" ? null : Number(form.precio_aluminio_kg),
+        precio_pintura_m2: esAnticipo || form.precio_pintura_m2.trim() === "" ? null : Number(form.precio_pintura_m2),
         detalles,
+        ...(!esAnticipo && idAnticipoSeleccionado && Number(montoAplicadoAnticipo) > 0
+          ? { id_pedido_anticipo: idAnticipoSeleccionado, monto_aplicado_anticipo: Number(montoAplicadoAnticipo) }
+          : {}),
       };
       const pedidoCreado = await apiFetch<Pedido>(`/proyectos/${idProyecto}/pedidos/nuevo`, {
         method: "POST",
@@ -183,6 +229,10 @@ export function PedidoFormModal({ isOpen, onClose, idProyecto, onCreated }: Prop
                 onChange={(e) => setForm((prev) => ({ ...prev, fecha_aprobacion: e.target.value }))}
               />
             </label>
+            <label className="pedido-form-checkbox">
+              <input type="checkbox" checked={esAnticipo} onChange={(e) => cambiarEsAnticipo(e.target.checked)} />
+              Es anticipo
+            </label>
             <label className="span-2">
               Proveedor*
               <input
@@ -233,7 +283,7 @@ export function PedidoFormModal({ isOpen, onClose, idProyecto, onCreated }: Prop
                 />
               </label>
             )}
-            {tipoDetalle === "aluminio" && (
+            {!esAnticipo && tipoDetalle === "aluminio" && (
               <>
                 <label>
                   Moneda del aluminio
@@ -284,6 +334,41 @@ export function PedidoFormModal({ isOpen, onClose, idProyecto, onCreated }: Prop
                 </label>
               </>
             )}
+            {!esAnticipo && anticiposDisponibles.length > 0 && (
+              <>
+                <label className="span-2">
+                  Aplicar anticipo disponible
+                  <select
+                    value={idAnticipoSeleccionado}
+                    onChange={(e) => {
+                      setIdAnticipoSeleccionado(e.target.value === "" ? "" : Number(e.target.value));
+                      setMontoAplicadoAnticipo("");
+                    }}
+                  >
+                    <option value="">Sin aplicar</option>
+                    {anticiposDisponibles.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        Pedido {a.pedido} — saldo {a.saldo_disponible.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {idAnticipoSeleccionado !== "" && (
+                  <label className="span-2">
+                    Monto a aplicar
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      max={Math.min(anticipoSeleccionado?.saldo_disponible ?? 0, totales.totalFinal)}
+                      value={montoAplicadoAnticipo}
+                      onChange={(e) => setMontoAplicadoAnticipo(e.target.value)}
+                      placeholder="0.00"
+                    />
+                  </label>
+                )}
+              </>
+            )}
           </div>
         </div>
 
@@ -307,7 +392,8 @@ export function PedidoFormModal({ isOpen, onClose, idProyecto, onCreated }: Prop
             tipoDetalle={tipoDetalle}
             detalles={detalles}
             onChange={setDetalles}
-            contextoAluminio={tipoDetalle === "aluminio" ? contextoAluminio : undefined}
+            contextoAluminio={!esAnticipo && tipoDetalle === "aluminio" ? contextoAluminio : undefined}
+            esAnticipo={esAnticipo}
           />
         </div>
 
@@ -328,10 +414,22 @@ export function PedidoFormModal({ isOpen, onClose, idProyecto, onCreated }: Prop
             <span>IVA 16%</span>
             <strong>{totales.ivaMonto.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
           </div>
-          <div className="pedido-form-total-final">
-            <span>Total</span>
+          <div className={esAnticipo || !(idAnticipoSeleccionado !== "" && Number(montoAplicadoAnticipo) > 0) ? "pedido-form-total-final" : ""}>
+            <span>{esAnticipo ? "Total" : "Valor del material"}</span>
             <strong>{totales.totalFinal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
           </div>
+          {!esAnticipo && idAnticipoSeleccionado !== "" && Number(montoAplicadoAnticipo) > 0 && (
+            <>
+              <div>
+                <span>Cubierto por anticipo</span>
+                <strong>- {Number(montoAplicadoAnticipo).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+              </div>
+              <div className="pedido-form-total-final">
+                <span>Total a pagar</span>
+                <strong>{totales.totalAPagar.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </Modal>

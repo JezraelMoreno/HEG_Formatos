@@ -284,7 +284,7 @@ export function ProyectosSelectorPage() {
           <span className="proy-topbar-logo">
             <img src={`${API_URL}/assets/heg_logo.jpg`} alt="HEG" />
           </span>
-          <span className="proy-topbar-name">HEG Formatos</span>
+          <span className="proy-topbar-name">HEG Diseño e Instalación</span>
         </div>
         <div className="proy-topbar-actions">
           <div className="proy-user-pill">

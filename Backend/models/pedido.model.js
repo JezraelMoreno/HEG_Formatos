@@ -1,4 +1,4 @@
-import { queryAsync } from "../config/db.js";
+import { queryAsync, withTransaction } from "../config/db.js";
 import {
   normalizeTextValue,
   normalizePct,
@@ -10,11 +10,12 @@ import {
   prepareDetalleForInsert,
   prepareCristalDetalleForInsert,
   prepareAluminioDetalleForInsert,
+  prepareAnticipoDetalleForInsert,
 } from "../helpers/utils.js";
 
 export async function findByProyecto(id, filters = {}) {
   let sql =
-    "SELECT id, id_proyecto, nombre_proyecto, pedido, clan, familia, proveedor, nombre_usuario, DATE_FORMAT(fecha_aprobacion, '%Y-%m-%d') AS fecha_aprobacion, concepto, situaciones_especiales, descripcion_general, porcentaje_descuento, moneda_aluminio, tipo_cambio, precio_aluminio_kg, precio_pintura_m2, importe_total AS importe, estado, id_aprobador, DATE_FORMAT(fecha_levantado, '%Y-%m-%d %H:%i:%s') AS fecha_levantado, DATE_FORMAT(fecha_resolucion, '%Y-%m-%d %H:%i:%s') AS fecha_resolucion FROM pedidos WHERE id_proyecto = ?";
+    "SELECT id, id_proyecto, nombre_proyecto, pedido, clan, familia, es_anticipo, proveedor, nombre_usuario, DATE_FORMAT(fecha_aprobacion, '%Y-%m-%d') AS fecha_aprobacion, concepto, situaciones_especiales, descripcion_general, porcentaje_descuento, moneda_aluminio, tipo_cambio, precio_aluminio_kg, precio_pintura_m2, importe_total AS importe, monto_cubierto_anticipo, estado, id_aprobador, DATE_FORMAT(fecha_levantado, '%Y-%m-%d %H:%i:%s') AS fecha_levantado, DATE_FORMAT(fecha_resolucion, '%Y-%m-%d %H:%i:%s') AS fecha_resolucion FROM pedidos WHERE id_proyecto = ?";
   const params = [id];
   const toList = (v) => Array.isArray(v) ? v : (typeof v === 'string' ? v.split('||').map(s => s.trim()).filter(Boolean) : []);
   const addMulti = (field, values) => {
@@ -146,6 +147,23 @@ export async function getDetallesAluminio(pedidoId) {
   }));
 }
 
+export async function getDetallesAnticipo(pedidoId) {
+  const sql = `SELECT id_detalle, id_pedido, concepto, unidad, cantidad, precio_unitario, importe
+               FROM pedidos_detalles_anticipo
+               WHERE id_pedido = ?
+               ORDER BY id_detalle ASC`;
+  const rows = await queryAsync(sql, [pedidoId]);
+  return (rows || []).map((r) => ({
+    id_detalle: r.id_detalle,
+    id_pedido: r.id_pedido,
+    concepto: r.concepto,
+    unidad: r.unidad,
+    cantidad: Number(r.cantidad || 0),
+    precio_unitario: Number(r.precio_unitario || 0),
+    importe: Number(r.importe || 0),
+  }));
+}
+
 export async function pedidoExists(pedidoId) {
   const rows = await queryAsync("SELECT id FROM pedidos WHERE id = ? LIMIT 1", [pedidoId]);
   return Array.isArray(rows) && rows.length > 0;
@@ -157,6 +175,10 @@ export async function deleteDetallesCristal(pedidoId) {
 
 export async function deleteDetallesAluminio(pedidoId) {
   return queryAsync("DELETE FROM pedidos_detalles_aluminio WHERE id_pedido = ?", [pedidoId]);
+}
+
+export async function deleteDetallesAnticipo(pedidoId) {
+  return queryAsync("DELETE FROM pedidos_detalles_anticipo WHERE id_pedido = ?", [pedidoId]);
 }
 
 export async function insertCristalDetallesRows(pedidoId, detallesRaw) {
@@ -212,6 +234,19 @@ export async function insertAluminioDetallesRows(pedidoId, detallesRaw, pedidoCo
   return inserted;
 }
 
+export async function insertAnticipoDetallesRows(pedidoId, detallesRaw) {
+  if (!Array.isArray(detallesRaw) || detallesRaw.length === 0) return 0;
+  const sqlDetalle = "INSERT INTO pedidos_detalles_anticipo (id_pedido, concepto, unidad, cantidad, precio_unitario, importe) VALUES (?, ?, ?, ?, ?, ?)";
+  let inserted = 0;
+  for (const detalleRaw of detallesRaw) {
+    const detalle = prepareAnticipoDetalleForInsert(detalleRaw || {});
+    const values = [pedidoId, detalle.concepto, detalle.unidad, detalle.cantidad, detalle.precio_unitario, detalle.importe];
+    await queryAsync(sqlDetalle, values);
+    inserted += 1;
+  }
+  return inserted;
+}
+
 export async function insertPedidoDetallesRows(pedidoId, detallesRaw) {
   if (!Array.isArray(detallesRaw) || detallesRaw.length === 0) return;
   const sqlDetalle = "INSERT INTO pedidos_detalles_miscelaneos (id_pedido, descripcion, concepto_detalle, unidad, medida, cantidad, precio_unitario, importe, clave, ml, acabado, kg, precio_x_kg) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
@@ -236,8 +271,12 @@ export async function insertPedidoDetallesRows(pedidoId, detallesRaw) {
   }
 }
 
-export async function insertDetallesSegunFamilia(pedidoId, familia, detallesRaw, pedidoContext = {}) {
+export async function insertDetallesSegunFamilia(pedidoId, familia, detallesRaw, pedidoContext = {}, esAnticipo = false) {
   if (!Array.isArray(detallesRaw) || detallesRaw.length === 0) return;
+  if (esAnticipo) {
+    await insertAnticipoDetallesRows(pedidoId, detallesRaw);
+    return;
+  }
   const familiaVal = normalizeTextValue(familia).toUpperCase();
   if (familiaVal === "CR") {
     await insertCristalDetallesRows(pedidoId, detallesRaw);
@@ -253,10 +292,14 @@ export async function insertDetallesSegunFamilia(pedidoId, familia, detallesRaw,
 export async function calcularImporteDesdeDetalles(row, { includeSubtotal = false } = {}) {
   const pedidoId = Number(row?.id);
   if (!Number.isFinite(pedidoId) || pedidoId <= 0) return includeSubtotal ? { subtotal: 0, total: 0 } : 0;
-  const familia = normalizeTextValue(row?.familia).toUpperCase();
   let table = "pedidos_detalles_miscelaneos";
-  if (familia === "CR") table = "pedidos_detalles_cristal";
-  if (familia === "AL" || familia === "MQAL") table = "pedidos_detalles_aluminio";
+  if (row?.es_anticipo) {
+    table = "pedidos_detalles_anticipo";
+  } else {
+    const familia = normalizeTextValue(row?.familia).toUpperCase();
+    if (familia === "CR") table = "pedidos_detalles_cristal";
+    if (familia === "AL" || familia === "MQAL") table = "pedidos_detalles_aluminio";
+  }
   const sumRows = await queryAsync(`SELECT SUM(importe) AS subtotal FROM ${table} WHERE id_pedido = ?`, [pedidoId]);
   const subtotal = Number(sumRows?.[0]?.subtotal || 0);
   const subtotalBase = Number(subtotal.toFixed(2));
@@ -265,14 +308,16 @@ export async function calcularImporteDesdeDetalles(row, { includeSubtotal = fals
   const descuentoMonto = subtotalBase * (mathPct / 100);
   const subtotalConDesc = subtotalBase - descuentoMonto;
   const ivaMonto = subtotalConDesc * 0.16;
-  const total = salidaTlatilco ? 0 : Number(Math.max(0, subtotalConDesc + ivaMonto).toFixed(2));
-  if (includeSubtotal) return { subtotal: subtotalBase, total };
+  const totalMaterial = Number(Math.max(0, subtotalConDesc + ivaMonto).toFixed(2));
+  const cubierto = Number(row?.monto_cubierto_anticipo || 0);
+  const total = salidaTlatilco ? 0 : Number(Math.max(0, totalMaterial - cubierto).toFixed(2));
+  if (includeSubtotal) return { subtotal: subtotalBase, total, totalMaterial };
   return total;
 }
 
 export async function getPedidosForRecalc(proyectoId) {
   return queryAsync(
-    "SELECT id, familia, situaciones_especiales, porcentaje_descuento FROM pedidos WHERE id_proyecto = ?",
+    "SELECT id, familia, es_anticipo, situaciones_especiales, porcentaje_descuento, monto_cubierto_anticipo FROM pedidos WHERE id_proyecto = ?",
     [proyectoId]
   );
 }
@@ -311,16 +356,16 @@ export async function proyectoExists(id) {
 
 export async function insertPedidoDirecto(values) {
   const sql = `INSERT INTO pedidos
-    (id_proyecto, nombre_proyecto, pedido, clan, familia, proveedor, fecha_aprobacion, concepto, situaciones_especiales, descripcion_general, porcentaje_descuento, moneda_aluminio, tipo_cambio, precio_aluminio_kg, precio_pintura_m2, importe_total, nombre_usuario, estado, fecha_levantado)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'levantado', NOW())`;
+    (id_proyecto, nombre_proyecto, pedido, clan, familia, es_anticipo, proveedor, fecha_aprobacion, concepto, situaciones_especiales, descripcion_general, porcentaje_descuento, moneda_aluminio, tipo_cambio, precio_aluminio_kg, precio_pintura_m2, importe_total, nombre_usuario, estado, fecha_levantado)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'levantado', NOW())`;
   return queryAsync(sql, values);
 }
 
 export async function getPedidoById(pedidoId) {
-  const sql = `SELECT id, id_proyecto, nombre_proyecto, pedido, clan, familia, proveedor,
+  const sql = `SELECT id, id_proyecto, nombre_proyecto, pedido, clan, familia, es_anticipo, proveedor,
       DATE_FORMAT(fecha_aprobacion, '%Y-%m-%d') AS fecha_aprobacion, concepto, situaciones_especiales,
       descripcion_general, porcentaje_descuento, moneda_aluminio, tipo_cambio, precio_aluminio_kg, precio_pintura_m2,
-      importe_total AS importe, nombre_usuario, estado, id_aprobador,
+      importe_total AS importe, monto_cubierto_anticipo, nombre_usuario, estado, id_aprobador,
       DATE_FORMAT(fecha_levantado, '%Y-%m-%d %H:%i:%s') AS fecha_levantado,
       DATE_FORMAT(fecha_resolucion, '%Y-%m-%d %H:%i:%s') AS fecha_resolucion
     FROM pedidos WHERE id = ? LIMIT 1`;
@@ -328,7 +373,8 @@ export async function getPedidoById(pedidoId) {
   return rows && rows.length > 0 ? rows[0] : null;
 }
 
-export async function getDetallesSegunFamilia(pedidoId, familia) {
+export async function getDetallesSegunFamilia(pedidoId, familia, esAnticipo = false) {
+  if (esAnticipo) return getDetallesAnticipo(pedidoId);
   const familiaVal = normalizeTextValue(familia).toUpperCase();
   if (familiaVal === "CR") return getDetallesCristal(pedidoId);
   if (familiaVal === "AL" || familiaVal === "MQAL") return getDetallesAluminio(pedidoId);
@@ -339,7 +385,8 @@ export async function deleteDetallesMiscelaneos(pedidoId) {
   return queryAsync("DELETE FROM pedidos_detalles_miscelaneos WHERE id_pedido = ?", [pedidoId]);
 }
 
-export async function deleteDetallesSegunFamilia(pedidoId, familia) {
+export async function deleteDetallesSegunFamilia(pedidoId, familia, esAnticipo = false) {
+  if (esAnticipo) return deleteDetallesAnticipo(pedidoId);
   const familiaVal = normalizeTextValue(familia).toUpperCase();
   if (familiaVal === "CR") return deleteDetallesCristal(pedidoId);
   if (familiaVal === "AL" || familiaVal === "MQAL") return deleteDetallesAluminio(pedidoId);
@@ -392,6 +439,193 @@ export async function getHistorialByPedido(pedidoId) {
     WHERE h.id_pedido = ?
     ORDER BY h.fecha_registro ASC, h.id ASC`;
   return queryAsync(sql, [pedidoId]);
+}
+
+export async function getSaldoAnticipo(pedidoAnticipoId) {
+  const rows = await queryAsync(
+    `SELECT p.importe_total AS monto_total, COALESCE(SUM(a.monto_aplicado), 0) AS monto_aplicado
+     FROM pedidos p
+     LEFT JOIN pedidos_anticipo_aplicaciones a ON a.id_pedido_anticipo = p.id
+     WHERE p.id = ? AND p.es_anticipo = 1
+     GROUP BY p.id, p.importe_total`,
+    [pedidoAnticipoId]
+  );
+  const row = rows?.[0];
+  if (!row) return null;
+  const montoTotal = Number(row.monto_total || 0);
+  const montoAplicado = Number(row.monto_aplicado || 0);
+  return {
+    monto_total: montoTotal,
+    monto_aplicado: montoAplicado,
+    saldo_disponible: Number(Math.max(0, montoTotal - montoAplicado).toFixed(2)),
+  };
+}
+
+export async function listAnticiposDisponibles(idProyecto, familia) {
+  const familiaVal = normalizeTextValue(familia).toUpperCase();
+  const rows = await queryAsync(
+    `SELECT p.id, p.pedido, p.proveedor, p.importe_total AS monto_total,
+        COALESCE(SUM(a.monto_aplicado), 0) AS monto_aplicado
+     FROM pedidos p
+     LEFT JOIN pedidos_anticipo_aplicaciones a ON a.id_pedido_anticipo = p.id
+     WHERE p.id_proyecto = ? AND p.es_anticipo = 1 AND p.estado = 'aprobado' AND UPPER(p.familia) = ?
+     GROUP BY p.id, p.pedido, p.proveedor, p.importe_total
+     HAVING (p.importe_total - COALESCE(SUM(a.monto_aplicado), 0)) > 0.001
+     ORDER BY p.fecha_aprobacion ASC`,
+    [idProyecto, familiaVal]
+  );
+  return (rows || []).map((r) => {
+    const montoTotal = Number(r.monto_total || 0);
+    const montoAplicado = Number(r.monto_aplicado || 0);
+    return {
+      id: r.id,
+      pedido: r.pedido,
+      proveedor: r.proveedor,
+      monto_total: montoTotal,
+      monto_aplicado: montoAplicado,
+      saldo_disponible: Number(Math.max(0, montoTotal - montoAplicado).toFixed(2)),
+    };
+  });
+}
+
+export async function getAplicacionesByAnticipo(pedidoAnticipoId) {
+  const sql = `SELECT a.id, a.id_pedido_destino, p.pedido AS pedido_destino, p.concepto AS concepto_destino,
+      a.monto_aplicado, DATE_FORMAT(a.fecha_registro, '%Y-%m-%d %H:%i:%s') AS fecha_registro, u.nombre_usuario
+    FROM pedidos_anticipo_aplicaciones a
+    JOIN pedidos p ON p.id = a.id_pedido_destino
+    JOIN usuarios u ON u.id_usuario = a.id_usuario
+    WHERE a.id_pedido_anticipo = ?
+    ORDER BY a.fecha_registro ASC`;
+  return queryAsync(sql, [pedidoAnticipoId]);
+}
+
+export async function getAplicacionByDestino(pedidoDestinoId) {
+  const sql = `SELECT a.id, a.id_pedido_anticipo, p.pedido AS pedido_anticipo, a.monto_aplicado,
+      DATE_FORMAT(a.fecha_registro, '%Y-%m-%d %H:%i:%s') AS fecha_registro
+    FROM pedidos_anticipo_aplicaciones a
+    JOIN pedidos p ON p.id = a.id_pedido_anticipo
+    WHERE a.id_pedido_destino = ?
+    LIMIT 1`;
+  const rows = await queryAsync(sql, [pedidoDestinoId]);
+  return rows && rows.length > 0 ? rows[0] : null;
+}
+
+// Transacción atómica: valida saldo disponible del anticipo (con lock FOR UPDATE sobre ambos
+// pedidos para evitar doble-gasto por dos requests concurrentes), registra/actualiza la
+// aplicación (una sola fila mutable por pedido destino, ver UNIQUE(id_pedido_destino)) y
+// recalcula importe_total/monto_cubierto_anticipo del pedido destino en la misma transacción.
+export async function registrarAplicacionAnticipo({ idPedidoAnticipo, idPedidoDestino, montoAplicado, idUsuario }) {
+  const monto = Number(montoAplicado);
+  if (!Number.isFinite(monto) || monto <= 0) {
+    throw Object.assign(new Error("El monto a aplicar debe ser mayor a 0"), { status: 400 });
+  }
+  return withTransaction(async (query) => {
+    const anticipoRows = await query(
+      "SELECT id, id_proyecto, familia, estado, importe_total FROM pedidos WHERE id = ? AND es_anticipo = 1 FOR UPDATE",
+      [idPedidoAnticipo]
+    );
+    const anticipo = anticipoRows?.[0];
+    if (!anticipo) throw Object.assign(new Error("Anticipo no encontrado"), { status: 404 });
+    if (anticipo.estado !== "aprobado") {
+      throw Object.assign(new Error("Solo se puede aplicar el saldo de un anticipo aprobado"), { status: 400 });
+    }
+
+    const destinoRows = await query(
+      "SELECT id, id_proyecto, familia, es_anticipo, situaciones_especiales, porcentaje_descuento FROM pedidos WHERE id = ? FOR UPDATE",
+      [idPedidoDestino]
+    );
+    const destino = destinoRows?.[0];
+    if (!destino) throw Object.assign(new Error("Pedido no encontrado"), { status: 404 });
+    if (destino.es_anticipo) {
+      throw Object.assign(new Error("Un anticipo no puede aplicar el saldo de otro anticipo"), { status: 400 });
+    }
+    if (Number(destino.id_proyecto) !== Number(anticipo.id_proyecto)) {
+      throw Object.assign(new Error("El anticipo pertenece a otro proyecto"), { status: 400 });
+    }
+    if (normalizeTextValue(destino.familia).toUpperCase() !== normalizeTextValue(anticipo.familia).toUpperCase()) {
+      throw Object.assign(new Error("El anticipo es de otra familia de material"), { status: 400 });
+    }
+
+    const existenteRows = await query(
+      "SELECT id, id_pedido_anticipo FROM pedidos_anticipo_aplicaciones WHERE id_pedido_destino = ? FOR UPDATE",
+      [idPedidoDestino]
+    );
+    const existente = existenteRows?.[0];
+    if (existente && Number(existente.id_pedido_anticipo) !== Number(idPedidoAnticipo)) {
+      throw Object.assign(new Error("Este pedido ya tiene aplicado el saldo de otro anticipo"), { status: 409 });
+    }
+
+    const aplicadoAOtrosRows = await query(
+      "SELECT COALESCE(SUM(monto_aplicado),0) AS total FROM pedidos_anticipo_aplicaciones WHERE id_pedido_anticipo = ? AND id_pedido_destino != ?",
+      [idPedidoAnticipo, idPedidoDestino]
+    );
+    const aplicadoAOtros = Number(aplicadoAOtrosRows?.[0]?.total || 0);
+    const saldoDisponible = Number((Number(anticipo.importe_total) - aplicadoAOtros).toFixed(2));
+    if (monto > saldoDisponible + 0.005) {
+      throw Object.assign(new Error(`El anticipo solo tiene ${saldoDisponible.toFixed(2)} disponibles`), { status: 400 });
+    }
+
+    const calcSinCubrir = await calcularImporteDesdeDetalles({ ...destino, monto_cubierto_anticipo: 0 }, { includeSubtotal: true });
+    if (monto > calcSinCubrir.totalMaterial + 0.005) {
+      throw Object.assign(new Error("El monto a aplicar no puede superar el valor del pedido"), { status: 400 });
+    }
+
+    if (existente) {
+      await query("UPDATE pedidos_anticipo_aplicaciones SET monto_aplicado = ?, id_usuario = ? WHERE id = ?", [monto, idUsuario, existente.id]);
+    } else {
+      await query(
+        "INSERT INTO pedidos_anticipo_aplicaciones (id_pedido_anticipo, id_pedido_destino, monto_aplicado, id_usuario) VALUES (?, ?, ?, ?)",
+        [idPedidoAnticipo, idPedidoDestino, monto, idUsuario]
+      );
+    }
+
+    const calcFinal = await calcularImporteDesdeDetalles({ ...destino, monto_cubierto_anticipo: monto }, { includeSubtotal: false });
+    await query("UPDATE pedidos SET importe_total = ?, monto_cubierto_anticipo = ? WHERE id = ?", [calcFinal, monto, idPedidoDestino]);
+
+    return { importe_total: calcFinal, monto_cubierto_anticipo: monto };
+  });
+}
+
+export async function quitarAplicacionAnticipo({ idPedidoDestino }) {
+  return withTransaction(async (query) => {
+    const destinoRows = await query(
+      "SELECT id, familia, es_anticipo, situaciones_especiales, porcentaje_descuento FROM pedidos WHERE id = ? FOR UPDATE",
+      [idPedidoDestino]
+    );
+    const destino = destinoRows?.[0];
+    if (!destino) throw Object.assign(new Error("Pedido no encontrado"), { status: 404 });
+    await query("DELETE FROM pedidos_anticipo_aplicaciones WHERE id_pedido_destino = ?", [idPedidoDestino]);
+    const calcFinal = await calcularImporteDesdeDetalles({ ...destino, monto_cubierto_anticipo: 0 }, { includeSubtotal: false });
+    await query("UPDATE pedidos SET importe_total = ?, monto_cubierto_anticipo = 0 WHERE id = ?", [calcFinal, idPedidoDestino]);
+    return { importe_total: calcFinal, monto_cubierto_anticipo: 0 };
+  });
+}
+
+// Usado por actualizar() cuando se reemplaza el detalle de un pedido destino que ya tenía
+// anticipo aplicado: si el nuevo valor del material es menor al monto ya cubierto, hace
+// clamp de la aplicación y libera el excedente de vuelta al saldo del anticipo (la aplicación
+// vive en pedidos_anticipo_aplicaciones, que es lo único que cuenta para el saldo del anticipo).
+export async function reconciliarCoberturaAnticipo({ pedidoDestinoId, totalMaterial, salidaTlatilco }) {
+  return withTransaction(async (query) => {
+    const rows = await query(
+      "SELECT id, monto_aplicado FROM pedidos_anticipo_aplicaciones WHERE id_pedido_destino = ? FOR UPDATE",
+      [pedidoDestinoId]
+    );
+    const aplicacion = rows?.[0];
+    let cubierto = aplicacion ? Number(aplicacion.monto_aplicado || 0) : 0;
+    if (aplicacion && cubierto > totalMaterial) {
+      const nuevoCubierto = Number(Math.max(0, totalMaterial).toFixed(2));
+      if (nuevoCubierto <= 0) {
+        await query("DELETE FROM pedidos_anticipo_aplicaciones WHERE id = ?", [aplicacion.id]);
+      } else {
+        await query("UPDATE pedidos_anticipo_aplicaciones SET monto_aplicado = ? WHERE id = ?", [nuevoCubierto, aplicacion.id]);
+      }
+      cubierto = nuevoCubierto;
+    }
+    const total = salidaTlatilco ? 0 : Number(Math.max(0, totalMaterial - cubierto).toFixed(2));
+    await query("UPDATE pedidos SET importe_total = ?, monto_cubierto_anticipo = ? WHERE id = ?", [total, cubierto, pedidoDestinoId]);
+    return { importe_total: total, monto_cubierto_anticipo: cubierto };
+  });
 }
 
 // idUsuarioRestringido: id de cualquier usuario no-Superadmin (antes solo Supervisor) cuya

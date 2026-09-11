@@ -249,6 +249,26 @@ export function calcularCamposAluminio(detalle, pedidoContext = {}) {
   return { ml, kg, m2, importe };
 }
 
+export function prepareAnticipoDetalleForInsert(detalle) {
+  const concepto = normalizeTextValue(detalle?.concepto) || "Anticipo";
+  const unidad = normalizeTextValue(detalle?.unidad) || null;
+  const cantidadBase = toFiniteNumber(detalle?.cantidad);
+  const cantidad = cantidadBase !== null ? cantidadBase : 0;
+  let precioUnitario = toFiniteNumber(detalle?.precio_unitario);
+  const importeDato = toFiniteNumber(detalle?.importe);
+  if ((precioUnitario === null || precioUnitario === 0) && importeDato !== null && cantidad) {
+    precioUnitario = Number((importeDato / cantidad).toFixed(2));
+  }
+  const importe = importeDato !== null ? importeDato : Number((cantidad * (precioUnitario || 0)).toFixed(2));
+  return {
+    concepto,
+    unidad,
+    cantidad,
+    precio_unitario: precioUnitario !== null ? precioUnitario : 0,
+    importe,
+  };
+}
+
 export function prepareAluminioDetalleForInsert(detalle, pedidoContext = {}) {
   const descripcion = normalizeTextValue(detalle?.descripcion) || "Detalle aluminio";
   const numeroPerfil = normalizeTextValue(detalle?.numero_perfil) || null;

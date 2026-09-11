@@ -15,6 +15,7 @@ export const COLUMNAS_CRISTAL = [
 
 export const COLUMNAS_ALUMINIO = [
   { key: "numero_perfil", label: "N° perfil", align: "left" },
+  { key: "descripcion", label: "Descripción del perfil", align: "left" },
   { key: "medida_tramo", label: "Medida", align: "right" },
   { key: "unidad", label: "Unidad", align: "left" },
   { key: "peso_kg_ml", label: "Peso kg/ml", align: "right" },
@@ -41,7 +42,16 @@ export const COLUMNAS_MISCELANEOS = [
   { key: "precio_x_kg", label: "Precio × Kg", align: "right", money: true },
 ];
 
-export function columnasPdfPorFamilia(familia) {
+export const COLUMNAS_ANTICIPO = [
+  { key: "concepto", label: "Concepto", align: "left" },
+  { key: "unidad", label: "Unidad", align: "left" },
+  { key: "cantidad", label: "Cantidad", align: "right" },
+  { key: "precio_unitario", label: "P. unitario", align: "right", money: true },
+  { key: "importe", label: "Importe", align: "right", money: true },
+];
+
+export function columnasPdfPorFamilia(familia, esAnticipo = false) {
+  if (esAnticipo) return COLUMNAS_ANTICIPO;
   const f = String(familia || "").trim().toUpperCase();
   if (f === "CR") return COLUMNAS_CRISTAL;
   if (f === "AL" || f === "MQAL") return COLUMNAS_ALUMINIO;

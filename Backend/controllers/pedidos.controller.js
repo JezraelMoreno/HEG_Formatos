@@ -235,6 +235,12 @@ export async function crearDirecto(req, res) {
     if (pedidoContext.error) {
       return res.status(400).json({ success: false, message: pedidoContext.error });
     }
+    const esAnticipo = Boolean(body.es_anticipo);
+    const idPedidoAnticipo = toFiniteNumber(body.id_pedido_anticipo);
+    const montoAplicadoAnticipo = toFiniteNumber(body.monto_aplicado_anticipo);
+    if (esAnticipo && idPedidoAnticipo) {
+      return res.status(400).json({ success: false, message: "Un anticipo no puede aplicar el saldo de otro anticipo" });
+    }
     const username = normalizeTextValue(req.user?.username);
     if (!username) {
       return res.status(400).json({ success: false, message: "Usuario inválido" });
@@ -247,6 +253,7 @@ export async function crearDirecto(req, res) {
       pedidoNombre,
       clan,
       familia,
+      esAnticipo ? 1 : 0,
       proveedor,
       fechaISO,
       concepto,
@@ -275,12 +282,12 @@ export async function crearDirecto(req, res) {
 
     const detalles = Array.isArray(body.detalles) ? body.detalles : [];
     if (detalles.length > 0) {
-      await PedidoModel.insertDetallesSegunFamilia(pedidoId, familia, detalles, pedidoContext);
+      await PedidoModel.insertDetallesSegunFamilia(pedidoId, familia, detalles, pedidoContext, esAnticipo);
     }
     let importeFinal = 0;
     try {
       const calc = await PedidoModel.calcularImporteDesdeDetalles(
-        { id: pedidoId, familia, situaciones_especiales: situacionesEspeciales, porcentaje_descuento: porcentajeDescuentoDb },
+        { id: pedidoId, familia, es_anticipo: esAnticipo, situaciones_especiales: situacionesEspeciales, porcentaje_descuento: porcentajeDescuentoDb },
         { includeSubtotal: false }
       );
       if (Number.isFinite(calc)) importeFinal = Number(calc);
@@ -288,6 +295,22 @@ export async function crearDirecto(req, res) {
       console.error("No se pudo calcular el importe del pedido nuevo:", calcErr);
     }
     await PedidoModel.updateImporteTotal(pedidoId, importeFinal);
+
+    if (!esAnticipo && idPedidoAnticipo && montoAplicadoAnticipo && montoAplicadoAnticipo > 0) {
+      try {
+        await PedidoModel.registrarAplicacionAnticipo({
+          idPedidoAnticipo,
+          idPedidoDestino: pedidoId,
+          montoAplicado: montoAplicadoAnticipo,
+          idUsuario,
+        });
+      } catch (anticipoErr) {
+        return res.status(anticipoErr.status || 500).json({
+          success: false,
+          message: anticipoErr.status ? anticipoErr.message : "No se pudo aplicar el anticipo",
+        });
+      }
+    }
 
     const pedido = await PedidoModel.getPedidoById(pedidoId);
     return res.status(201).json({ success: true, data: pedido });
@@ -307,8 +330,14 @@ export async function obtenerUno(req, res) {
     if (!pedido) {
       return res.status(404).json({ success: false, message: "Pedido no encontrado" });
     }
-    const detalles = await PedidoModel.getDetallesSegunFamilia(pedidoId, pedido.familia);
-    return res.json({ success: true, data: { ...pedido, detalles } });
+    const detalles = await PedidoModel.getDetallesSegunFamilia(pedidoId, pedido.familia, !!pedido.es_anticipo);
+    const extra = pedido.es_anticipo
+      ? {
+          saldo_anticipo: await PedidoModel.getSaldoAnticipo(pedidoId),
+          aplicaciones: await PedidoModel.getAplicacionesByAnticipo(pedidoId),
+        }
+      : { aplicacion_anticipo: await PedidoModel.getAplicacionByDestino(pedidoId) };
+    return res.json({ success: true, data: { ...pedido, detalles, ...extra } });
   } catch (err) {
     console.error("Error consultando pedido:", err);
     return res.status(500).json({ success: false, message: "Error consultando el pedido" });
@@ -329,6 +358,10 @@ export async function actualizar(req, res) {
       return res.status(409).json({ success: false, message: "No se puede editar un pedido rechazado" });
     }
     const body = req.body || {};
+    if (body.es_anticipo !== undefined && Boolean(body.es_anticipo) !== Boolean(existing.es_anticipo)) {
+      return res.status(400).json({ success: false, message: "No se puede cambiar el tipo del pedido (anticipo) después de creado" });
+    }
+    const esAnticipo = Boolean(existing.es_anticipo);
     const pedidoNombre = normalizeTextValue(body.pedido) || existing.pedido;
     const clan = normalizeTextValue(body.clan) || existing.clan;
     const familia = normalizeTextValue(body.familia) || existing.familia;
@@ -374,28 +407,78 @@ export async function actualizar(req, res) {
 
     const { detalles, reemplazar = true } = body;
     if (Array.isArray(detalles) && detalles.length > 0) {
+      if (esAnticipo) {
+        const aplicaciones = await PedidoModel.getAplicacionesByAnticipo(pedidoId);
+        if (Array.isArray(aplicaciones) && aplicaciones.length > 0) {
+          return res.status(409).json({
+            success: false,
+            message: "No se puede editar el detalle de un anticipo con aplicaciones ya registradas",
+          });
+        }
+      }
       if (reemplazar !== false) {
         // Se borra la familia ANTERIOR (no la nueva) para no dejar filas huérfanas si el
         // pedido cambió de familia (p.ej. Cristal -> Aluminio) en esta misma edición.
-        await PedidoModel.deleteDetallesSegunFamilia(pedidoId, existing.familia);
+        await PedidoModel.deleteDetallesSegunFamilia(pedidoId, existing.familia, esAnticipo);
       }
-      await PedidoModel.insertDetallesSegunFamilia(pedidoId, familia, detalles, pedidoContext);
+      await PedidoModel.insertDetallesSegunFamilia(pedidoId, familia, detalles, pedidoContext, esAnticipo);
     }
 
+    const cubiertoActual = Number(existing.monto_cubierto_anticipo || 0);
     let importeFinal = Number(existing.importe) || 0;
     try {
       const calc = await PedidoModel.calcularImporteDesdeDetalles(
-        { id: pedidoId, familia, situaciones_especiales: situacionesEspeciales, porcentaje_descuento: porcentajeDescuentoDb },
-        { includeSubtotal: false }
+        {
+          id: pedidoId,
+          familia,
+          es_anticipo: esAnticipo,
+          situaciones_especiales: situacionesEspeciales,
+          porcentaje_descuento: porcentajeDescuentoDb,
+          monto_cubierto_anticipo: 0,
+        },
+        { includeSubtotal: true }
       );
-      if (Number.isFinite(calc)) importeFinal = Number(calc);
+      importeFinal = Number(calc.total);
+      if (!esAnticipo && cubiertoActual > 0) {
+        const salidaTlatilco = isSalidaTlatilco(situacionesEspeciales);
+        const reconciliado = await PedidoModel.reconciliarCoberturaAnticipo({
+          pedidoDestinoId: pedidoId,
+          totalMaterial: calc.totalMaterial,
+          salidaTlatilco,
+        });
+        importeFinal = Number(reconciliado.importe_total);
+      }
     } catch (calcErr) {
       console.error("No se pudo recalcular el importe del pedido editado:", calcErr);
     }
     await PedidoModel.updateImporteTotal(pedidoId, importeFinal);
 
+    if (!esAnticipo) {
+      const idUsuario = req.user?.sub;
+      const removerAnticipo = body.remover_anticipo === true;
+      const idPedidoAnticipo = toFiniteNumber(body.id_pedido_anticipo);
+      const montoAplicadoAnticipo = toFiniteNumber(body.monto_aplicado_anticipo);
+      try {
+        if (removerAnticipo) {
+          await PedidoModel.quitarAplicacionAnticipo({ idPedidoDestino: pedidoId });
+        } else if (idPedidoAnticipo && montoAplicadoAnticipo && montoAplicadoAnticipo > 0) {
+          await PedidoModel.registrarAplicacionAnticipo({
+            idPedidoAnticipo,
+            idPedidoDestino: pedidoId,
+            montoAplicado: montoAplicadoAnticipo,
+            idUsuario,
+          });
+        }
+      } catch (anticipoErr) {
+        return res.status(anticipoErr.status || 500).json({
+          success: false,
+          message: anticipoErr.status ? anticipoErr.message : "No se pudo actualizar la aplicación del anticipo",
+        });
+      }
+    }
+
     const pedidoActualizado = await PedidoModel.getPedidoById(pedidoId);
-    const detallesActuales = await PedidoModel.getDetallesSegunFamilia(pedidoId, familia);
+    const detallesActuales = await PedidoModel.getDetallesSegunFamilia(pedidoId, familia, esAnticipo);
     return res.json({ success: true, data: { ...pedidoActualizado, detalles: detallesActuales } });
   } catch (err) {
     console.error("Error actualizando pedido:", err);
@@ -428,6 +511,24 @@ export async function cambiarEstado(req, res) {
     }
     if (pedido.estado === estadoNuevo) {
       return res.status(409).json({ success: false, message: `El pedido ya está en estado '${estadoNuevo}'` });
+    }
+    if (estadoNuevo === "rechazado" && pedido.es_anticipo) {
+      const aplicaciones = await PedidoModel.getAplicacionesByAnticipo(pedidoId);
+      if (Array.isArray(aplicaciones) && aplicaciones.length > 0) {
+        return res.status(409).json({
+          success: false,
+          message: "No se puede rechazar un anticipo con aplicaciones ya registradas",
+        });
+      }
+    }
+    if (estadoNuevo === "rechazado" && !pedido.es_anticipo && Number(pedido.monto_cubierto_anticipo || 0) > 0) {
+      // El pedido consumía saldo de un anticipo; al rechazarse esa compra nunca se concreta,
+      // así que el saldo se libera automáticamente de vuelta al anticipo.
+      try {
+        await PedidoModel.quitarAplicacionAnticipo({ idPedidoDestino: pedidoId });
+      } catch (releaseErr) {
+        console.error("No se pudo liberar el saldo de anticipo al rechazar el pedido:", releaseErr);
+      }
     }
     const idUsuario = req.user?.sub;
     await PedidoModel.updateEstado(pedidoId, estadoNuevo, idUsuario);
@@ -535,8 +636,8 @@ export async function generarPdf(req, res) {
     if (!pedido) {
       return res.status(404).json({ success: false, message: "Pedido no encontrado" });
     }
-    const detalles = await PedidoModel.getDetallesSegunFamilia(pedidoId, pedido.familia);
-    const columnas = columnasPdfPorFamilia(pedido.familia);
+    const detalles = await PedidoModel.getDetallesSegunFamilia(pedidoId, pedido.familia, !!pedido.es_anticipo);
+    const columnas = columnasPdfPorFamilia(pedido.familia, !!pedido.es_anticipo);
 
     const subtotalBase = calcularSubtotalDetalles(detalles);
     const { mathPct } = normalizePct(pedido.porcentaje_descuento);
@@ -562,7 +663,7 @@ export async function generarPdf(req, res) {
     const margenX = doc.page.margins.left;
     const anchoDisponible = doc.page.width - margenX - doc.page.margins.right;
 
-    doc.fontSize(16).font("Helvetica-Bold").fillColor("#224c84").text("HEG Formatos", margenX, 36);
+    doc.fontSize(16).font("Helvetica-Bold").fillColor("#224c84").text("HEG Diseño e Instalación", margenX, 36);
     doc.fontSize(10).font("Helvetica").fillColor("#64748b").text("Pedido a proveedor — documento de solo lectura", margenX, 56);
 
     doc.moveTo(margenX, 78).lineTo(margenX + anchoDisponible, 78).strokeColor("#e2e8f0").lineWidth(1).stroke();
@@ -679,11 +780,100 @@ export async function eliminar(req, res) {
     if (!pedido) {
       return res.status(404).json({ success: false, message: "Pedido no encontrado" });
     }
+    if (pedido.es_anticipo) {
+      const aplicaciones = await PedidoModel.getAplicacionesByAnticipo(pedidoId);
+      if (Array.isArray(aplicaciones) && aplicaciones.length > 0) {
+        return res.status(409).json({ success: false, message: "No se puede eliminar un anticipo con aplicaciones registradas" });
+      }
+    } else {
+      const aplicacion = await PedidoModel.getAplicacionByDestino(pedidoId);
+      if (aplicacion) {
+        return res.status(409).json({ success: false, message: "No se puede eliminar un pedido que tiene un anticipo aplicado" });
+      }
+    }
     await PedidoModel.deletePedidoById(pedidoId, pedido.id_proyecto);
     return res.json({ success: true, message: "Pedido eliminado" });
   } catch (err) {
     console.error("Error eliminando pedido:", err);
     return res.status(500).json({ success: false, message: "Error interno al eliminar el pedido" });
+  }
+}
+
+export async function listarAnticiposDisponibles(req, res) {
+  try {
+    const proyectoId = Number(req.params.id);
+    if (!Number.isInteger(proyectoId) || proyectoId <= 0) {
+      return res.status(400).json({ success: false, message: "Proyecto inválido" });
+    }
+    const familia = normalizeTextValue(req.query.familia);
+    if (!familia) {
+      return res.status(400).json({ success: false, message: "Falta la familia a consultar" });
+    }
+    const data = await PedidoModel.listAnticiposDisponibles(proyectoId, familia);
+    return res.json({ success: true, data });
+  } catch (err) {
+    console.error("Error consultando anticipos disponibles:", err);
+    return res.status(500).json({ success: false, message: "Error consultando anticipos disponibles" });
+  }
+}
+
+export async function aplicarAnticipo(req, res) {
+  try {
+    const pedidoId = Number(req.params.pedidoId);
+    if (!Number.isInteger(pedidoId) || pedidoId <= 0) {
+      return res.status(400).json({ success: false, message: "Pedido inválido" });
+    }
+    const idPedidoAnticipo = toFiniteNumber(req.body?.id_pedido_anticipo);
+    const montoAplicado = toFiniteNumber(req.body?.monto_aplicado);
+    if (!idPedidoAnticipo || !montoAplicado || montoAplicado <= 0) {
+      return res.status(400).json({ success: false, message: "Faltan datos para aplicar el anticipo" });
+    }
+    const pedido = await PedidoModel.getPedidoById(pedidoId);
+    if (!pedido) {
+      return res.status(404).json({ success: false, message: "Pedido no encontrado" });
+    }
+    if (pedido.estado === "rechazado") {
+      return res.status(409).json({ success: false, message: "No se puede editar un pedido rechazado" });
+    }
+    if (pedido.es_anticipo) {
+      return res.status(400).json({ success: false, message: "Un anticipo no puede aplicar el saldo de otro anticipo" });
+    }
+    const idUsuario = req.user?.sub;
+    await PedidoModel.registrarAplicacionAnticipo({ idPedidoAnticipo, idPedidoDestino: pedidoId, montoAplicado, idUsuario });
+    const pedidoActualizado = await PedidoModel.getPedidoById(pedidoId);
+    const aplicacion_anticipo = await PedidoModel.getAplicacionByDestino(pedidoId);
+    return res.json({ success: true, data: { ...pedidoActualizado, aplicacion_anticipo } });
+  } catch (err) {
+    console.error("Error aplicando anticipo:", err);
+    return res.status(err.status || 500).json({
+      success: false,
+      message: err.status ? err.message : "Error interno al aplicar el anticipo",
+    });
+  }
+}
+
+export async function quitarAnticipo(req, res) {
+  try {
+    const pedidoId = Number(req.params.pedidoId);
+    if (!Number.isInteger(pedidoId) || pedidoId <= 0) {
+      return res.status(400).json({ success: false, message: "Pedido inválido" });
+    }
+    const pedido = await PedidoModel.getPedidoById(pedidoId);
+    if (!pedido) {
+      return res.status(404).json({ success: false, message: "Pedido no encontrado" });
+    }
+    if (pedido.estado === "rechazado") {
+      return res.status(409).json({ success: false, message: "No se puede editar un pedido rechazado" });
+    }
+    await PedidoModel.quitarAplicacionAnticipo({ idPedidoDestino: pedidoId });
+    const pedidoActualizado = await PedidoModel.getPedidoById(pedidoId);
+    return res.json({ success: true, data: pedidoActualizado });
+  } catch (err) {
+    console.error("Error quitando anticipo:", err);
+    return res.status(err.status || 500).json({
+      success: false,
+      message: err.status ? err.message : "Error interno al quitar el anticipo",
+    });
   }
 }
 

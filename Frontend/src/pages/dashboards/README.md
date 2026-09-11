@@ -1,6 +1,6 @@
 # Módulo de Dashboards
 
-Este módulo proporciona dashboards analíticos por proyecto para el sistema de gestión de proyectos HEG Formatos.
+Este módulo proporciona dashboards analíticos por proyecto para el sistema de gestión de proyectos HEG Diseño e Instalación.
 
 ## Flujo de navegación
 

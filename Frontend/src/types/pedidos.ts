@@ -2,6 +2,33 @@ export type EstadoPedido = "levantado" | "aprobado" | "rechazado";
 
 export type TipoDetalle = "cristal" | "aluminio" | "miscelaneos";
 
+export type SaldoAnticipo = {
+  monto_total: number;
+  monto_aplicado: number;
+  saldo_disponible: number;
+};
+
+export type AnticipoDisponible = {
+  id: number;
+  pedido: string;
+  proveedor: string;
+  monto_total: number;
+  monto_aplicado: number;
+  saldo_disponible: number;
+};
+
+export type AplicacionAnticipo = {
+  id: number;
+  id_pedido_destino?: number;
+  pedido_destino?: string;
+  concepto_destino?: string;
+  id_pedido_anticipo?: number;
+  pedido_anticipo?: string;
+  monto_aplicado: number;
+  fecha_registro: string;
+  nombre_usuario?: string;
+};
+
 export type Pedido = {
   id: number;
   id_proyecto: number;
@@ -9,6 +36,7 @@ export type Pedido = {
   pedido: string;
   clan: string;
   familia: string;
+  es_anticipo: boolean;
   proveedor: string;
   nombre_usuario?: string | null;
   fecha_aprobacion: string; // YYYY-MM-DD
@@ -16,6 +44,7 @@ export type Pedido = {
   situaciones_especiales?: string | null;
   descripcion_general?: string | null;
   importe: number;
+  monto_cubierto_anticipo?: number;
   porcentaje_descuento?: number | null;
   moneda_aluminio?: "USD" | "MXN";
   tipo_cambio?: number | null;
@@ -25,6 +54,9 @@ export type Pedido = {
   id_aprobador?: number | null;
   fecha_levantado?: string | null;
   fecha_resolucion?: string | null;
+  saldo_anticipo?: SaldoAnticipo;
+  aplicaciones?: AplicacionAnticipo[];
+  aplicacion_anticipo?: AplicacionAnticipo | null;
 };
 
 export type PedidoDetalleItem = {
@@ -72,7 +104,20 @@ export type PedidoDetalleAluminioItem = {
   importe: number;
 };
 
-export type DetalleUnion = PedidoDetalleItem | PedidoDetalleCristalItem | PedidoDetalleAluminioItem;
+export type PedidoDetalleAnticipoItem = {
+  id_detalle: number;
+  concepto: string;
+  unidad?: string | null;
+  cantidad: number;
+  precio_unitario: number;
+  importe: number;
+};
+
+export type DetalleUnion =
+  | PedidoDetalleItem
+  | PedidoDetalleCristalItem
+  | PedidoDetalleAluminioItem
+  | PedidoDetalleAnticipoItem;
 
 export type HistorialEstadoItem = {
   id: number;

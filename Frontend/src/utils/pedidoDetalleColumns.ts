@@ -1,6 +1,7 @@
 import type {
   DetalleUnion,
   PedidoDetalleAluminioItem,
+  PedidoDetalleAnticipoItem,
   PedidoDetalleCristalItem,
   PedidoDetalleItem,
   TipoDetalle,
@@ -34,6 +35,7 @@ export const COLUMNAS_CRISTAL: ColumnaDetalle[] = [
 // heredado solo para el importe) — columnasPorTipo() elige la variante según el contexto.
 const COLUMNAS_ALUMINIO_BASE: Omit<ColumnaDetalle, "auto">[] = [
   { key: "numero_perfil", label: "N° perfil", align: "left", tipo: "text" },
+  { key: "descripcion", label: "Descripción del perfil", align: "left", tipo: "text" },
   { key: "medida_tramo", label: "Medida", align: "right", tipo: "number" },
   { key: "unidad", label: "Unidad", align: "left", tipo: "text" },
   { key: "peso_kg_ml", label: "Peso kg/ml", align: "right", tipo: "number" },
@@ -73,6 +75,17 @@ export const COLUMNAS_MISCELANEOS: ColumnaDetalle[] = [
   { key: "precio_x_kg", label: "Precio × Kg", align: "right", tipo: "number" },
 ];
 
+// Anticipo: mismo shape simple sin importar la familia que pre-paga (concepto libre en vez de
+// perfil/pieza/clave) — coincide con el formato real de proveedor (ver Documentacion/
+// Ejemplo_anticipos.pdf: "ANTICIPO DE ALUMINIO" KG 6000 USD 5.10, etc.).
+export const COLUMNAS_ANTICIPO: ColumnaDetalle[] = [
+  { key: "concepto", label: "Concepto", align: "left", tipo: "text" },
+  { key: "unidad", label: "Unidad", align: "left", tipo: "text" },
+  { key: "cantidad", label: "Cantidad", align: "right", tipo: "number" },
+  { key: "precio_unitario", label: "P. unitario", align: "right", tipo: "number" },
+  { key: "importe", label: "Importe", align: "right", tipo: "number", auto: true },
+];
+
 export type ContextoAluminio = {
   monedaAluminio: "USD" | "MXN";
   tipoCambio: number;
@@ -84,7 +97,12 @@ function tienePrecioConfigurado(contexto?: ContextoAluminio): boolean {
   return contexto?.precioAluminioKg !== null && contexto?.precioAluminioKg !== undefined;
 }
 
-export function columnasPorTipo(tipo: TipoDetalle, contextoAluminio?: ContextoAluminio): ColumnaDetalle[] {
+export function columnasPorTipo(
+  tipo: TipoDetalle,
+  contextoAluminio?: ContextoAluminio,
+  esAnticipo = false
+): ColumnaDetalle[] {
+  if (esAnticipo) return COLUMNAS_ANTICIPO;
   if (tipo === "cristal") return COLUMNAS_CRISTAL;
   if (tipo === "aluminio") {
     return tienePrecioConfigurado(contextoAluminio) ? COLUMNAS_ALUMINIO : COLUMNAS_ALUMINIO_MANUAL;
@@ -143,7 +161,19 @@ export function filaVaciaMiscelaneos(idTemp: number): PedidoDetalleItem {
   };
 }
 
-export function filaVaciaPorTipo(tipo: TipoDetalle, idTemp: number): DetalleUnion {
+export function filaVaciaAnticipo(idTemp: number): PedidoDetalleAnticipoItem {
+  return {
+    id_detalle: idTemp,
+    concepto: "",
+    unidad: "",
+    cantidad: 0,
+    precio_unitario: 0,
+    importe: 0,
+  };
+}
+
+export function filaVaciaPorTipo(tipo: TipoDetalle, idTemp: number, esAnticipo = false): DetalleUnion {
+  if (esAnticipo) return filaVaciaAnticipo(idTemp);
   if (tipo === "cristal") return filaVaciaCristal(idTemp);
   if (tipo === "aluminio") return filaVaciaAluminio(idTemp);
   return filaVaciaMiscelaneos(idTemp);
@@ -156,6 +186,12 @@ export function calcularImporteCristal(fila: PedidoDetalleCristalItem): number {
 }
 
 export function calcularImporteMisc(fila: PedidoDetalleItem): number {
+  const cantidad = Number(fila.cantidad || 0);
+  const precio = Number(fila.precio_unitario || 0);
+  return Number((cantidad * precio).toFixed(2));
+}
+
+export function calcularImporteAnticipo(fila: PedidoDetalleAnticipoItem): number {
   const cantidad = Number(fila.cantidad || 0);
   const precio = Number(fila.precio_unitario || 0);
   return Number((cantidad * precio).toFixed(2));
@@ -200,8 +236,10 @@ export function calcularCamposAluminio(
 export function recalcularCamposAuto(
   tipo: TipoDetalle,
   fila: DetalleUnion,
-  contextoAluminio?: ContextoAluminio
+  contextoAluminio?: ContextoAluminio,
+  esAnticipo = false
 ): Partial<DetalleUnion> {
+  if (esAnticipo) return { importe: calcularImporteAnticipo(fila as PedidoDetalleAnticipoItem) };
   if (tipo === "cristal") return { importe: calcularImporteCristal(fila as PedidoDetalleCristalItem) };
   if (tipo === "miscelaneos") return { importe: calcularImporteMisc(fila as PedidoDetalleItem) };
   return calcularCamposAluminio(fila as PedidoDetalleAluminioItem, contextoAluminio);

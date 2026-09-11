@@ -1,5 +1,5 @@
 -- ============================================================================
--- Datos dummy para desarrollo local — HEG Formatos
+-- Datos dummy para desarrollo local — HEG Diseño e Instalación
 -- ============================================================================
 -- Para quien haga `git pull` y necesite datos con qué probar la app sin la BD
 -- real del cliente. Ejecutar completo (de un tirón) en MySQL Workbench, con el

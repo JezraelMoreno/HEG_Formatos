@@ -1313,7 +1313,10 @@ export function ProyectoDetalle() {
                         role="button"
                         aria-label={`Ver detalles del pedido ${p.pedido}`}
                       >
-                        <td>{p.pedido}</td>
+                        <td>
+                          {p.pedido}
+                          {p.es_anticipo && <span className="badge-anticipo">Anticipo</span>}
+                        </td>
                         <td>{p.clan}</td>
                         <td>{p.familia}</td>
                         <td>{p.proveedor}</td>

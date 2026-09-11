@@ -8,11 +8,13 @@ export type PedidoTotales = {
   ivaMonto: number;
   totalFinal: number;
   porcentajeDescuento: number;
+  totalAPagar: number;
 };
 
 export function usePedidoTotales(
   detalles: DetalleUnion[],
-  porcentajeDescuentoRaw: number | null | undefined
+  porcentajeDescuentoRaw: number | null | undefined,
+  montoCubiertoAnticipo = 0
 ): PedidoTotales {
   const porcentajeDescuento = useMemo(() => {
     let pct = Number(porcentajeDescuentoRaw ?? 0);
@@ -35,6 +37,10 @@ export function usePedidoTotales(
   );
   const ivaMonto = useMemo(() => subtotalConDescuento * 0.16, [subtotalConDescuento]);
   const totalFinal = useMemo(() => subtotalConDescuento + ivaMonto, [subtotalConDescuento, ivaMonto]);
+  const totalAPagar = useMemo(
+    () => Math.max(0, totalFinal - Number(montoCubiertoAnticipo || 0)),
+    [totalFinal, montoCubiertoAnticipo]
+  );
 
-  return { subtotalBase, descuentoMonto, subtotalConDescuento, ivaMonto, totalFinal, porcentajeDescuento };
+  return { subtotalBase, descuentoMonto, subtotalConDescuento, ivaMonto, totalFinal, porcentajeDescuento, totalAPagar };
 }

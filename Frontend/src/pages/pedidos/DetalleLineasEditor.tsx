@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { DetalleUnion, TipoDetalle } from "../../types/pedidos";
 import {
   columnasPorTipo,
@@ -6,6 +6,7 @@ import {
   recalcularCamposAuto,
   type ContextoAluminio,
 } from "../../utils/pedidoDetalleColumns";
+import { Modal } from "../../components/Modal";
 import "./DetalleLineasEditor.css";
 
 type Props = {
@@ -14,6 +15,7 @@ type Props = {
   onChange: (detalles: DetalleUnion[]) => void;
   disabled?: boolean;
   contextoAluminio?: ContextoAluminio;
+  esAnticipo?: boolean;
 };
 
 type DetalleRecord = Record<string, string | number | null | undefined>;
@@ -24,13 +26,16 @@ export function DetalleLineasEditor({
   onChange,
   disabled = false,
   contextoAluminio,
+  esAnticipo = false,
 }: Props) {
   const tempIdRef = useRef(0);
-  const columnas = columnasPorTipo(tipoDetalle, contextoAluminio);
+  const columnas = columnasPorTipo(tipoDetalle, contextoAluminio, esAnticipo);
+  const [celdaExpandida, setCeldaExpandida] = useState<{ index: number; key: string; label: string } | null>(null);
+  const [borrador, setBorrador] = useState("");
 
   const agregarFila = () => {
     tempIdRef.current -= 1;
-    onChange([...detalles, filaVaciaPorTipo(tipoDetalle, tempIdRef.current)]);
+    onChange([...detalles, filaVaciaPorTipo(tipoDetalle, tempIdRef.current, esAnticipo)]);
   };
 
   const quitarFila = (index: number) => {
@@ -42,10 +47,23 @@ export function DetalleLineasEditor({
       if (i !== index) return fila;
       const valorParsed = esNumero ? (rawValue === "" ? null : Number(rawValue)) : rawValue;
       const actualizada = { ...(fila as DetalleRecord), [key]: valorParsed } as unknown as DetalleUnion;
-      const camposAuto = recalcularCamposAuto(tipoDetalle, actualizada, contextoAluminio);
+      const camposAuto = recalcularCamposAuto(tipoDetalle, actualizada, contextoAluminio, esAnticipo);
       return { ...(actualizada as DetalleRecord), ...camposAuto } as unknown as DetalleUnion;
     });
     onChange(nuevas);
+  };
+
+  const abrirExpandir = (index: number, key: string, label: string, valorActual: string) => {
+    setCeldaExpandida({ index, key, label });
+    setBorrador(valorActual);
+  };
+
+  const cerrarExpandir = () => setCeldaExpandida(null);
+
+  const guardarExpandir = () => {
+    if (!celdaExpandida) return;
+    actualizarFila(celdaExpandida.index, celdaExpandida.key, borrador, false);
+    setCeldaExpandida(null);
   };
 
   // ml/kg/m2 siempre se recalculan para aluminio (geometría/peso, no dependen del precio); el
@@ -53,7 +71,7 @@ export function DetalleLineasEditor({
   // haber llenado renglones (o al cargar un pedido ya guardado), para que ninguna celda
   // auto-calculada quede desfasada del contexto vigente.
   useEffect(() => {
-    if (tipoDetalle !== "aluminio" || detalles.length === 0) return;
+    if (esAnticipo || tipoDetalle !== "aluminio" || detalles.length === 0) return;
     const recalculadas = detalles.map((fila) => {
       const camposAuto = recalcularCamposAuto(tipoDetalle, fila, contextoAluminio);
       return { ...(fila as DetalleRecord), ...camposAuto } as unknown as DetalleUnion;
@@ -61,6 +79,7 @@ export function DetalleLineasEditor({
     onChange(recalculadas);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
+    esAnticipo,
     tipoDetalle,
     contextoAluminio?.monedaAluminio,
     contextoAluminio?.tipoCambio,
@@ -107,14 +126,39 @@ export function DetalleLineasEditor({
                         </td>
                       );
                     }
+                    const valorTexto = valor === null || valor === undefined ? "" : String(valor);
+                    if (col.tipo === "text") {
+                      return (
+                        <td key={col.key}>
+                          <div className="celda-texto">
+                            <input
+                              type="text"
+                              value={valorTexto}
+                              disabled={disabled}
+                              onChange={(e) => actualizarFila(idx, col.key, e.target.value, false)}
+                              style={{ textAlign: col.align }}
+                            />
+                            <button
+                              type="button"
+                              className="celda-expandir"
+                              onClick={() => abrirExpandir(idx, col.key, col.label, valorTexto)}
+                              aria-label={`Expandir ${col.label}`}
+                              title="Expandir"
+                            >
+                              ⤢
+                            </button>
+                          </div>
+                        </td>
+                      );
+                    }
                     return (
                       <td key={col.key}>
                         <input
-                          type={col.tipo === "number" ? "number" : "text"}
-                          step={col.tipo === "number" ? "0.01" : undefined}
-                          value={valor === null || valor === undefined ? "" : valor}
+                          type="number"
+                          step="0.01"
+                          value={valorTexto}
                           disabled={disabled}
-                          onChange={(e) => actualizarFila(idx, col.key, e.target.value, col.tipo === "number")}
+                          onChange={(e) => actualizarFila(idx, col.key, e.target.value, true)}
                           style={{ textAlign: col.align }}
                         />
                       </td>
@@ -143,6 +187,37 @@ export function DetalleLineasEditor({
           + Agregar línea
         </button>
       )}
+      <Modal
+        isOpen={celdaExpandida !== null}
+        onClose={cerrarExpandir}
+        title={celdaExpandida ? celdaExpandida.label : undefined}
+        size="md"
+        footer={
+          disabled ? (
+            <button type="button" className="btn-secondary" onClick={cerrarExpandir}>
+              Cerrar
+            </button>
+          ) : (
+            <>
+              <button type="button" className="btn-secondary" onClick={cerrarExpandir}>
+                Cancelar
+              </button>
+              <button type="button" className="btn-primary" onClick={guardarExpandir}>
+                Guardar
+              </button>
+            </>
+          )
+        }
+      >
+        <textarea
+          className="celda-expandir-textarea"
+          value={borrador}
+          readOnly={disabled}
+          onChange={(e) => setBorrador(e.target.value)}
+          rows={6}
+          autoFocus
+        />
+      </Modal>
     </div>
   );
 }

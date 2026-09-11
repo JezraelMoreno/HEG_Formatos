@@ -31,7 +31,7 @@ export function Sidebar({ items, activeProject, onChangeProject }: SidebarProps)
         <span className="sidebar-logo">
           <img src={`${API_URL}/assets/heg_logo.jpg`} alt="HEG" />
         </span>
-        <span className="sidebar-brand-name">HEG Formatos</span>
+        <span className="sidebar-brand-name">HEG Diseño e Instalación</span>
       </div>
 
       {activeProject && (
