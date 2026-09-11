@@ -200,6 +200,7 @@ export function PedidoFormModal({ isOpen, onClose, idProyecto, onCreated }: Prop
                 type="text"
                 value={form.pedido}
                 onChange={(e) => setForm((prev) => ({ ...prev, pedido: e.target.value }))}
+                onFocus={(e) => e.target.select()}
                 placeholder="Ej. 250"
               />
             </label>
@@ -209,6 +210,7 @@ export function PedidoFormModal({ isOpen, onClose, idProyecto, onCreated }: Prop
                 type="text"
                 value={form.clan}
                 onChange={(e) => setForm((prev) => ({ ...prev, clan: e.target.value.toUpperCase() }))}
+                onFocus={(e) => e.target.select()}
                 placeholder="Ej. C1"
               />
             </label>
@@ -218,6 +220,7 @@ export function PedidoFormModal({ isOpen, onClose, idProyecto, onCreated }: Prop
                 type="text"
                 value={form.familia}
                 onChange={(e) => setForm((prev) => ({ ...prev, familia: e.target.value.toUpperCase() }))}
+                onFocus={(e) => e.target.select()}
                 placeholder="Ej. CR / AL / MI"
               />
             </label>

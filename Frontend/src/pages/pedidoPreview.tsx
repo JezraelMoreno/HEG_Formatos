@@ -424,12 +424,12 @@ export function PedidoPreview() {
                         <div className="pedido-preview-meta-row">
                           <span>Pedido</span>
                           <input className="pedido-preview-input" type="text" value={pedido.pedido || ""} disabled={!puedeEditarAhora}
-                            onChange={(e) => actualizarCampo("pedido", e.target.value)} />
+                            onChange={(e) => actualizarCampo("pedido", e.target.value)} onFocus={(e) => e.target.select()} />
                         </div>
                         <div className="pedido-preview-meta-row">
                           <span>Familia</span>
                           <input className="pedido-preview-input" type="text" value={pedido.familia || ""} disabled={!puedeEditarAhora}
-                            onChange={(e) => actualizarCampo("familia", e.target.value.toUpperCase())} />
+                            onChange={(e) => actualizarCampo("familia", e.target.value.toUpperCase())} onFocus={(e) => e.target.select()} />
                         </div>
                         <div className="pedido-preview-meta-row">
                           <span>Concepto</span>
@@ -445,7 +445,7 @@ export function PedidoPreview() {
                         <div className="pedido-preview-meta-row">
                           <span>Clan</span>
                           <input className="pedido-preview-input" type="text" value={pedido.clan || ""} disabled={!puedeEditarAhora}
-                            onChange={(e) => actualizarCampo("clan", e.target.value.toUpperCase())} />
+                            onChange={(e) => actualizarCampo("clan", e.target.value.toUpperCase())} onFocus={(e) => e.target.select()} />
                         </div>
                         <div className="pedido-preview-meta-row">
                           <span>Entregar en</span>
