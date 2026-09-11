@@ -1,7 +1,7 @@
 {
   "name": "heg-diseno-e-instalacion",
   "private": true,
-  "version": "1.0.15",
+  "version": "1.0.16",
   "description": "HEG Diseño e Instalación - Sistema de gestión de proyectos y presupuestos",
   "author": "HEG",
   "type": "module",
